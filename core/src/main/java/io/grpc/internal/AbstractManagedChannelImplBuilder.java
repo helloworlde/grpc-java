@@ -16,8 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -33,6 +31,8 @@ import io.grpc.ManagedChannelBuilder;
 import io.grpc.NameResolver;
 import io.grpc.NameResolverRegistry;
 import io.grpc.ProxyDetector;
+
+import javax.annotation.Nullable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.SocketAddress;
@@ -48,7 +48,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * The base class for channel builders.
@@ -349,6 +350,11 @@ public abstract class AbstractManagedChannelImplBuilder
     return thisT();
   }
 
+  /**
+   * 开启重试
+   *
+   * @return
+   */
   @Override
   public final T enableRetry() {
     retryEnabled = true;
@@ -376,6 +382,12 @@ public abstract class AbstractManagedChannelImplBuilder
     return thisT();
   }
 
+  /**
+   * 从 builder 中指定服务配置
+   *
+   * @param serviceConfig
+   * @return
+   */
   @Override
   public T defaultServiceConfig(@Nullable Map<String, ?> serviceConfig) {
     // TODO(notcarl): use real parsing
@@ -383,6 +395,12 @@ public abstract class AbstractManagedChannelImplBuilder
     return thisT();
   }
 
+  /**
+   * 校验配置属性
+   *
+   * @param map
+   * @return
+   */
   @Nullable
   private static Map<String, ?> checkMapEntryTypes(@Nullable Map<?, ?> map) {
     if (map == null) {
@@ -390,13 +408,15 @@ public abstract class AbstractManagedChannelImplBuilder
     }
     // Not using ImmutableMap.Builder because of extra guava dependency for Android.
     Map<String, Object> parsedMap = new LinkedHashMap<>();
+    // 遍历 map
     for (Map.Entry<?, ?> entry : map.entrySet()) {
-      checkArgument(
-          entry.getKey() instanceof String,
-          "The key of the entry '%s' is not of String type", entry);
+      // 检查 key
+      checkArgument(entry.getKey() instanceof String, "The key of the entry '%s' is not of String type", entry);
 
       String key = (String) entry.getKey();
       Object value = entry.getValue();
+
+      // 根据 value 类型检查并设置值
       if (value == null) {
         parsedMap.put(key, null);
       } else if (value instanceof Map) {
@@ -410,14 +430,18 @@ public abstract class AbstractManagedChannelImplBuilder
       } else if (value instanceof Boolean) {
         parsedMap.put(key, value);
       } else {
-        throw new IllegalArgumentException(
-            "The value of the map entry '" + entry + "' is of type '" + value.getClass()
-                + "', which is not supported");
+        throw new IllegalArgumentException("The value of the map entry '" + entry + "' is of type '" + value.getClass() + "', which is not supported");
       }
     }
     return Collections.unmodifiableMap(parsedMap);
   }
 
+  /**
+   * 检查 List 对象
+   *
+   * @param list
+   * @return
+   */
   private static List<?> checkListEntryTypes(List<?> list) {
     List<Object> parsedList = new ArrayList<>(list.size());
     for (Object value : list) {
@@ -434,9 +458,7 @@ public abstract class AbstractManagedChannelImplBuilder
       } else if (value instanceof Boolean) {
         parsedList.add(value);
       } else {
-        throw new IllegalArgumentException(
-            "The entry '" + value + "' is of type '" + value.getClass()
-                + "', which is not supported");
+        throw new IllegalArgumentException("The entry '" + value + "' is of type '" + value.getClass() + "', which is not supported");
       }
     }
     return Collections.unmodifiableList(parsedList);
@@ -506,45 +528,52 @@ public abstract class AbstractManagedChannelImplBuilder
     return GrpcUtil.checkAuthority(authority);
   }
 
+  /**
+   * 构建 ManagedChannel 对象
+   * @return
+   */
   @Override
   public ManagedChannel build() {
     return new ManagedChannelOrphanWrapper(new ManagedChannelImpl(
-        this,
-        buildTransportFactory(),
-        new ExponentialBackoffPolicy.Provider(),
-        SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR),
-        GrpcUtil.STOPWATCH_SUPPLIER,
-        getEffectiveInterceptors(),
-        TimeProvider.SYSTEM_TIME_PROVIDER));
+            this,
+            //
+            buildTransportFactory(),
+            new ExponentialBackoffPolicy.Provider(),
+            // 线程池
+            SharedResourcePool.forResource(GrpcUtil.SHARED_CHANNEL_EXECUTOR),
+            // 计时器
+            GrpcUtil.STOPWATCH_SUPPLIER,
+            // 统计和追踪拦截器
+            getEffectiveInterceptors(),
+            // 时间提供其
+            TimeProvider.SYSTEM_TIME_PROVIDER));
   }
 
   // Temporarily disable retry when stats or tracing is enabled to avoid breakage, until we know
   // what should be the desired behavior for retry + stats/tracing.
+  // 获取拦截器
+  // 当统计和追踪开启时会禁止重试，避免泄露
   // TODO(zdapeng): FIX IT
   @VisibleForTesting
   final List<ClientInterceptor> getEffectiveInterceptors() {
-    List<ClientInterceptor> effectiveInterceptors =
-        new ArrayList<>(this.interceptors);
+    List<ClientInterceptor> effectiveInterceptors = new ArrayList<>(this.interceptors);
     temporarilyDisableRetry = false;
+    // 如果 statsEnabled 是 true，则不允许重试，当调用 enableRetry 方法后，statsEnabled 是false
+    // 统计拦截器
     if (statsEnabled) {
+      // 如果开启了统计，则禁止重试
       temporarilyDisableRetry = true;
       ClientInterceptor statsInterceptor = null;
       try {
-        Class<?> censusStatsAccessor =
-            Class.forName("io.grpc.census.InternalCensusStatsAccessor");
-        Method getClientInterceptorMethod =
-            censusStatsAccessor.getDeclaredMethod(
-                "getClientInterceptor",
+        Class<?> censusStatsAccessor = Class.forName("io.grpc.census.InternalCensusStatsAccessor");
+        Method getClientInterceptorMethod = censusStatsAccessor.getDeclaredMethod("getClientInterceptor",
                 boolean.class,
                 boolean.class,
                 boolean.class);
-        statsInterceptor =
-            (ClientInterceptor) getClientInterceptorMethod
-                .invoke(
-                    null,
-                    recordStartedRpcs,
-                    recordFinishedRpcs,
-                    recordRealTimeMetrics);
+        statsInterceptor = (ClientInterceptor) getClientInterceptorMethod.invoke(null,
+                recordStartedRpcs,
+                recordFinishedRpcs,
+                recordRealTimeMetrics);
       } catch (ClassNotFoundException e) {
         // Replace these separate catch statements with multicatch when Android min-API >= 19
         log.log(Level.FINE, "Unable to apply census stats", e);
@@ -555,20 +584,21 @@ public abstract class AbstractManagedChannelImplBuilder
       } catch (InvocationTargetException e) {
         log.log(Level.FINE, "Unable to apply census stats", e);
       }
+
       if (statsInterceptor != null) {
         // First interceptor runs last (see ClientInterceptors.intercept()), so that no
         // other interceptor can override the tracer factory we set in CallOptions.
         effectiveInterceptors.add(0, statsInterceptor);
       }
     }
+
+    // 如果开启了追踪，则禁止重试，当调用 enableRetry 后，tracingEnabled 是 false
     if (tracingEnabled) {
       temporarilyDisableRetry = true;
       ClientInterceptor tracingInterceptor = null;
       try {
-        Class<?> censusTracingAccessor =
-            Class.forName("io.grpc.census.InternalCensusTracingAccessor");
-        Method getClientInterceptroMethod =
-            censusTracingAccessor.getDeclaredMethod("getClientInterceptor");
+        Class<?> censusTracingAccessor = Class.forName("io.grpc.census.InternalCensusTracingAccessor");
+        Method getClientInterceptroMethod = censusTracingAccessor.getDeclaredMethod("getClientInterceptor");
         tracingInterceptor = (ClientInterceptor) getClientInterceptroMethod.invoke(null);
       } catch (ClassNotFoundException e) {
         // Replace these separate catch statements with multicatch when Android min-API >= 19

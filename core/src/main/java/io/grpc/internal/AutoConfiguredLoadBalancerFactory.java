@@ -16,9 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static io.grpc.LoadBalancer.ATTR_LOAD_BALANCING_CONFIG;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import io.grpc.Attributes;
@@ -40,9 +37,13 @@ import io.grpc.NameResolver.ConfigOrError;
 import io.grpc.Status;
 import io.grpc.internal.ServiceConfigUtil.LbConfig;
 import io.grpc.internal.ServiceConfigUtil.PolicySelection;
+
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static io.grpc.LoadBalancer.ATTR_LOAD_BALANCING_CONFIG;
 
 // TODO(creamsoup) fully deprecate LoadBalancer.ATTR_LOAD_BALANCING_CONFIG
 @SuppressWarnings("deprecation")
@@ -223,6 +224,9 @@ public final class AutoConfiguredLoadBalancerFactory {
    * means, it ignores LoadBalancer policies after the first available one even if any of them are
    * invalid.
    *
+   * 从服务配种中解析第一个可用的负载均衡策略，可用的负载均衡策略应当在 LoadBalancerRegistry 中注册，如果策略是无效的，
+   * 它不会回退到下一个策略，而是返回错误，这意味着如果第一个策略无效，即使后面的配置有效也会被忽略
+   *
    * <p>Order of policy preference:
    *
    * <ol>
@@ -233,6 +237,7 @@ public final class AutoConfiguredLoadBalancerFactory {
    *
    * <p>Unlike a normal {@link LoadBalancer.Factory}, this accepts a full service config rather than
    * the LoadBalancingConfig.
+   * 和 LoadBalancer.Factory 不同的是这个方法可以接受整个服务配置而不是 LoadBalancingConfig
    *
    * @return the parsed {@link PolicySelection}, or {@code null} if no selection could be made.
    */
@@ -241,10 +246,12 @@ public final class AutoConfiguredLoadBalancerFactory {
     try {
       List<LbConfig> loadBalancerConfigs = null;
       if (serviceConfig != null) {
-        List<Map<String, ?>> rawLbConfigs =
-            ServiceConfigUtil.getLoadBalancingConfigsFromServiceConfig(serviceConfig);
+        // 获取配置
+        List<Map<String, ?>> rawLbConfigs = ServiceConfigUtil.getLoadBalancingConfigsFromServiceConfig(serviceConfig);
+        // 将 Map 解析为 LbConfig 对象
         loadBalancerConfigs = ServiceConfigUtil.unwrapLoadBalancingConfigList(rawLbConfigs);
       }
+      // 如果有策略就返回
       if (loadBalancerConfigs != null && !loadBalancerConfigs.isEmpty()) {
         return ServiceConfigUtil.selectLbPolicyFromList(loadBalancerConfigs, registry);
       }

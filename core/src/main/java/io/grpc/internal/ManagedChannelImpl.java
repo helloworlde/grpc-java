@@ -16,65 +16,33 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static io.grpc.ConnectivityState.IDLE;
-import static io.grpc.ConnectivityState.SHUTDOWN;
-import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
-import static io.grpc.internal.ServiceConfigInterceptor.HEDGING_POLICY_KEY;
-import static io.grpc.internal.ServiceConfigInterceptor.RETRY_POLICY_KEY;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
-import io.grpc.Attributes;
-import io.grpc.CallOptions;
-import io.grpc.Channel;
-import io.grpc.ChannelLogger;
+import io.grpc.*;
 import io.grpc.ChannelLogger.ChannelLogLevel;
-import io.grpc.ClientCall;
-import io.grpc.ClientInterceptor;
-import io.grpc.ClientInterceptors;
-import io.grpc.ClientStreamTracer;
-import io.grpc.CompressorRegistry;
-import io.grpc.ConnectivityState;
-import io.grpc.ConnectivityStateInfo;
-import io.grpc.Context;
-import io.grpc.DecompressorRegistry;
-import io.grpc.EquivalentAddressGroup;
-import io.grpc.InternalChannelz;
 import io.grpc.InternalChannelz.ChannelStats;
 import io.grpc.InternalChannelz.ChannelTrace;
-import io.grpc.InternalInstrumented;
-import io.grpc.InternalLogId;
-import io.grpc.InternalWithLogId;
-import io.grpc.LoadBalancer;
 import io.grpc.LoadBalancer.CreateSubchannelArgs;
 import io.grpc.LoadBalancer.PickResult;
 import io.grpc.LoadBalancer.PickSubchannelArgs;
 import io.grpc.LoadBalancer.ResolvedAddresses;
 import io.grpc.LoadBalancer.SubchannelPicker;
 import io.grpc.LoadBalancer.SubchannelStateListener;
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
-import io.grpc.Metadata;
-import io.grpc.MethodDescriptor;
-import io.grpc.NameResolver;
 import io.grpc.NameResolver.ConfigOrError;
 import io.grpc.NameResolver.ResolutionResult;
-import io.grpc.NameResolverRegistry;
-import io.grpc.ProxyDetector;
-import io.grpc.Status;
-import io.grpc.SynchronizationContext;
 import io.grpc.SynchronizationContext.ScheduledHandle;
 import io.grpc.internal.AutoConfiguredLoadBalancerFactory.AutoConfiguredLoadBalancer;
 import io.grpc.internal.ClientCallImpl.ClientTransportProvider;
 import io.grpc.internal.RetriableStream.ChannelBufferMeter;
 import io.grpc.internal.RetriableStream.Throttle;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -97,9 +65,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static io.grpc.ConnectivityState.IDLE;
+import static io.grpc.ConnectivityState.SHUTDOWN;
+import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
+import static io.grpc.internal.ServiceConfigInterceptor.HEDGING_POLICY_KEY;
+import static io.grpc.internal.ServiceConfigInterceptor.RETRY_POLICY_KEY;
 
 /** A communication channel for making outgoing RPCs. */
 @ThreadSafe
@@ -129,8 +103,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   static final Status SUBCHANNEL_SHUTDOWN_STATUS =
       Status.UNAVAILABLE.withDescription("Subchannel shutdown invoked");
 
-  private static final ManagedChannelServiceConfig EMPTY_SERVICE_CONFIG =
-      ManagedChannelServiceConfig.empty();
+  private static final ManagedChannelServiceConfig EMPTY_SERVICE_CONFIG = ManagedChannelServiceConfig.empty();
 
   private final InternalLogId logId;
   private final String target;
@@ -256,6 +229,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
   private final ManagedChannelServiceConfig defaultServiceConfig;
   // Must be mutated and read from constructor or syncContext
   private boolean serviceConfigUpdated = false;
+
+  // 查找服务配置
   private final boolean lookUpServiceConfig;
 
   // One instance per channel.
@@ -265,6 +240,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   private final long channelBufferLimit;
 
   // Temporary false flag that can skip the retry code path.
+  // 是否开启重试
   private final boolean retryEnabled;
 
   // Called from syncContext
@@ -548,105 +524,121 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   private final Rescheduler idleTimer;
 
+  /**
+   * Channel 构造方法
+   *
+   * @param builder
+   * @param clientTransportFactory
+   * @param backoffPolicyProvider
+   * @param balancerRpcExecutorPool
+   * @param stopwatchSupplier
+   * @param interceptors
+   * @param timeProvider
+   */
   ManagedChannelImpl(
-      AbstractManagedChannelImplBuilder<?> builder,
-      ClientTransportFactory clientTransportFactory,
-      BackoffPolicy.Provider backoffPolicyProvider,
-      ObjectPool<? extends Executor> balancerRpcExecutorPool,
-      Supplier<Stopwatch> stopwatchSupplier,
-      List<ClientInterceptor> interceptors,
-      final TimeProvider timeProvider) {
+          AbstractManagedChannelImplBuilder<?> builder,
+          ClientTransportFactory clientTransportFactory,
+          BackoffPolicy.Provider backoffPolicyProvider,
+          ObjectPool<? extends Executor> balancerRpcExecutorPool,
+          Supplier<Stopwatch> stopwatchSupplier,
+          List<ClientInterceptor> interceptors,
+          final TimeProvider timeProvider) {
     this.target = checkNotNull(builder.target, "target");
     this.logId = InternalLogId.allocate("Channel", target);
     this.timeProvider = checkNotNull(timeProvider, "timeProvider");
     this.executorPool = checkNotNull(builder.executorPool, "executorPool");
     this.executor = checkNotNull(executorPool.getObject(), "executor");
-    this.transportFactory =
-        new CallCredentialsApplyingTransportFactory(clientTransportFactory, this.executor);
-    this.scheduledExecutor =
-        new RestrictedScheduledExecutor(transportFactory.getScheduledExecutorService());
+    this.transportFactory = new CallCredentialsApplyingTransportFactory(clientTransportFactory, this.executor);
+    this.scheduledExecutor = new RestrictedScheduledExecutor(transportFactory.getScheduledExecutorService());
     maxTraceEvents = builder.maxTraceEvents;
-    channelTracer = new ChannelTracer(
-        logId, builder.maxTraceEvents, timeProvider.currentTimeNanos(),
-        "Channel for '" + target + "'");
+    channelTracer = new ChannelTracer(logId, builder.maxTraceEvents, timeProvider.currentTimeNanos(), "Channel for '" + target + "'");
     channelLogger = new ChannelLoggerImpl(channelTracer, timeProvider);
+
+    // 服务发现工厂
     this.nameResolverFactory = builder.getNameResolverFactory();
-    ProxyDetector proxyDetector =
-        builder.proxyDetector != null ? builder.proxyDetector : GrpcUtil.DEFAULT_PROXY_DETECTOR;
+    ProxyDetector proxyDetector = builder.proxyDetector != null ? builder.proxyDetector : GrpcUtil.DEFAULT_PROXY_DETECTOR;
+
+    // 是否开启重试，根据 builder 的 retryEnabled 值和 temporarilyDisableRetry 决定，当调用 enableRetry 后，temporarilyDisableRetry 是false
     this.retryEnabled = builder.retryEnabled && !builder.temporarilyDisableRetry;
+
+    // 负载均衡策略
     this.loadBalancerFactory = new AutoConfiguredLoadBalancerFactory(builder.defaultLbPolicy);
-    this.offloadExecutorHolder =
-        new ExecutorHolder(
-            checkNotNull(builder.offloadExecutorPool, "offloadExecutorPool"));
+    this.offloadExecutorHolder = new ExecutorHolder(checkNotNull(builder.offloadExecutorPool, "offloadExecutorPool"));
     this.nameResolverRegistry = builder.nameResolverRegistry;
-    ScParser serviceConfigParser =
-        new ScParser(
+
+    // 配置解析器
+    ScParser serviceConfigParser = new ScParser(
             retryEnabled,
             builder.maxRetryAttempts,
             builder.maxHedgedAttempts,
             loadBalancerFactory,
             channelLogger);
-    this.nameResolverArgs =
-        NameResolver.Args.newBuilder()
-            .setDefaultPort(builder.getDefaultPort())
-            .setProxyDetector(proxyDetector)
-            .setSynchronizationContext(syncContext)
-            .setScheduledExecutorService(scheduledExecutor)
-            .setServiceConfigParser(serviceConfigParser)
-            .setChannelLogger(channelLogger)
-            .setOffloadExecutor(
-                // Avoid creating the offloadExecutor until it is first used
-                new Executor() {
-                  @Override
-                  public void execute(Runnable command) {
-                    offloadExecutorHolder.getExecutor().execute(command);
-                  }
-                })
-            .build();
+
+    this.nameResolverArgs = NameResolver.Args.newBuilder()
+                                             .setDefaultPort(builder.getDefaultPort())
+                                             .setProxyDetector(proxyDetector)
+                                             .setSynchronizationContext(syncContext)
+                                             .setScheduledExecutorService(scheduledExecutor)
+                                             .setServiceConfigParser(serviceConfigParser)
+                                             .setChannelLogger(channelLogger)
+                                             .setOffloadExecutor(
+                                                     // Avoid creating the offloadExecutor until it is first used
+                                                     new Executor() {
+                                                       @Override
+                                                       public void execute(Runnable command) {
+                                                         offloadExecutorHolder.getExecutor().execute(command);
+                                                       }
+                                                     })
+                                             .build();
+
+    // 命名解析
     this.nameResolver = getNameResolver(target, nameResolverFactory, nameResolverArgs);
+
     this.balancerRpcExecutorPool = checkNotNull(balancerRpcExecutorPool, "balancerRpcExecutorPool");
     this.balancerRpcExecutorHolder = new ExecutorHolder(balancerRpcExecutorPool);
     this.delayedTransport = new DelayedClientTransport(this.executor, this.syncContext);
     this.delayedTransport.start(delayedTransportListener);
     this.backoffPolicyProvider = backoffPolicyProvider;
 
+    // 服务配置拦截器
     serviceConfigInterceptor = new ServiceConfigInterceptor(retryEnabled);
+
+    // 如果 builder 有配置，则解析配置
     if (builder.defaultServiceConfig != null) {
-      ConfigOrError parsedDefaultServiceConfig =
-          serviceConfigParser.parseServiceConfig(builder.defaultServiceConfig);
-      checkState(
-          parsedDefaultServiceConfig.getError() == null,
-          "Default config is invalid: %s",
-          parsedDefaultServiceConfig.getError());
-      this.defaultServiceConfig =
-          (ManagedChannelServiceConfig) parsedDefaultServiceConfig.getConfig();
+      // 解析配置
+      ConfigOrError parsedDefaultServiceConfig = serviceConfigParser.parseServiceConfig(builder.defaultServiceConfig);
+      // 校验
+      checkState(parsedDefaultServiceConfig.getError() == null, "Default config is invalid: %s", parsedDefaultServiceConfig.getError());
+      this.defaultServiceConfig = (ManagedChannelServiceConfig) parsedDefaultServiceConfig.getConfig();
       this.lastServiceConfig = this.defaultServiceConfig;
     } else {
       this.defaultServiceConfig = null;
     }
+
     this.lookUpServiceConfig = builder.lookUpServiceConfig;
+    // 创建 Channel
     Channel channel = new RealChannel(nameResolver.getServiceAuthority());
+    // 添加方法拦截器
     channel = ClientInterceptors.intercept(channel, serviceConfigInterceptor);
+
     if (builder.binlog != null) {
       channel = builder.binlog.wrapChannel(channel);
     }
+
     this.interceptorChannel = ClientInterceptors.intercept(channel, interceptors);
     this.stopwatchSupplier = checkNotNull(stopwatchSupplier, "stopwatchSupplier");
     if (builder.idleTimeoutMillis == IDLE_TIMEOUT_MILLIS_DISABLE) {
       this.idleTimeoutMillis = builder.idleTimeoutMillis;
     } else {
-      checkArgument(
-          builder.idleTimeoutMillis
-              >= AbstractManagedChannelImplBuilder.IDLE_MODE_MIN_TIMEOUT_MILLIS,
-          "invalid idleTimeoutMillis %s", builder.idleTimeoutMillis);
+      checkArgument(builder.idleTimeoutMillis >= AbstractManagedChannelImplBuilder.IDLE_MODE_MIN_TIMEOUT_MILLIS, "invalid idleTimeoutMillis %s", builder.idleTimeoutMillis);
       this.idleTimeoutMillis = builder.idleTimeoutMillis;
     }
 
-    idleTimer = new Rescheduler(
-        new IdleModeTimer(),
-        syncContext,
-        transportFactory.getScheduledExecutorService(),
-        stopwatchSupplier.get());
+    idleTimer = new Rescheduler(new IdleModeTimer(),
+            syncContext,
+            transportFactory.getScheduledExecutorService(),
+            stopwatchSupplier.get());
+
     this.fullStreamDecompression = builder.fullStreamDecompression;
     this.decompressorRegistry = checkNotNull(builder.decompressorRegistry, "decompressorRegistry");
     this.compressorRegistry = checkNotNull(builder.compressorRegistry, "compressorRegistry");
@@ -666,28 +658,39 @@ final class ManagedChannelImpl extends ManagedChannel implements
     this.channelz = checkNotNull(builder.channelz);
     channelz.addRootChannel(this);
 
+    // 如果没有开启则使用默认配置
     if (!lookUpServiceConfig) {
       if (defaultServiceConfig != null) {
-        channelLogger.log(
-            ChannelLogLevel.INFO, "Service config look-up disabled, using default service config");
+        channelLogger.log(ChannelLogLevel.INFO, "Service config look-up disabled, using default service config");
       }
       handleServiceConfigUpdate();
     }
   }
 
   // May only be called in constructor or syncContext
+  // 更新服务配置
   private void handleServiceConfigUpdate() {
     serviceConfigUpdated = true;
     serviceConfigInterceptor.handleUpdate(lastServiceConfig);
   }
 
+  /**
+   * 服务发现
+   *
+   * @param target              服务名称
+   * @param nameResolverFactory
+   * @param nameResolverArgs
+   * @return
+   */
   @VisibleForTesting
-  static NameResolver getNameResolver(String target, NameResolver.Factory nameResolverFactory,
-      NameResolver.Args nameResolverArgs) {
+  static NameResolver getNameResolver(String target,
+                                      NameResolver.Factory nameResolverFactory,
+                                      NameResolver.Args nameResolverArgs) {
     // Finding a NameResolver. Try using the target string as the URI. If that fails, try prepending
     // "dns:///".
     URI targetUri = null;
     StringBuilder uriSyntaxErrors = new StringBuilder();
+    // 解析地址
     try {
       targetUri = new URI(target);
       // For "localhost:8080" this would likely cause newNameResolver to return null, because
@@ -697,6 +700,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
       // Can happen with ip addresses like "[::1]:1234" or 127.0.0.1:1234.
       uriSyntaxErrors.append(e.getMessage());
     }
+
+    // 创建 NameResolver
     if (targetUri != null) {
       NameResolver resolver = nameResolverFactory.newNameResolver(targetUri, nameResolverArgs);
       if (resolver != null) {
@@ -707,6 +712,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
 
     // If we reached here, the targetUri couldn't be used.
+    // 如果不是 URI 格式，则使用默认的 schema
     if (!URI_PATTERN.matcher(target).matches()) {
       // It doesn't look like a URI target. Maybe it's an authority string. Try with the default
       // scheme from the factory.
@@ -716,14 +722,13 @@ final class ManagedChannelImpl extends ManagedChannel implements
         // Should not be possible.
         throw new IllegalArgumentException(e);
       }
+
       NameResolver resolver = nameResolverFactory.newNameResolver(targetUri, nameResolverArgs);
       if (resolver != null) {
         return resolver;
       }
     }
-    throw new IllegalArgumentException(String.format(
-        "cannot find a NameResolver for %s%s",
-        target, uriSyntaxErrors.length() > 0 ? " (" + uriSyntaxErrors + ")" : ""));
+    throw new IllegalArgumentException(String.format("cannot find a NameResolver for %s%s", target, uriSyntaxErrors.length() > 0 ? " (" + uriSyntaxErrors + ")" : ""));
   }
 
   /**
@@ -1932,6 +1937,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
+  /**
+   * 配置解析实现类
+   */
   @VisibleForTesting
   static final class ScParser extends NameResolver.ServiceConfigParser {
 
@@ -1941,26 +1949,32 @@ final class ManagedChannelImpl extends ManagedChannel implements
     private final AutoConfiguredLoadBalancerFactory autoLoadBalancerFactory;
     private final ChannelLogger channelLogger;
 
-    ScParser(
-        boolean retryEnabled,
-        int maxRetryAttemptsLimit,
-        int maxHedgedAttemptsLimit,
-        AutoConfiguredLoadBalancerFactory autoLoadBalancerFactory,
-        ChannelLogger channelLogger) {
+    ScParser(boolean retryEnabled,
+             int maxRetryAttemptsLimit,
+             int maxHedgedAttemptsLimit,
+             AutoConfiguredLoadBalancerFactory autoLoadBalancerFactory,
+             ChannelLogger channelLogger) {
       this.retryEnabled = retryEnabled;
       this.maxRetryAttemptsLimit = maxRetryAttemptsLimit;
       this.maxHedgedAttemptsLimit = maxHedgedAttemptsLimit;
-      this.autoLoadBalancerFactory =
-          checkNotNull(autoLoadBalancerFactory, "autoLoadBalancerFactory");
+      this.autoLoadBalancerFactory = checkNotNull(autoLoadBalancerFactory, "autoLoadBalancerFactory");
       this.channelLogger = checkNotNull(channelLogger, "channelLogger");
     }
 
+    /**
+     * 解析 Channel 配置
+     *
+     * @param rawServiceConfig The {@link Map} representation of the service config
+     * @return
+     */
     @Override
     public ConfigOrError parseServiceConfig(Map<String, ?> rawServiceConfig) {
       try {
         Object loadBalancingPolicySelection;
-        ConfigOrError choiceFromLoadBalancer =
-            autoLoadBalancerFactory.parseLoadBalancerPolicy(rawServiceConfig, channelLogger);
+        // 解析负载均衡策略
+        ConfigOrError choiceFromLoadBalancer = autoLoadBalancerFactory.parseLoadBalancerPolicy(rawServiceConfig, channelLogger);
+
+        // 根据获取到的结果设置负载均衡策略或者返回错误
         if (choiceFromLoadBalancer == null) {
           loadBalancingPolicySelection = null;
         } else if (choiceFromLoadBalancer.getError() != null) {
@@ -1968,16 +1982,18 @@ final class ManagedChannelImpl extends ManagedChannel implements
         } else {
           loadBalancingPolicySelection = choiceFromLoadBalancer.getConfig();
         }
+
+        // 构建 Channel 的配置
         return ConfigOrError.fromConfig(
-            ManagedChannelServiceConfig.fromServiceConfig(
-                rawServiceConfig,
-                retryEnabled,
-                maxRetryAttemptsLimit,
-                maxHedgedAttemptsLimit,
-                loadBalancingPolicySelection));
+                ManagedChannelServiceConfig.fromServiceConfig(
+                        rawServiceConfig,
+                        retryEnabled,
+                        maxRetryAttemptsLimit,
+                        maxHedgedAttemptsLimit,
+                        loadBalancingPolicySelection)
+        );
       } catch (RuntimeException e) {
-        return ConfigOrError.fromError(
-            Status.UNKNOWN.withDescription("failed to parse service config").withCause(e));
+        return ConfigOrError.fromError(Status.UNKNOWN.withDescription("failed to parse service config").withCause(e));
       }
     }
   }

@@ -16,9 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
 import io.grpc.Attributes;
@@ -29,6 +26,11 @@ import io.grpc.DecompressorRegistry;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
+
+import javax.annotation.CheckForNull;
+import javax.annotation.CheckReturnValue;
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -42,10 +44,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.annotation.CheckForNull;
-import javax.annotation.CheckReturnValue;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /** A logical {@link ClientStream} that is retriable. */
 abstract class RetriableStream<ReqT> implements ClientStream {
@@ -1268,6 +1269,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   }
 
   /**
+   * 重试节流策略
    * Used for retry throttling.
    */
   static final class Throttle {
@@ -1278,22 +1280,30 @@ abstract class RetriableStream<ReqT> implements ClientStream {
      * 1000 times the maxTokens field of the retryThrottling policy in service config.
      * The number of tokens starts at maxTokens. The token_count will always be between 0 and
      * maxTokens.
+     * 服务配置中 retryThrottling 策略的 maxTokens 字段的 1000 倍
+     * 初始的值是 maxTokens, token_count 的值在 0-maxTokens 之间
      */
     final int maxTokens;
 
     /**
+     * maxTokens 的一半
      * Half of {@code maxTokens}.
      */
     final int threshold;
 
     /**
+     * 服务配置中 retryThrottling 策略的 tokenRatio 字段的1000倍
      * 1000 times the tokenRatio field of the retryThrottling policy in service config.
      */
     final int tokenRatio;
 
+    /**
+     * 当前token 数量
+     */
     final AtomicInteger tokenCount = new AtomicInteger();
 
     Throttle(float maxTokens, float tokenRatio) {
+      // 因为支持小数点后三位，所以乘 1000 作为整数
       // tokenRatio is up to 3 decimal places
       this.tokenRatio = (int) (tokenRatio * THREE_DECIMAL_PLACES_SCALE_UP);
       this.maxTokens = (int) (maxTokens * THREE_DECIMAL_PLACES_SCALE_UP);
@@ -1301,6 +1311,11 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       tokenCount.set(this.maxTokens);
     }
 
+    /**
+     * 判断是否大于节流的值
+     *
+     * @return
+     */
     @VisibleForTesting
     boolean isAboveThreshold() {
       return tokenCount.get() > threshold;
@@ -1310,29 +1325,40 @@ abstract class RetriableStream<ReqT> implements ClientStream {
      * Counts down the token on qualified failure and checks if it is above the threshold
      * atomically. Qualified failure is a failure with a retryable or non-fatal status code or with
      * a not-to-retry pushback.
+     *
+     * 当失败后将 token 数量减少，自动检查是否大于节流的值，合格故障是指具有可重试或非致命状态代码或带有不可重试回推的故障
      */
     @VisibleForTesting
     boolean onQualifiedFailureThenCheckIsAboveThreshold() {
       while (true) {
+        // 如果 token 数量为 0 则返回
         int currentCount = tokenCount.get();
         if (currentCount == 0) {
           return false;
         }
+        // 减少的数量
         int decremented = currentCount - (1 * THREE_DECIMAL_PLACES_SCALE_UP);
+        // 更新 token 数量
         boolean updated = tokenCount.compareAndSet(currentCount, Math.max(decremented, 0));
+        // 更新成功后返回是否大于节流的
         if (updated) {
           return decremented > threshold;
         }
       }
     }
 
+    /**
+     * 成功后更新 token 数量
+     */
     @VisibleForTesting
     void onSuccess() {
       while (true) {
+        // 当已经达到最大 token 数量时不再更新
         int currentCount = tokenCount.get();
         if (currentCount == maxTokens) {
           break;
         }
+        // 将 token 数量增加 tokenRatio 并更新值
         int incremented = currentCount + tokenRatio;
         boolean updated = tokenCount.compareAndSet(currentCount, Math.min(incremented, maxTokens));
         if (updated) {
