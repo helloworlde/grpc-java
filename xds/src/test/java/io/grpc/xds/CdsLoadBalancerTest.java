@@ -340,6 +340,8 @@ public class CdsLoadBalancerTest {
 
   @Test
   public void handleCdsConfigUpdate_withUpstreamTlsContext()  {
+    assertThat(cdsLoadBalancer).isInstanceOf(CdsLoadBalancer.class);
+    ((CdsLoadBalancer)cdsLoadBalancer).setXdsSecurity(true);
     assertThat(xdsClient).isNull();
     ResolvedAddresses resolvedAddresses1 =
          ResolvedAddresses.newBuilder()

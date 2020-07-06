@@ -244,6 +244,7 @@ public abstract class AbstractManagedChannelImplBuilder
     return intercept(Arrays.asList(interceptors));
   }
 
+  @Deprecated
   @Override
   public final T nameResolverFactory(NameResolver.Factory resolverFactory) {
     Preconditions.checkState(directServerAddress == null,
