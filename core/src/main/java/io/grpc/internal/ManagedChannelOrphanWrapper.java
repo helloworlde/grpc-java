@@ -18,6 +18,7 @@ package io.grpc.internal;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.ManagedChannel;
+
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.SoftReference;
@@ -29,138 +30,140 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
+/**
+ * Channel 实现代理类
+ */
 final class ManagedChannelOrphanWrapper extends ForwardingManagedChannel {
-  private static final ReferenceQueue<ManagedChannelOrphanWrapper> refqueue =
-      new ReferenceQueue<>();
-  // Retain the References so they don't get GC'd
-  private static final ConcurrentMap<ManagedChannelReference, ManagedChannelReference> refs =
-      new ConcurrentHashMap<>();
-  private static final Logger logger =
-      Logger.getLogger(ManagedChannelOrphanWrapper.class.getName());
 
-  private final ManagedChannelReference phantom;
+    private static final ReferenceQueue<ManagedChannelOrphanWrapper> refqueue = new ReferenceQueue<>();
 
-  ManagedChannelOrphanWrapper(ManagedChannel delegate) {
-    this(delegate, refqueue, refs);
-  }
+    // Retain the References so they don't get GC'd
+    // 保留参考，避免被 GC 引用
+    private static final ConcurrentMap<ManagedChannelReference, ManagedChannelReference> refs = new ConcurrentHashMap<>();
+    private static final Logger logger = Logger.getLogger(ManagedChannelOrphanWrapper.class.getName());
 
-  @VisibleForTesting
-  ManagedChannelOrphanWrapper(
-      ManagedChannel delegate,
-      ReferenceQueue<ManagedChannelOrphanWrapper> refqueue,
-      ConcurrentMap<ManagedChannelReference, ManagedChannelReference> refs) {
-    super(delegate);
-    phantom = new ManagedChannelReference(this, delegate, refqueue, refs);
-  }
-
-  @Override
-  public ManagedChannel shutdown() {
-    phantom.clearSafely();
-    return super.shutdown();
-  }
-
-  @Override
-  public ManagedChannel shutdownNow() {
-    phantom.clearSafely();
-    return super.shutdownNow();
-  }
-
-  @VisibleForTesting
-  static final class ManagedChannelReference extends WeakReference<ManagedChannelOrphanWrapper> {
-
-    private static final String ALLOCATION_SITE_PROPERTY_NAME =
-        "io.grpc.ManagedChannel.enableAllocationTracking";
-
-    private static final boolean ENABLE_ALLOCATION_TRACKING =
-        Boolean.parseBoolean(System.getProperty(ALLOCATION_SITE_PROPERTY_NAME, "true"));
-    private static final RuntimeException missingCallSite = missingCallSite();
-
-    private final ReferenceQueue<ManagedChannelOrphanWrapper> refqueue;
-    private final ConcurrentMap<ManagedChannelReference, ManagedChannelReference> refs;
-
-    private final String channelStr;
-    private final Reference<RuntimeException> allocationSite;
-    private final AtomicBoolean shutdown = new AtomicBoolean();
-
-    ManagedChannelReference(
-        ManagedChannelOrphanWrapper orphanable,
-        ManagedChannel channel,
-        ReferenceQueue<ManagedChannelOrphanWrapper> refqueue,
-        ConcurrentMap<ManagedChannelReference, ManagedChannelReference> refs) {
-      super(orphanable, refqueue);
-      allocationSite = new SoftReference<>(
-          ENABLE_ALLOCATION_TRACKING
-              ? new RuntimeException("ManagedChannel allocation site")
-              : missingCallSite);
-      this.channelStr = channel.toString();
-      this.refqueue = refqueue;
-      this.refs = refs;
-      this.refs.put(this, this);
-      cleanQueue(refqueue);
-    }
+    private final ManagedChannelReference phantom;
 
     /**
-     * This clear() is *not* called automatically by the JVM.  As this is a weak ref, the reference
-     * will be cleared automatically by the JVM, but will not be removed from {@link #refs}.
-     * We do it here to avoid this ending up on the reference queue.
+     * 传入 ManagedChannel 实现代理
+     *
+     * @param delegate
      */
-    @Override
-    public void clear() {
-      clearInternal();
-      // We run this here to periodically clean up the queue if at least some of the channels are
-      // being shutdown properly.
-      cleanQueue(refqueue);
-    }
-
-    /**
-     * Safe to call concurrently.
-     */
-    private void clearSafely() {
-      if (!shutdown.getAndSet(true)) {
-        clear();
-      }
-    }
-
-    // avoid reentrancy
-    private void clearInternal() {
-      super.clear();
-      refs.remove(this);
-      allocationSite.clear();
-    }
-
-    private static RuntimeException missingCallSite() {
-      RuntimeException e = new RuntimeException(
-          "ManagedChannel allocation site not recorded.  Set -D"
-              + ALLOCATION_SITE_PROPERTY_NAME + "=true to enable it");
-      e.setStackTrace(new StackTraceElement[0]);
-      return e;
+    ManagedChannelOrphanWrapper(ManagedChannel delegate) {
+        this(delegate, refqueue, refs);
     }
 
     @VisibleForTesting
-    static int cleanQueue(ReferenceQueue<ManagedChannelOrphanWrapper> refqueue) {
-      ManagedChannelReference ref;
-      int orphanedChannels = 0;
-      while ((ref = (ManagedChannelReference) refqueue.poll()) != null) {
-        RuntimeException maybeAllocationSite = ref.allocationSite.get();
-        ref.clearInternal(); // technically the reference is gone already.
-        if (!ref.shutdown.get()) {
-          orphanedChannels++;
-          Level level = Level.SEVERE;
-          if (logger.isLoggable(level)) {
-            String fmt =
-                "*~*~*~ Channel {0} was not shutdown properly!!! ~*~*~*"
-                    + System.getProperty("line.separator")
-                    + "    Make sure to call shutdown()/shutdownNow() and wait "
-                    + "until awaitTermination() returns true.";
-            LogRecord lr = new LogRecord(level, fmt);
-            lr.setLoggerName(logger.getName());
-            lr.setParameters(new Object[] {ref.channelStr});
-            lr.setThrown(maybeAllocationSite);
-            logger.log(lr);
-          }
-        }
-      }
-      return orphanedChannels;
+    ManagedChannelOrphanWrapper(ManagedChannel delegate,
+                                ReferenceQueue<ManagedChannelOrphanWrapper> refqueue,
+                                ConcurrentMap<ManagedChannelReference, ManagedChannelReference> refs) {
+        super(delegate);
+        phantom = new ManagedChannelReference(this, delegate, refqueue, refs);
     }
-  }
+
+    @Override
+    public ManagedChannel shutdown() {
+        phantom.clearSafely();
+        return super.shutdown();
+    }
+
+    @Override
+    public ManagedChannel shutdownNow() {
+        phantom.clearSafely();
+        return super.shutdownNow();
+    }
+
+    /**
+     * ManagedChannel 代理的引用
+     */
+    @VisibleForTesting
+    static final class ManagedChannelReference extends WeakReference<ManagedChannelOrphanWrapper> {
+
+        private static final String ALLOCATION_SITE_PROPERTY_NAME = "io.grpc.ManagedChannel.enableAllocationTracking";
+
+        private static final boolean ENABLE_ALLOCATION_TRACKING = Boolean.parseBoolean(System.getProperty(ALLOCATION_SITE_PROPERTY_NAME, "true"));
+        private static final RuntimeException missingCallSite = missingCallSite();
+
+        private final ReferenceQueue<ManagedChannelOrphanWrapper> refqueue;
+        private final ConcurrentMap<ManagedChannelReference, ManagedChannelReference> refs;
+
+        private final String channelStr;
+        private final Reference<RuntimeException> allocationSite;
+        private final AtomicBoolean shutdown = new AtomicBoolean();
+
+        ManagedChannelReference(ManagedChannelOrphanWrapper orphanable,
+                                ManagedChannel channel,
+                                ReferenceQueue<ManagedChannelOrphanWrapper> refqueue,
+                                ConcurrentMap<ManagedChannelReference, ManagedChannelReference> refs) {
+            super(orphanable, refqueue);
+            allocationSite = new SoftReference<>(ENABLE_ALLOCATION_TRACKING ? new RuntimeException("ManagedChannel allocation site") : missingCallSite);
+            this.channelStr = channel.toString();
+            this.refqueue = refqueue;
+            this.refs = refs;
+            this.refs.put(this, this);
+            cleanQueue(refqueue);
+        }
+
+        /**
+         * This clear() is *not* called automatically by the JVM.  As this is a weak ref, the reference
+         * will be cleared automatically by the JVM, but will not be removed from {@link #refs}.
+         * We do it here to avoid this ending up on the reference queue.
+         */
+        @Override
+        public void clear() {
+            clearInternal();
+            // We run this here to periodically clean up the queue if at least some of the channels are
+            // being shutdown properly.
+            cleanQueue(refqueue);
+        }
+
+        /**
+         * Safe to call concurrently.
+         */
+        private void clearSafely() {
+            if (!shutdown.getAndSet(true)) {
+                clear();
+            }
+        }
+
+        // avoid reentrancy
+        private void clearInternal() {
+            super.clear();
+            refs.remove(this);
+            allocationSite.clear();
+        }
+
+        private static RuntimeException missingCallSite() {
+            RuntimeException e = new RuntimeException("ManagedChannel allocation site not recorded.  Set -D" + ALLOCATION_SITE_PROPERTY_NAME + "=true to enable it");
+            e.setStackTrace(new StackTraceElement[0]);
+            return e;
+        }
+
+        @VisibleForTesting
+        static int cleanQueue(ReferenceQueue<ManagedChannelOrphanWrapper> refqueue) {
+            ManagedChannelReference ref;
+            int orphanedChannels = 0;
+            while ((ref = (ManagedChannelReference) refqueue.poll()) != null) {
+                RuntimeException maybeAllocationSite = ref.allocationSite.get();
+                ref.clearInternal(); // technically the reference is gone already.
+                if (!ref.shutdown.get()) {
+                    orphanedChannels++;
+                    Level level = Level.SEVERE;
+                    if (logger.isLoggable(level)) {
+                        String fmt =
+                                "*~*~*~ Channel {0} was not shutdown properly!!! ~*~*~*"
+                                        + System.getProperty("line.separator")
+                                        + "    Make sure to call shutdown()/shutdownNow() and wait "
+                                        + "until awaitTermination() returns true.";
+                        LogRecord lr = new LogRecord(level, fmt);
+                        lr.setLoggerName(logger.getName());
+                        lr.setParameters(new Object[]{ref.channelStr});
+                        lr.setThrown(maybeAllocationSite);
+                        logger.log(lr);
+                    }
+                }
+            }
+            return orphanedChannels;
+        }
+    }
 }
