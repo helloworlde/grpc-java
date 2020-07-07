@@ -546,7 +546,7 @@ public abstract class AbstractManagedChannelImplBuilder
             GrpcUtil.STOPWATCH_SUPPLIER,
             // 统计和追踪拦截器
             getEffectiveInterceptors(),
-            // 时间提供其
+            // 时间提供器
             TimeProvider.SYSTEM_TIME_PROVIDER));
   }
 

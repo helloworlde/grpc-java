@@ -100,11 +100,14 @@ final class RetryPolicy {
 
     /**
      * Provides the most suitable retry policy for a call.
+     * <p>
+     * 提供最合适的重试策略
      */
     interface Provider {
 
         /**
          * This method is used no more than once for each call. Never returns null.
+         * 每次调用最多使用一次此方法，从不返回null
          */
         RetryPolicy get();
     }
