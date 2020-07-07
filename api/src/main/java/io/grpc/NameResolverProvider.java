@@ -20,6 +20,7 @@ import java.util.List;
 
 /**
  * Provider of name resolvers for name agnostic consumption.
+ * 提供服务发现
  *
  * <p>Implementations can be automatically discovered by gRPC via Java's SPI mechanism. For
  * automatic discovery, the implementation must have a zero-argument constructor and include
@@ -34,52 +35,52 @@ import java.util.List;
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/4159")
 public abstract class NameResolverProvider extends NameResolver.Factory {
 
-  /**
-   * The port number used in case the target or the underlying naming system doesn't provide a
-   * port number.
-   *
-   * @since 1.0.0
-   */
-  @SuppressWarnings("unused") // Avoids outside callers accidentally depending on the super class.
-  @Deprecated
-  public static final Attributes.Key<Integer> PARAMS_DEFAULT_PORT =
-      NameResolver.Factory.PARAMS_DEFAULT_PORT;
+    /**
+     * The port number used in case the target or the underlying naming system doesn't provide a
+     * port number.
+     *
+     * @since 1.0.0
+     */
+    @SuppressWarnings("unused") // Avoids outside callers accidentally depending on the super class.
+    @Deprecated
+    public static final Attributes.Key<Integer> PARAMS_DEFAULT_PORT =
+            NameResolver.Factory.PARAMS_DEFAULT_PORT;
 
-  /**
-   * Returns non-{@code null} ClassLoader-wide providers, in preference order.
-   *
-   * @since 1.0.0
-   * @deprecated Has no replacement
-   */
-  @Deprecated
-  public static List<NameResolverProvider> providers() {
-    return NameResolverRegistry.getDefaultRegistry().providers();
-  }
+    /**
+     * Returns non-{@code null} ClassLoader-wide providers, in preference order.
+     *
+     * @since 1.0.0
+     * @deprecated Has no replacement
+     */
+    @Deprecated
+    public static List<NameResolverProvider> providers() {
+        return NameResolverRegistry.getDefaultRegistry().providers();
+    }
 
-  /**
-   * @since 1.0.0
-   * @deprecated Use NameResolverRegistry.getDefaultRegistry().asFactory()
-   */
-  @Deprecated
-  public static NameResolver.Factory asFactory() {
-    return NameResolverRegistry.getDefaultRegistry().asFactory();
-  }
+    /**
+     * @since 1.0.0
+     * @deprecated Use NameResolverRegistry.getDefaultRegistry().asFactory()
+     */
+    @Deprecated
+    public static NameResolver.Factory asFactory() {
+        return NameResolverRegistry.getDefaultRegistry().asFactory();
+    }
 
-  /**
-   * Whether this provider is available for use, taking the current environment into consideration.
-   * If {@code false}, no other methods are safe to be called.
-   *
-   * @since 1.0.0
-   */
-  protected abstract boolean isAvailable();
+    /**
+     * Whether this provider is available for use, taking the current environment into consideration.
+     * If {@code false}, no other methods are safe to be called.
+     *
+     * @since 1.0.0
+     */
+    protected abstract boolean isAvailable();
 
-  /**
-   * A priority, from 0 to 10 that this provider should be used, taking the current environment into
-   * consideration. 5 should be considered the default, and then tweaked based on environment
-   * detection. A priority of 0 does not imply that the provider wouldn't work; just that it should
-   * be last in line.
-   *
-   * @since 1.0.0
-   */
-  protected abstract int priority();
+    /**
+     * A priority, from 0 to 10 that this provider should be used, taking the current environment into
+     * consideration. 5 should be considered the default, and then tweaked based on environment
+     * detection. A priority of 0 does not imply that the provider wouldn't work; just that it should
+     * be last in line.
+     *
+     * @since 1.0.0
+     */
+    protected abstract int priority();
 }

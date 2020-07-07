@@ -16,11 +16,11 @@
 
 package io.grpc;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.ThreadSafe;
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -31,8 +31,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * A pluggable component that resolves a target {@link URI} and return addresses to the caller.
@@ -662,6 +663,7 @@ public abstract class NameResolver {
 
   /**
    * Parses and validates service configuration.
+   * 解析并校验服务配置
    *
    * @since 1.21.0
    */
@@ -673,6 +675,9 @@ public abstract class NameResolver {
      * {@link Status} representing the failure to parse.  Implementations are expected to not throw
      * exceptions but return a Status representing the failure.  The value inside the
      * {@link ConfigOrError} should implement {@code equals()} and {@code hashCode()}.
+     * <p>
+     * 解析校验从服务发现获取到的方法配置，会返回一个 ConfigOrError 对象，要求实现不能抛出异常，失败时可以返回一个状态，
+     * ConfigOrError 对象的 value 字段应当实现 equals 和 hashcode 方法
      *
      * @param rawServiceConfig The {@link Map} representation of the service config
      * @return a tuple of the fully parsed and validated channel configuration, else the Status.

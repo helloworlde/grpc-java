@@ -16,8 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Verify.verify;
-
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
@@ -26,12 +24,16 @@ import io.grpc.ClientInterceptor;
 import io.grpc.Deadline;
 import io.grpc.MethodDescriptor;
 import io.grpc.internal.ManagedChannelServiceConfig.MethodInfo;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+
 import javax.annotation.CheckForNull;
 import javax.annotation.Nullable;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static com.google.common.base.Verify.verify;
 
 /**
+ * 方法配置拦截器
  * Modifies RPCs in conformance with a Service Config.
  */
 final class ServiceConfigInterceptor implements ClientInterceptor {
@@ -44,12 +46,14 @@ final class ServiceConfigInterceptor implements ClientInterceptor {
   private final boolean retryEnabled;
 
   // Setting this to true and observing this equal to true are run in different threads.
+  // 是否支持服务自动更新
   private volatile boolean initComplete;
 
   ServiceConfigInterceptor(boolean retryEnabled) {
     this.retryEnabled = retryEnabled;
   }
 
+  // 更新服务配置
   void handleUpdate(@Nullable ManagedChannelServiceConfig serviceConfig) {
     managedChannelServiceConfig.set(serviceConfig);
     initComplete = true;
