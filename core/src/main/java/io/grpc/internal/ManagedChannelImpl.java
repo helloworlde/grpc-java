@@ -430,44 +430,49 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
-  private final class ChannelTransportProvider implements ClientTransportProvider {
-    @Override
-    public ClientTransport get(PickSubchannelArgs args) {
-      SubchannelPicker pickerCopy = subchannelPicker;
-      if (shutdown.get()) {
-        // If channel is shut down, delayedTransport is also shut down which will fail the stream
-        // properly.
-        return delayedTransport;
-      }
-      if (pickerCopy == null) {
-        final class ExitIdleModeForTransport implements Runnable {
-          @Override
-          public void run() {
-            exitIdleMode();
-          }
-        }
+    private final class ChannelTransportProvider implements ClientTransportProvider {
+        /**
+         * TODO
+         * @param args object containing call arguments.
+         * @return
+         */
+        @Override
+        public ClientTransport get(PickSubchannelArgs args) {
+            SubchannelPicker pickerCopy = subchannelPicker;
+            // 如果是关闭状态，则停止调用
+            if (shutdown.get()) {
+                // If channel is shut down, delayedTransport is also shut down which will fail the stream
+                // properly.
+                return delayedTransport;
+            }
+            if (pickerCopy == null) {
+                final class ExitIdleModeForTransport implements Runnable {
+                    @Override
+                    public void run() {
+                        exitIdleMode();
+                    }
+                }
 
-        syncContext.execute(new ExitIdleModeForTransport());
-        return delayedTransport;
-      }
-      // There is no need to reschedule the idle timer here.
-      //
-      // pickerCopy != null, which means idle timer has not expired when this method starts.
-      // Even if idle timer expires right after we grab pickerCopy, and it shuts down LoadBalancer
-      // which calls Subchannel.shutdown(), the InternalSubchannel will be actually shutdown after
-      // SUBCHANNEL_SHUTDOWN_DELAY_SECONDS, which gives the caller time to start RPC on it.
-      //
-      // In most cases the idle timer is scheduled to fire after the transport has created the
-      // stream, which would have reported in-use state to the channel that would have cancelled
-      // the idle timer.
-      PickResult pickResult = pickerCopy.pickSubchannel(args);
-      ClientTransport transport = GrpcUtil.getTransportFromPickResult(
-          pickResult, args.getCallOptions().isWaitForReady());
-      if (transport != null) {
-        return transport;
-      }
-      return delayedTransport;
-    }
+                syncContext.execute(new ExitIdleModeForTransport());
+                return delayedTransport;
+            }
+            // There is no need to reschedule the idle timer here.
+            //
+            // pickerCopy != null, which means idle timer has not expired when this method starts.
+            // Even if idle timer expires right after we grab pickerCopy, and it shuts down LoadBalancer
+            // which calls Subchannel.shutdown(), the InternalSubchannel will be actually shutdown after
+            // SUBCHANNEL_SHUTDOWN_DELAY_SECONDS, which gives the caller time to start RPC on it.
+            //
+            // In most cases the idle timer is scheduled to fire after the transport has created the
+            // stream, which would have reported in-use state to the channel that would have cancelled
+            // the idle timer.
+            PickResult pickResult = pickerCopy.pickSubchannel(args);
+            ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult, args.getCallOptions().isWaitForReady());
+            if (transport != null) {
+                return transport;
+            }
+            return delayedTransport;
+        }
 
     @Override
     public <ReqT> ClientStream newRetriableStream(
@@ -502,9 +507,16 @@ final class ManagedChannelImpl extends ManagedChannel implements
           uncommittedRetriableStreamsRegistry.remove(this);
         }
 
+          /**
+           * TODO 发起重试
+           * @param tracerFactory
+           * @param newHeaders
+           * @return
+           */
         @Override
         ClientStream newSubstream(ClientStreamTracer.Factory tracerFactory, Metadata newHeaders) {
           CallOptions newOptions = callOptions.withStreamTracerFactory(tracerFactory);
+          // 重试，重新 pick subchannel
           ClientTransport transport =
               get(new PickSubchannelArgsImpl(method, newHeaders, newOptions));
           Context origContext = context.attach();

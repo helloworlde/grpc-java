@@ -16,9 +16,6 @@
 
 package io.grpc.stub;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.AbstractFuture;
@@ -31,6 +28,8 @@ import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.StatusException;
 import io.grpc.StatusRuntimeException;
+
+import javax.annotation.Nullable;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -42,7 +41,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.locks.LockSupport;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Utility functions for processing different call idioms. We have one-to-one correspondence
@@ -129,19 +130,18 @@ public final class ClientCalls {
   }
 
   /**
+   * TODO 执行调用入口
    * Executes a unary call and blocks on the response.  The {@code call} should not be already
    * started.  After calling this method, {@code call} should no longer be used.
-   *
+   * 执行 UNARY 调用，等待返回，当调用完后，call不应该再调用
    * @return the single response message.
    * @throws StatusRuntimeException on error
    */
-  public static <ReqT, RespT> RespT blockingUnaryCall(
-      Channel channel, MethodDescriptor<ReqT, RespT> method, CallOptions callOptions, ReqT req) {
+  public static <ReqT, RespT> RespT blockingUnaryCall(Channel channel, MethodDescriptor<ReqT, RespT> method, CallOptions callOptions, ReqT req) {
     ThreadlessExecutor executor = new ThreadlessExecutor();
     boolean interrupt = false;
-    ClientCall<ReqT, RespT> call = channel.newCall(method,
-        callOptions.withOption(ClientCalls.STUB_TYPE_OPTION, StubType.BLOCKING)
-            .withExecutor(executor));
+    ClientCall<ReqT, RespT> call = channel.newCall(method, callOptions.withOption(ClientCalls.STUB_TYPE_OPTION, StubType.BLOCKING)
+                                                                      .withExecutor(executor));
     try {
       ListenableFuture<RespT> responseFuture = futureUnaryCall(call, req);
       while (!responseFuture.isDone()) {
@@ -720,6 +720,7 @@ public final class ClientCalls {
     /**
      * Waits until there is a Runnable, then executes it and all queued Runnables after it.
      * Must only be called by one thread at a time.
+     * 等待执行队列中的 Runnable，一次只能有一个线程调用
      */
     public void waitAndDrain() throws InterruptedException {
       throwIfInterrupted();

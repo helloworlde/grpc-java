@@ -16,18 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
-import static io.grpc.Contexts.statusFromCancelled;
-import static io.grpc.Status.DEADLINE_EXCEEDED;
-import static io.grpc.internal.GrpcUtil.CONTENT_ACCEPT_ENCODING_KEY;
-import static io.grpc.internal.GrpcUtil.CONTENT_ENCODING_KEY;
-import static io.grpc.internal.GrpcUtil.MESSAGE_ACCEPT_ENCODING_KEY;
-import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
-import static java.lang.Math.max;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import io.grpc.Attributes;
@@ -49,6 +37,8 @@ import io.grpc.Status;
 import io.perfmark.Link;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
+
+import javax.annotation.Nullable;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.concurrent.CancellationException;
@@ -58,7 +48,18 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
+import static io.grpc.Contexts.statusFromCancelled;
+import static io.grpc.Status.DEADLINE_EXCEEDED;
+import static io.grpc.internal.GrpcUtil.CONTENT_ACCEPT_ENCODING_KEY;
+import static io.grpc.internal.GrpcUtil.CONTENT_ENCODING_KEY;
+import static io.grpc.internal.GrpcUtil.MESSAGE_ACCEPT_ENCODING_KEY;
+import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
+import static java.lang.Math.max;
 
 /**
  * Implementation of {@link ClientCall}.
@@ -155,6 +156,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
   interface ClientTransportProvider {
     /**
      * Returns a transport for a new call.
+     * 返回一个用于新的调用的 transport
      *
      * @param args object containing call arguments.
      */

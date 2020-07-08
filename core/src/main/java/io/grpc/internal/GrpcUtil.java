@@ -16,8 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
@@ -42,6 +40,9 @@ import io.grpc.Status;
 import io.grpc.internal.ClientStreamListener.RpcProgress;
 import io.grpc.internal.SharedResourceHolder.Resource;
 import io.grpc.internal.StreamListener.MessageProducer;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.Immutable;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -62,8 +63,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
+
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * Common utilities for GRPC.
@@ -688,6 +689,7 @@ public final class GrpcUtil {
 
   /**
    * Returns a transport out of a PickResult, or {@code null} if the result is "buffer".
+   * TODO 根据负载均衡 pick 的结果，获取 Transport
    */
   @Nullable
   static ClientTransport getTransportFromPickResult(PickResult result, boolean isWaitForReady) {

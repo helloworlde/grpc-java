@@ -16,9 +16,7 @@
 
 package io.grpc;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
+import javax.annotation.concurrent.ThreadSafe;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -27,7 +25,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * A synchronization context is a queue of tasks that run in sequence.  It offers following
@@ -105,6 +105,7 @@ public final class SynchronizationContext implements Executor {
   }
 
   /**
+   * TODO 将请求添加到队列中
    * Adds a task that will be run when {@link #drain} is called.
    *
    * <p>This is useful for cases where you want to enqueue a task while under a lock of your own,

@@ -30,14 +30,15 @@ import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.SynchronizationContext;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.concurrent.Executor;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
 
 /**
  * A client transport that queues requests before a real transport is available. When {@link
@@ -124,15 +125,19 @@ final class DelayedClientTransport implements ManagedClientTransport {
   }
 
   /**
+   * TODO 发起请求
    * If a {@link SubchannelPicker} is being, or has been provided via {@link #reprocess}, the last
    * picker will be consulted.
+   * 如果正在使用 SubchannelPicker 或者已经通过 reprocess 提供了 SubchannelPicker 则将查询最后一个*选择器。
    *
    * <p>Otherwise, if the delayed transport is not shutdown, then a {@link PendingStream} is
    * returned; if the transport is shutdown, then a {@link FailingClientStream} is returned.
+   * <p>
+   * 除此之外，如果 delayed transport 没有关闭，会返回 PendingStream，如果关闭了，则返回 FailingClientStream
    */
   @Override
   public final ClientStream newStream(
-      MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
+          MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
     try {
       PickSubchannelArgs args = new PickSubchannelArgsImpl(method, headers, callOptions);
       SubchannelPicker picker = null;
@@ -154,10 +159,10 @@ final class DelayedClientTransport implements ManagedClientTransport {
         }
         PickResult pickResult = picker.pickSubchannel(args);
         ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult,
-            callOptions.isWaitForReady());
+                callOptions.isWaitForReady());
         if (transport != null) {
           return transport.newStream(
-              args.getMethodDescriptor(), args.getHeaders(), args.getCallOptions());
+                  args.getMethodDescriptor(), args.getHeaders(), args.getCallOptions());
         }
         // This picker's conclusion is "buffer".  If there hasn't been a newer picker set (possible
         // race with reprocess()), we will buffer it.  Otherwise, will try with the new picker.
@@ -168,8 +173,10 @@ final class DelayedClientTransport implements ManagedClientTransport {
   }
 
   /**
+   * TODO 创建请求流
    * Caller must call {@code syncContext.drain()} outside of lock because this method may
    * schedule tasks on syncContext.
+   *
    */
   @GuardedBy("lock")
   private PendingStream createPendingStream(PickSubchannelArgs args) {

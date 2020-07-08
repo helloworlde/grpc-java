@@ -195,6 +195,11 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
   }
 
+  /**
+   * 开始重试流程
+   * @param previousAttemptCount
+   * @return
+   */
   private Substream createSubstream(int previousAttemptCount) {
     Substream sub = new Substream(previousAttemptCount);
     // one tracer per substream
@@ -207,6 +212,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       }
     };
 
+    // 更新请求头，添加/修改重试次数
     Metadata newHeaders = updateHeaders(headers, previousAttemptCount);
     // NOTICE: This set _must_ be done before stream.start() and it actually is.
     sub.stream = newSubstream(tracerFactory, newHeaders);
@@ -232,6 +238,10 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     return newHeaders;
   }
 
+  /**
+   * TODO
+   * @param substream
+   */
   private void drain(Substream substream) {
     int index = 0;
     int chunk = 0x80;
@@ -788,8 +798,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
         if (rpcProgress == RpcProgress.REFUSED
             && noMoreTransparentRetry.compareAndSet(false, true)) {
           // transparent retry
-          final Substream newSubstream = createSubstream(
-              substream.previousAttemptCount);
+          final Substream newSubstream = createSubstream(substream.previousAttemptCount);
           if (isHedging) {
             boolean commit = false;
             synchronized (lock) {
@@ -839,6 +848,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           }
 
           RetryPlan retryPlan = makeRetryDecision(status, trailers);
+          // 判断是否需要重试
           if (retryPlan.shouldRetry) {
             // The check state.winningSubstream == null, checking if is not already committed, is
             // racy, but is still safe b/c the retry will also handle committed/cancellation
@@ -853,9 +863,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
                     callExecutor.execute(new Runnable() {
                       @Override
                       public void run() {
-                        // retry
-                        Substream newSubstream
-                            = createSubstream(substream.previousAttemptCount + 1);
+                        // retry 开始重试，将重试次数加一
+                        Substream newSubstream = createSubstream(substream.previousAttemptCount + 1);
                         drain(newSubstream);
                       }
                     });
