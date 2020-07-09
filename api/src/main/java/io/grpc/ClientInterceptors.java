@@ -18,6 +18,7 @@ package io.grpc;
 
 import com.google.common.base.Preconditions;
 import io.grpc.MethodDescriptor.Marshaller;
+
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -141,6 +142,9 @@ public class ClientInterceptors {
     };
   }
 
+  /**
+   * 拦截器 Channel，下一步将调用拦截器
+   */
   private static class InterceptorChannel extends Channel {
     private final Channel channel;
     private final ClientInterceptor interceptor;
@@ -150,9 +154,12 @@ public class ClientInterceptors {
       this.interceptor = Preconditions.checkNotNull(interceptor, "interceptor");
     }
 
+    /**
+     * BlockingStub 执行请求顺序: 3
+     */
     @Override
-    public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(
-        MethodDescriptor<ReqT, RespT> method, CallOptions callOptions) {
+    public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method,
+                                                         CallOptions callOptions) {
       return interceptor.interceptCall(method, callOptions, channel);
     }
 

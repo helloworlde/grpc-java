@@ -16,66 +16,65 @@
 
 package io.grpc.internal;
 
-import static io.grpc.internal.TimeProvider.SYSTEM_TIME_PROVIDER;
-
 import io.grpc.InternalChannelz.ChannelStats;
 import io.grpc.InternalChannelz.ServerStats;
 
+import static io.grpc.internal.TimeProvider.SYSTEM_TIME_PROVIDER;
+
 /**
+ * 用于统计 Channel 调用新的的集合
  * A collection of call stats for channelz.
  */
 final class CallTracer {
-  private final TimeProvider timeProvider;
-  private final LongCounter callsStarted = LongCounterFactory.create();
-  private final LongCounter callsSucceeded = LongCounterFactory.create();
-  private final LongCounter callsFailed = LongCounterFactory.create();
-  private volatile long lastCallStartedNanos;
+    private final TimeProvider timeProvider;
+    private final LongCounter callsStarted = LongCounterFactory.create();
+    private final LongCounter callsSucceeded = LongCounterFactory.create();
+    private final LongCounter callsFailed = LongCounterFactory.create();
+    private volatile long lastCallStartedNanos;
 
-  CallTracer(TimeProvider timeProvider) {
-    this.timeProvider = timeProvider;
-  }
-
-  public void reportCallStarted() {
-    callsStarted.add(1);
-    lastCallStartedNanos = timeProvider.currentTimeNanos();
-  }
-
-  public void reportCallEnded(boolean success) {
-    if (success) {
-      callsSucceeded.add(1);
-    } else {
-      callsFailed.add(1);
+    CallTracer(TimeProvider timeProvider) {
+        this.timeProvider = timeProvider;
     }
-  }
 
-  void updateBuilder(ChannelStats.Builder builder) {
-    builder
-        .setCallsStarted(callsStarted.value())
-        .setCallsSucceeded(callsSucceeded.value())
-        .setCallsFailed(callsFailed.value())
-        .setLastCallStartedNanos(lastCallStartedNanos);
-  }
-
-  void updateBuilder(ServerStats.Builder builder) {
-    builder
-        .setCallsStarted(callsStarted.value())
-        .setCallsSucceeded(callsSucceeded.value())
-        .setCallsFailed(callsFailed.value())
-        .setLastCallStartedNanos(lastCallStartedNanos);
-  }
-
-  public interface Factory {
-    CallTracer create();
-  }
-
-  static final Factory DEFAULT_FACTORY = new Factory() {
-    @Override
-    public CallTracer create() {
-      return new CallTracer(SYSTEM_TIME_PROVIDER);
+    public void reportCallStarted() {
+        callsStarted.add(1);
+        lastCallStartedNanos = timeProvider.currentTimeNanos();
     }
-  };
 
-  public static Factory getDefaultFactory() {
-    return DEFAULT_FACTORY;
-  }
+    public void reportCallEnded(boolean success) {
+        if (success) {
+            callsSucceeded.add(1);
+        } else {
+            callsFailed.add(1);
+        }
+    }
+
+    void updateBuilder(ChannelStats.Builder builder) {
+        builder.setCallsStarted(callsStarted.value())
+               .setCallsSucceeded(callsSucceeded.value())
+               .setCallsFailed(callsFailed.value())
+               .setLastCallStartedNanos(lastCallStartedNanos);
+    }
+
+    void updateBuilder(ServerStats.Builder builder) {
+        builder.setCallsStarted(callsStarted.value())
+               .setCallsSucceeded(callsSucceeded.value())
+               .setCallsFailed(callsFailed.value())
+               .setLastCallStartedNanos(lastCallStartedNanos);
+    }
+
+    public interface Factory {
+        CallTracer create();
+    }
+
+    static final Factory DEFAULT_FACTORY = new Factory() {
+        @Override
+        public CallTracer create() {
+            return new CallTracer(SYSTEM_TIME_PROVIDER);
+        }
+    };
+
+    public static Factory getDefaultFactory() {
+        return DEFAULT_FACTORY;
+    }
 }

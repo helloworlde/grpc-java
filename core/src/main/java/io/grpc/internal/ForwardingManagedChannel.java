@@ -22,6 +22,7 @@ import io.grpc.ClientCall;
 import io.grpc.ConnectivityState;
 import io.grpc.ManagedChannel;
 import io.grpc.MethodDescriptor;
+
 import java.util.concurrent.TimeUnit;
 
 abstract class ForwardingManagedChannel extends ManagedChannel {
@@ -57,9 +58,13 @@ abstract class ForwardingManagedChannel extends ManagedChannel {
     return delegate.awaitTermination(timeout, unit);
   }
 
+  /**
+   * 创建 ClientCall 用于发起调用
+   * BlockingStub 执行请求顺序: 1
+   */
   @Override
-  public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(
-      MethodDescriptor<RequestT, ResponseT> methodDescriptor, CallOptions callOptions) {
+  public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(MethodDescriptor<RequestT, ResponseT> methodDescriptor,
+                                                                       CallOptions callOptions) {
     return delegate.newCall(methodDescriptor, callOptions);
   }
 

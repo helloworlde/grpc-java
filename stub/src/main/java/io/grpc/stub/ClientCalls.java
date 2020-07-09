@@ -115,8 +115,10 @@ public final class ClientCalls {
   /**
    * Executes a unary call and blocks on the response.  The {@code call} should not be already
    * started.  After calling this method, {@code call} should no longer be used.
+   * <p>
+   * 执行 unary 调用并阻塞等待响应，call 在此之前不应当开始，调用这个方法之后，call 不应当再使用
    *
-   * @return the single response message.
+   * @return the single response message 单个的响应
    * @throws StatusRuntimeException on error
    */
   public static <ReqT, RespT> RespT blockingUnaryCall(ClientCall<ReqT, RespT> call, ReqT req) {
@@ -150,6 +152,7 @@ public final class ClientCalls {
     ClientCall<ReqT, RespT> call = channel.newCall(method, callOptions.withOption(ClientCalls.STUB_TYPE_OPTION, StubType.BLOCKING)
                                                                       .withExecutor(executor));
     try {
+
       ListenableFuture<RespT> responseFuture = futureUnaryCall(call, req);
       while (!responseFuture.isDone()) {
         try {
@@ -219,8 +222,7 @@ public final class ClientCalls {
    *
    * @return a future for the single response message.
    */
-  public static <ReqT, RespT> ListenableFuture<RespT> futureUnaryCall(
-      ClientCall<ReqT, RespT> call, ReqT req) {
+  public static <ReqT, RespT> ListenableFuture<RespT> futureUnaryCall(ClientCall<ReqT, RespT> call, ReqT req) {
     GrpcFuture<RespT> responseFuture = new GrpcFuture<>(call);
     asyncUnaryRequestCall(call, req, new UnaryStreamToFuture<>(responseFuture));
     return responseFuture;

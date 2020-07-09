@@ -214,6 +214,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   private final CountDownLatch terminatedLatch = new CountDownLatch(1);
 
   private final CallTracer.Factory callTracerFactory;
+  // 统计 Channel 调用信息
   private final CallTracer channelCallTracer;
   private final ChannelTracer channelTracer;
   private final ChannelLogger channelLogger;
@@ -864,12 +865,14 @@ final class ManagedChannelImpl extends ManagedChannel implements
     return terminated;
   }
 
-  /*
+  /**
    * Creates a new outgoing call on the channel.
+   * 在当前 channel 上创建一个新的调用
+   * BlockingStub 执行请求顺序: 2
    */
   @Override
   public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method,
-      CallOptions callOptions) {
+                                                       CallOptions callOptions) {
     return interceptorChannel.newCall(method, callOptions);
   }
 
@@ -878,37 +881,57 @@ final class ManagedChannelImpl extends ManagedChannel implements
     return interceptorChannel.authority();
   }
 
+  /**
+   * 从调用选项中获取执行器，在第一步调用时创建
+   *
+   * @param callOptions
+   * @return
+   */
   private Executor getCallExecutor(CallOptions callOptions) {
+    // 从 CallOptions 获取执行器
     Executor executor = callOptions.getExecutor();
+    // 如果不存在，则使用创建 ManagedChannel 时 builder 中的线程池，即 GrpcUtil.SHARED_CHANNEL_EXECUTOR
     if (executor == null) {
       executor = this.executor;
     }
     return executor;
   }
 
+  /**
+   * 真正创建 ClientCallImpl 的 Channel
+   */
   private class RealChannel extends Channel {
     // Set when the NameResolver is initially created. When we create a new NameResolver for the
     // same target, the new instance must have the same value.
+    // 创建 NameResolver 时设置，当为同一个模板创建新的 NameResolver 时，新的实例必须有相同的值；即 IP:PORT 或服务名
     private final String authority;
 
     private RealChannel(String authority) {
       this.authority =  checkNotNull(authority, "authority");
     }
 
+    /**
+     * BlockingStub 执行请求顺序: 5
+     */
     @Override
     public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method,
-        CallOptions callOptions) {
-      return new ClientCallImpl<>(
-          method,
-          getCallExecutor(callOptions),
-          callOptions,
-          transportProvider,
-          terminated ? null : transportFactory.getScheduledExecutorService(),
-          channelCallTracer,
-          retryEnabled)
-          .setFullStreamDecompression(fullStreamDecompression)
-          .setDecompressorRegistry(decompressorRegistry)
-          .setCompressorRegistry(compressorRegistry);
+                                                         CallOptions callOptions) {
+      return new ClientCallImpl<>(method,
+              // 执行的线程池
+              getCallExecutor(callOptions),
+              // 调用的参数
+              callOptions,
+              // Transport 提供器
+              transportProvider,
+              // 如果没有关闭，则获取用于调度的执行器
+              terminated ? null : transportFactory.getScheduledExecutorService(),
+              // 统计 Channel 调用信息
+              channelCallTracer,
+              // 是否重试
+              retryEnabled)
+              .setFullStreamDecompression(fullStreamDecompression)
+              .setDecompressorRegistry(decompressorRegistry)
+              .setCompressorRegistry(compressorRegistry);
     }
 
     @Override

@@ -19,6 +19,8 @@ package io.grpc;
 import javax.annotation.Nullable;
 
 /**
+ * 用于发起请求，执行回调
+ * <p>
  * An instance of a call to a remote method. A call will send zero or more
  * request messages to the server and receive zero or more response messages back.
  * 用于调用远程方法的实例，一次调用会向 server 端发送一个或多个请求消息，并接收相应的响应

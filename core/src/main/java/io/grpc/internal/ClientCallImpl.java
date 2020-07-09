@@ -62,6 +62,7 @@ import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
 import static java.lang.Math.max;
 
 /**
+ * ClientCall 的实现，用于执行调用及监听回调
  * Implementation of {@link ClientCall}.
  */
 final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
@@ -100,18 +101,33 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
   private volatile ScheduledFuture<?> deadlineCancellationSendToServerFuture;
   private boolean observerClosed = false;
 
+  /**
+   * 构建 ClientCall 实例
+   *
+   * @param method                       调用的方法
+   * @param executor                     执行的线程池
+   * @param callOptions                  调用的选项，包括调用类型，线程池，重试策略，对冲策略
+   * @param clientTransportProvider      Transport 提供器
+   * @param deadlineCancellationExecutor 用于调度的执行器
+   * @param channelCallsTracer           统计 Channel 调用信息
+   * @param retryEnabled                 是否重试
+   */
   ClientCallImpl(
-      MethodDescriptor<ReqT, RespT> method, Executor executor, CallOptions callOptions,
-      ClientTransportProvider clientTransportProvider,
-      ScheduledExecutorService deadlineCancellationExecutor,
-      CallTracer channelCallsTracer,
-      boolean retryEnabled) {
+          MethodDescriptor<ReqT, RespT> method,
+          Executor executor,
+          CallOptions callOptions,
+          ClientTransportProvider clientTransportProvider,
+          ScheduledExecutorService deadlineCancellationExecutor,
+          CallTracer channelCallsTracer,
+          boolean retryEnabled) {
     this.method = method;
     // TODO(carl-mastrangelo): consider moving this construction to ManagedChannelImpl.
+    // 用于性能追踪的工具
     this.tag = PerfMark.createTag(method.getFullMethodName(), System.identityHashCode(this));
     // If we know that the executor is a direct executor, we don't need to wrap it with a
     // SerializingExecutor. This is purely for performance reasons.
     // See https://github.com/grpc/grpc-java/issues/368
+    // 如果是直接执行器，则不需要包装为 SerializingExecutor，出于性能原因
     if (executor == directExecutor()) {
       this.callExecutor = new SerializeReentrantCallsDirectExecutor();
       callExecutorIsDirect = true;
@@ -123,7 +139,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     // Propagate the context from the thread which initiated the call to all callbacks.
     this.context = Context.current();
     this.unaryRequest = method.getType() == MethodType.UNARY
-        || method.getType() == MethodType.SERVER_STREAMING;
+            || method.getType() == MethodType.SERVER_STREAMING;
     this.callOptions = callOptions;
     this.clientTransportProvider = clientTransportProvider;
     this.deadlineCancellationExecutor = deadlineCancellationExecutor;
@@ -150,6 +166,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
   }
 
   /**
+   * 用于提供 ClientTransport
    * Provider of {@link ClientTransport}s.
    */
   // TODO(zdapeng): replace the two APIs with a single API: newStream()
@@ -163,10 +180,10 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     ClientTransport get(PickSubchannelArgs args);
 
     <ReqT> ClientStream newRetriableStream(
-        MethodDescriptor<ReqT, ?> method,
-        CallOptions callOptions,
-        Metadata headers,
-        Context context);
+            MethodDescriptor<ReqT, ?> method,
+            CallOptions callOptions,
+            Metadata headers,
+            Context context);
 
   }
 
