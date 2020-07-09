@@ -115,19 +115,24 @@ import javax.annotation.Nullable;
 public abstract class ClientCall<ReqT, RespT> {
     /**
      * Callbacks for receiving metadata, response messages and completion status from the server.
+     * 收到服务端返回的 metadata，响应消息，完成状态的回调
      *
      * <p>Implementations are free to block for extended periods of time. Implementations are not
      * required to be thread-safe.
+     * 实现可以阻塞很长时间，不需要确保线程安全
      */
     public abstract static class Listener<T> {
 
         /**
          * The response headers have been received. Headers always precede messages.
+         * 当收到返回的响应头时调用，Headers 总是先于消息返回
          *
          * <p>Since {@link Metadata} is not thread-safe, the caller must not access (read or write)
          * {@code headers} after this point.
+         * 因为 Metadata 不是线程安全的，调用者在此之后不能再访问 headers
          *
          * @param headers containing metadata sent by the server at the start of the response.
+         *                包含服务端开始返回响应时的元数据
          */
         public void onHeaders(Metadata headers) {
         }
@@ -135,6 +140,7 @@ public abstract class ClientCall<ReqT, RespT> {
         /**
          * A response message has been received. May be called zero or more times depending on whether
          * the call response is empty, a single message or a stream of messages.
+         * 当返回响应时调用，会根据调用的类型调用0次或多次
          *
          * @param message returned by the server
          */
@@ -145,16 +151,20 @@ public abstract class ClientCall<ReqT, RespT> {
          * The ClientCall has been closed. Any additional calls to the {@code ClientCall} will not be
          * processed by the server. No further receiving will occur and no further notifications will be
          * made.
+         * 当 ClientCall 关闭时调用，后续的 ClientCall 的调用不会被服务端处理，不会有任何接收和发送
          *
          * <p>Since {@link Metadata} is not thread-safe, the caller must not access (read or write)
          * {@code trailers} after this point.
+         * 因为 Metadata 不是线程安全的，调用者在此之后不能再访问 trailers
          *
          * <p>If {@code status} returns false for {@link Status#isOk()}, then the call failed.
          * An additional block of trailer metadata may be received at the end of the call from the
          * server. An empty {@link Metadata} object is passed if no trailers are received.
+         * 如果返回的状态是 false，调用失败，调用结束时可能会从服务器接收 trailer 元数据，当没有时会返回
+         * 一个空的元数据
          *
-         * @param status   the result of the remote call.
-         * @param trailers metadata provided at call completion.
+         * @param status   the result of the remote call. 调用的结果
+         * @param trailers metadata provided at call completion. 调用完成时提供的元数据
          */
         public void onClose(Status status, Metadata trailers) {
         }
@@ -164,16 +174,22 @@ public abstract class ClientCall<ReqT, RespT> {
          * {@link #sendMessage}) without requiring excessive buffering internally. This event is
          * just a suggestion and the application is free to ignore it, however doing so may
          * result in excessive buffering within the ClientCall.
+         * 表示 ClientCall 可以发送附加的信息而不需要额外的缓冲，这个事件只是一个建议，应用可以忽略，但是
+         * 这样做可能导致 ClientCall 的缓冲区过多
          *
          * <p>Because there is a processing delay to deliver this notification, it is possible for
          * concurrent writes to cause {@code isReady() == false} within this callback. Handle "spurious"
          * notifications by checking {@code isReady()}'s current value instead of assuming it is now
          * {@code true}. If {@code isReady() == false} the normal expectations apply, so there would be
          * <em>another</em> {@code onReady()} callback.
+         * 由于传递此通知存在处理延迟，并发写入可能导致此回调的 isReady 返回false，通过检查 isReady 的当前值来处理"虚假"
+         * 通知，而不是假设它现在为 true，因此会有另外一个 onReady 回调
          *
          * <p>If the type of a call is either {@link MethodDescriptor.MethodType#UNARY} or
          * {@link MethodDescriptor.MethodType#SERVER_STREAMING}, this callback may not be fired. Calls
          * that send exactly one message should not await this callback.
+         * 如果调用类型是 MethodDescriptor.MethodType#UNARY 或者 MethodDescriptor.MethodType#SERVER_STREAMING，
+         * 这个回调可能不会被使用，仅发送一条消息的调用不应当等待此回调
          */
         public void onReady() {
         }
@@ -236,15 +252,22 @@ public abstract class ClientCall<ReqT, RespT> {
      * will be received. The server is informed of cancellations, but may not stop processing the
      * call. Cancellation is permitted even if previously {@link #halfClose}d. Cancelling an already
      * {@code cancel()}ed {@code ClientCall} has no effect.
+     * 阻止对此 ClientCall 的进一步操作，调用后不会再发送或者接收消息，通知服务器取消，但是不会停止进行中的调用，
+     * 即使之前的已经是 halfClosed 状态，依然允许取消，对于已经取消的 ClientCall 再次调用无效
      *
      * <p>No other methods on this class can be called after this method has been called.
+     * 当 cancel调用后，这个类其他的方法不会再被调用
      *
      * <p>It is recommended that at least one of the arguments to be non-{@code null}, to provide
      * useful debug information. Both argument being null may log warnings and result in suboptimal
      * performance. Also note that the provided information will not be sent to the server.
+     * 建议至少有一个参数不为空，用于提供有效的调试信息，两个参数均为null可能会记录警告并导致性能不佳，
+     * 另外，所提供的信息将不会发送到服务器
      *
      * @param message if not {@code null}, will appear as the description of the CANCELLED status
+     *                如果不为空，将描述显示为 CANCELLED 状态
      * @param cause   if not {@code null}, will appear as the cause of the CANCELLED status
+     *                如果不为空，将原因显示为 CANCELLED 状态
      */
     public abstract void cancel(@Nullable String message, @Nullable Throwable cause);
 
@@ -272,13 +295,18 @@ public abstract class ClientCall<ReqT, RespT> {
      * without requiring excessive buffering internally. This event is
      * just a suggestion and the application is free to ignore it, however doing so may
      * result in excessive buffering within the call.
+     * 如果是true，表示能够发送消息，而无需更多的缓冲，这个事件只是一个建议，应用可以忽略，但是这样做
+     * 可能会导致调用的缓冲过多
      *
      * <p>If {@code false}, {@link Listener#onReady()} will be called after {@code isReady()}
      * transitions to {@code true}.
+     * 如果是 false，在 isReady() 结果变为true之后， 会调用 Listener#onReady()
      *
      * <p>If the type of the call is either {@link MethodDescriptor.MethodType#UNARY} or
      * {@link MethodDescriptor.MethodType#SERVER_STREAMING}, this method may persistently return
      * false. Calls that send exactly one message should not check this method.
+     * 如果调用的类型是 MethodDescriptor.MethodType#UNARY 或者 MethodDescriptor.MethodType#SERVER_STREAMING，
+     * 这个方法会一直返回false，仅发送一条消息的调用不应当检查这个方法
      *
      * <p>This abstract class's implementation always returns {@code true}. Implementations generally
      * override the method.
@@ -291,6 +319,9 @@ public abstract class ClientCall<ReqT, RespT> {
      * Enables per-message compression, if an encoding type has been negotiated.  If no message
      * encoding has been negotiated, this is a no-op. By default per-message compression is enabled,
      * but may not have any effect if compression is not enabled on the call.
+     * <p>
+     * 如果指定了编码方式，允许 pre-message 压缩，如果没有指定则不会有影响，默认情况下 pre-message 的压缩是开启的，
+     * 但是调用时如果压缩没有开启，则不会生效
      */
     @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1703")
     public void setMessageCompression(boolean enabled) {
@@ -301,6 +332,9 @@ public abstract class ClientCall<ReqT, RespT> {
      * Returns additional properties of the call. May only be called after {@link Listener#onHeaders}
      * or {@link Listener#onClose}. If called prematurely, the implementation may throw {@code
      * IllegalStateException} or return arbitrary {@code Attributes}.
+     * <p>
+     * 返回调用的附加信息，只有在 Listener#onHeaders 或者 Listener#onClose 执行后才可以调用，如果过早的
+     * 调用，会抛出 IllegalStateException 或返回任意的 Attributes
      *
      * @return non-{@code null} attributes
      * @throws IllegalStateException (optional) if called before permitted
