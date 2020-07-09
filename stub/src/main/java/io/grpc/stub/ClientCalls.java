@@ -133,13 +133,20 @@ public final class ClientCalls {
    * TODO 执行调用入口
    * Executes a unary call and blocks on the response.  The {@code call} should not be already
    * started.  After calling this method, {@code call} should no longer be used.
+   * <p>
    * 执行 UNARY 调用，等待返回，当调用完后，call不应该再调用
+   *
    * @return the single response message.
    * @throws StatusRuntimeException on error
    */
-  public static <ReqT, RespT> RespT blockingUnaryCall(Channel channel, MethodDescriptor<ReqT, RespT> method, CallOptions callOptions, ReqT req) {
+  public static <ReqT, RespT> RespT blockingUnaryCall(Channel channel,
+                                                      MethodDescriptor<ReqT, RespT> method,
+                                                      CallOptions callOptions,
+                                                      ReqT req) {
+    // 构建任务队列和单线程的线程池
     ThreadlessExecutor executor = new ThreadlessExecutor();
     boolean interrupt = false;
+    // 创建新的调用的 ClientCall，指定了调用类型和执行器
     ClientCall<ReqT, RespT> call = channel.newCall(method, callOptions.withOption(ClientCalls.STUB_TYPE_OPTION, StubType.BLOCKING)
                                                                       .withExecutor(executor));
     try {
@@ -707,27 +714,36 @@ public final class ClientCalls {
     }
   }
 
+  /**
+   * 用于从队列中拉取任务并执行，只有一个线程
+   */
   @SuppressWarnings("serial")
-  private static final class ThreadlessExecutor extends ConcurrentLinkedQueue<Runnable>
-      implements Executor {
+  private static final class ThreadlessExecutor extends ConcurrentLinkedQueue<Runnable> implements Executor {
+
     private static final Logger log = Logger.getLogger(ThreadlessExecutor.class.getName());
 
     private volatile Thread waiter;
 
     // Non private to avoid synthetic class
-    ThreadlessExecutor() {}
+    ThreadlessExecutor() {
+    }
 
     /**
      * Waits until there is a Runnable, then executes it and all queued Runnables after it.
      * Must only be called by one thread at a time.
+     * <p>
      * 等待执行队列中的 Runnable，一次只能有一个线程调用
      */
     public void waitAndDrain() throws InterruptedException {
+      // 如果线程已经被打断了，则抛出异常
       throwIfInterrupted();
+      // 从队列中获取任务
       Runnable runnable = poll();
+      // 如果没有拉取到任务，那么让当前线程等待
       if (runnable == null) {
         waiter = Thread.currentThread();
         try {
+          // 遍历拉取
           while ((runnable = poll()) == null) {
             LockSupport.park(this);
             throwIfInterrupted();
@@ -736,6 +752,7 @@ public final class ClientCalls {
           waiter = null;
         }
       }
+      // 当有任务时不断拉取执行
       do {
         try {
           runnable.run();
@@ -745,12 +762,22 @@ public final class ClientCalls {
       } while ((runnable = poll()) != null);
     }
 
+    /**
+     * 当线程被打断时抛出异常
+     *
+     * @throws InterruptedException
+     */
     private static void throwIfInterrupted() throws InterruptedException {
       if (Thread.interrupted()) {
         throw new InterruptedException();
       }
     }
 
+    /**
+     * 执行任务，将任务添加到队列中
+     *
+     * @param runnable
+     */
     @Override
     public void execute(Runnable runnable) {
       add(runnable);
