@@ -48,7 +48,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
-/** A logical {@link ClientStream} that is retriable. */
+/**
+ * A logical {@link ClientStream} that is retriable.
+ * 支持重试的逻辑 ClientStream
+ */
 abstract class RetriableStream<ReqT> implements ClientStream {
   @VisibleForTesting
   static final Metadata.Key<String> GRPC_PREVIOUS_RPC_ATTEMPTS =

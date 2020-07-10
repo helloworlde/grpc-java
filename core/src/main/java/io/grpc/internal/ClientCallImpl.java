@@ -81,18 +81,24 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
   private final MethodDescriptor<ReqT, RespT> method;
   private final Tag tag;
   private final Executor callExecutor;
+  // 是否是直接执行器
   private final boolean callExecutorIsDirect;
   private final CallTracer channelCallsTracer;
   private final Context context;
+  // 是否是 unary 的请求
   private final boolean unaryRequest;
+  // 调用的选项
   private final CallOptions callOptions;
+  // 是否开启了重试
   private final boolean retryEnabled;
   private ClientStream stream;
   private volatile boolean cancelListenersShouldBeRemoved;
   private boolean cancelCalled;
   private boolean halfCloseCalled;
+  // Transport 提供器
   private final ClientTransportProvider clientTransportProvider;
   private ContextCancellationListener cancellationListener;
+  // 用于调度的执行器
   private final ScheduledExecutorService deadlineCancellationExecutor;
   private boolean fullStreamDecompression;
   private DecompressorRegistry decompressorRegistry = DecompressorRegistry.getDefaultInstance();
@@ -137,11 +143,15 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
     this.channelCallsTracer = channelCallsTracer;
     // Propagate the context from the thread which initiated the call to all callbacks.
+    // 将当前上下文传播给所有的回调
     this.context = Context.current();
-    this.unaryRequest = method.getType() == MethodType.UNARY
-            || method.getType() == MethodType.SERVER_STREAMING;
+    // 是否是 unary 的请求
+    this.unaryRequest = method.getType() == MethodType.UNARY || method.getType() == MethodType.SERVER_STREAMING;
+    // 调用的选项
     this.callOptions = callOptions;
+    // Transport 提供器
     this.clientTransportProvider = clientTransportProvider;
+    // 用于调度的执行器
     this.deadlineCancellationExecutor = deadlineCancellationExecutor;
     this.retryEnabled = retryEnabled;
     PerfMark.event("ClientCall.<init>", tag);
