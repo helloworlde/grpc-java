@@ -16,66 +16,72 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.Objects;
 import io.grpc.CallOptions;
 import io.grpc.LoadBalancer.PickSubchannelArgs;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 
-/** Implementation of {@link PickSubchannelArgs}. */
+import static com.google.common.base.Preconditions.checkNotNull;
+
+/**
+ * Implementation of {@link PickSubchannelArgs}.
+ * PickSubchannelArgs 实现
+ * <p>
+ * 用于 SubchannelPicker#pickSubchannel(LoadBalancer.PickSubchannelArgs) 选择 channel 时提供参数
+ */
 public final class PickSubchannelArgsImpl extends PickSubchannelArgs {
-  private final CallOptions callOptions;
-  private final Metadata headers;
-  private final MethodDescriptor<?, ?> method;
+    private final CallOptions callOptions;
+    private final Metadata headers;
+    private final MethodDescriptor<?, ?> method;
 
-  /**
-   * Creates call args object for given method with its call options, metadata.
-   */
-  public PickSubchannelArgsImpl(
-      MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
-    this.method = checkNotNull(method, "method");
-    this.headers = checkNotNull(headers, "headers");
-    this.callOptions = checkNotNull(callOptions, "callOptions");
-  }
-
-  @Override
-  public Metadata getHeaders() {
-    return headers;
-  }
-
-  @Override
-  public CallOptions getCallOptions() {
-    return callOptions;
-  }
-
-  @Override
-  public MethodDescriptor<?, ?> getMethodDescriptor() {
-    return method;
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
+    /**
+     * Creates call args object for given method with its call options, metadata.
+     */
+    public PickSubchannelArgsImpl(MethodDescriptor<?, ?> method,
+                                  Metadata headers,
+                                  CallOptions callOptions) {
+        this.method = checkNotNull(method, "method");
+        this.headers = checkNotNull(headers, "headers");
+        this.callOptions = checkNotNull(callOptions, "callOptions");
     }
-    if (o == null || getClass() != o.getClass()) {
-      return false;
+
+    @Override
+    public Metadata getHeaders() {
+        return headers;
     }
-    PickSubchannelArgsImpl that = (PickSubchannelArgsImpl) o;
-    return Objects.equal(callOptions, that.callOptions)
-        && Objects.equal(headers, that.headers)
-        && Objects.equal(method, that.method);
-  }
 
-  @Override
-  public int hashCode() {
-    return Objects.hashCode(callOptions, headers, method);
-  }
+    @Override
+    public CallOptions getCallOptions() {
+        return callOptions;
+    }
 
-  @Override
-  public final String toString() {
-    return "[method=" + method + " headers=" + headers + " callOptions=" + callOptions + "]";
-  }
+    @Override
+    public MethodDescriptor<?, ?> getMethodDescriptor() {
+        return method;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        PickSubchannelArgsImpl that = (PickSubchannelArgsImpl) o;
+        return Objects.equal(callOptions, that.callOptions)
+                && Objects.equal(headers, that.headers)
+                && Objects.equal(method, that.method);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(callOptions, headers, method);
+    }
+
+    @Override
+    public final String toString() {
+        return "[method=" + method + " headers=" + headers + " callOptions=" + callOptions + "]";
+    }
 }

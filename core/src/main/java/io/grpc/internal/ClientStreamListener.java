@@ -54,12 +54,14 @@ public interface ClientStreamListener extends StreamListener {
    * to have been sent from the remote server. Any other status code may have been caused by
    * abnormal stream termination. This is guaranteed to always be the final call on a listener. No
    * further callbacks will be issued.
+   * 当流完全关闭时调用，OK 是唯一保证已从远程服务器发送的状态代码，流终止异常可能导致其他的状态码，这是监听器
+   * 最后的调用，不会有更多的回调
    *
    * <p>This method should return quickly, as the same thread may be used to process other streams.
    *
-   * @param status details about the remote closure
+   * @param status      details about the remote closure
    * @param rpcProgress RPC progress when client stream listener is closed
-   * @param trailers trailing metadata
+   * @param trailers    trailing metadata
    */
   void closed(Status status, RpcProgress rpcProgress, Metadata trailers);
 

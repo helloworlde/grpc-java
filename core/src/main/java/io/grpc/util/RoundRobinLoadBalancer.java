@@ -16,13 +16,6 @@
 
 package io.grpc.util;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static io.grpc.ConnectivityState.CONNECTING;
-import static io.grpc.ConnectivityState.IDLE;
-import static io.grpc.ConnectivityState.READY;
-import static io.grpc.ConnectivityState.SHUTDOWN;
-import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
@@ -34,6 +27,8 @@ import io.grpc.EquivalentAddressGroup;
 import io.grpc.LoadBalancer;
 import io.grpc.NameResolver;
 import io.grpc.Status;
+
+import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -44,7 +39,13 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
-import javax.annotation.Nonnull;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static io.grpc.ConnectivityState.CONNECTING;
+import static io.grpc.ConnectivityState.IDLE;
+import static io.grpc.ConnectivityState.READY;
+import static io.grpc.ConnectivityState.SHUTDOWN;
+import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
 
 /**
  * A {@link LoadBalancer} that provides round-robin load-balancing over the {@link
@@ -281,6 +282,12 @@ final class RoundRobinLoadBalancer extends LoadBalancer {
       this.index = startIndex - 1;
     }
 
+    /**
+     * 选取要调用的 Subchannel
+     * 直接选取下一个
+     * @param args the pick arguments
+     * @return
+     */
     @Override
     public PickResult pickSubchannel(PickSubchannelArgs args) {
       return PickResult.withSubchannel(nextSubchannel());
@@ -291,6 +298,11 @@ final class RoundRobinLoadBalancer extends LoadBalancer {
       return MoreObjects.toStringHelper(ReadyPicker.class).add("list", list).toString();
     }
 
+    /**
+     * 轮询算法，选取下一个 Subchannel
+     *
+     * @return
+     */
     private Subchannel nextSubchannel() {
       int size = list.size();
       int i = indexUpdater.incrementAndGet(this);

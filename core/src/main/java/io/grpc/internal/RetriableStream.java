@@ -189,6 +189,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
   /**
    * Calls commit() and if successful runs the post commit task.
+   * 当成功后调用 commit 方法
    */
   private void commitAndRun(Substream winningSubstream) {
     Runnable postCommitTask = commit(winningSubstream);
@@ -199,18 +200,21 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   }
 
   /**
-   * 开始重试流程
+   * 开始重试流程，创建 Substream
    * @param previousAttemptCount
    * @return
    */
   private Substream createSubstream(int previousAttemptCount) {
+    // 重试流
     Substream sub = new Substream(previousAttemptCount);
     // one tracer per substream
+    // 监控 Substream 用的 buffer
     final ClientStreamTracer bufferSizeTracer = new BufferSizeTracer(sub);
+
+    // 监控工厂
     ClientStreamTracer.Factory tracerFactory = new ClientStreamTracer.Factory() {
       @Override
-      public ClientStreamTracer newClientStreamTracer(
-          ClientStreamTracer.StreamInfo info, Metadata headers) {
+      public ClientStreamTracer newClientStreamTracer(ClientStreamTracer.StreamInfo info, Metadata headers) {
         return bufferSizeTracer;
       }
     };
@@ -253,6 +257,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     while (true) {
       State savedState;
 
+      // 加锁
       synchronized (lock) {
         savedState = state;
         if (savedState.winningSubstream != null && savedState.winningSubstream != substream) {
@@ -264,6 +269,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           return;
         }
 
+        // 如果流已经被关闭，则返回
         if (substream.closed) {
           return;
         }
@@ -285,9 +291,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           break;
         }
         if (savedState.cancelled) {
-          checkState(
-              savedState.winningSubstream == substream,
-              "substream should be CANCELLED_BECAUSE_COMMITTED already");
+          checkState(savedState.winningSubstream == substream, "substream should be CANCELLED_BECAUSE_COMMITTED already");
           return;
         }
         bufferEntry.runWith(substream);
@@ -468,6 +472,11 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
   }
 
+  /**
+   * 执行指定的流请求
+   *
+   * @param bufferEntry
+   */
   private void delayOrExecute(BufferEntry bufferEntry) {
     Collection<Substream> savedDrainedSubstreams;
     synchronized (lock) {
@@ -491,6 +500,11 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     throw new IllegalStateException("RetriableStream.writeMessage() should not be called directly");
   }
 
+  /**
+   * 发送请求
+   *
+   * @param message
+   */
   final void sendMessage(final ReqT message) {
     State savedState = state;
     if (savedState.passThrough) {
@@ -508,6 +522,9 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     delayOrExecute(new SendMessageEntry());
   }
 
+  /**
+   * 调用指定数量的请求
+   */
   @Override
   public final void request(final int numMessages) {
     State savedState = state;
@@ -517,6 +534,11 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
 
     class RequestEntry implements BufferEntry {
+      /**
+       * 用给定的流重放缓冲区
+       *
+       * @param substream
+       */
       @Override
       public void runWith(Substream substream) {
         substream.stream.request(numMessages);
@@ -752,7 +774,10 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   }
 
   private interface BufferEntry {
-    /** Replays the buffer entry with the given stream. */
+    /**
+     * Replays the buffer entry with the given stream.
+     * 用给定的流重放缓冲区
+     */
     void runWith(Substream substream);
   }
 
@@ -779,8 +804,16 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       closed(status, RpcProgress.PROCESSED, trailers);
     }
 
+    /**
+     * 流关闭时调用
+     *
+     * @param status      details about the remote closure
+     * @param rpcProgress RPC progress when client stream listener is closed
+     * @param trailers    trailing metadata
+     */
     @Override
     public void closed(Status status, RpcProgress rpcProgress, Metadata trailers) {
+      // 关闭流
       synchronized (lock) {
         state = state.substreamClosed(substream);
         closedSubstreamsInsight.append(status.getCode());
@@ -788,6 +821,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
       // handle a race between buffer limit exceeded and closed, when setting
       // substream.bufferLimitExceeded = true happens before state.substreamClosed(substream).
+      //当设置 substream.bufferLimitExceeded = true  时，将在  state.substreamClosed(substream)
+      // 之前发生事件，从而处理缓冲区超出限制与关闭之间的竞争
       if (substream.bufferLimitExceeded) {
         commitAndRun(substream);
         if (state.winningSubstream == substream) {
@@ -798,8 +833,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
       if (state.winningSubstream == null) {
         boolean isFatal = false;
-        if (rpcProgress == RpcProgress.REFUSED
-            && noMoreTransparentRetry.compareAndSet(false, true)) {
+        if (rpcProgress == RpcProgress.REFUSED &&
+                noMoreTransparentRetry.compareAndSet(false, true)) {
           // transparent retry
           final Substream newSubstream = createSubstream(substream.previousAttemptCount);
           if (isHedging) {
@@ -843,6 +878,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
             freezeHedging();
           }
         } else {
+          // PROCESSED 状态
           noMoreTransparentRetry.set(true);
 
           if (retryPolicy == null) {
@@ -850,19 +886,26 @@ abstract class RetriableStream<ReqT> implements ClientStream {
             nextBackoffIntervalNanos = retryPolicy.initialBackoffNanos;
           }
 
+          // 决定是否重试
           RetryPlan retryPlan = makeRetryDecision(status, trailers);
           // 判断是否需要重试
           if (retryPlan.shouldRetry) {
             // The check state.winningSubstream == null, checking if is not already committed, is
             // racy, but is still safe b/c the retry will also handle committed/cancellation
+            // 检查state.winningSubstream == null，检查是否尚未提交，有风险，但是会通过 committed/cancellation 保证安全
+            // 允许取消的 Future
             FutureCanceller scheduledRetryCopy;
             synchronized (lock) {
               scheduledRetry = scheduledRetryCopy = new FutureCanceller(lock);
             }
+
+            // 通过执行新的 Runnable，将返回的 Future 作为参数，设置给 scheduledRetryCopy
             scheduledRetryCopy.setFuture(scheduledExecutorService.schedule(
+                //  提交的新的任务
                 new Runnable() {
                   @Override
                   public void run() {
+                    // 创建新的流，重试
                     callExecutor.execute(new Runnable() {
                       @Override
                       public void run() {
@@ -899,6 +942,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
         }
       }
 
+      // 提交流
       commitAndRun(substream);
       if (state.winningSubstream == substream) {
         masterListener.closed(status, trailers);
@@ -909,17 +953,23 @@ abstract class RetriableStream<ReqT> implements ClientStream {
      * Decides in current situation whether or not the RPC should retry and if it should retry how
      * long the backoff should be. The decision does not take the commitment status into account, so
      * caller should check it separately. It also updates the throttle. It does not change state.
+     * 根据当前的条件决定是否需要重试，如果重试则设置延时时间，该决定未考虑承诺状态，所以调用者应当自己分别检查，
+     * 同时更新了节流配置，不改变状态
      */
     private RetryPlan makeRetryDecision(Status status, Metadata trailer) {
       boolean shouldRetry = false;
       long backoffNanos = 0L;
+      // 可以重试的状态
       boolean isRetryableStatusCode = retryPolicy.retryableStatusCodes.contains(status.getCode());
+      // 非失败的状态
       boolean isNonFatalStatusCode = hedgingPolicy.nonFatalStatusCodes.contains(status.getCode());
+      // 如果是对冲，且是失败状态，则直接返回不能重试的策略
       if (isHedging && !isNonFatalStatusCode) {
         // isFatal is true, no pushback
         return new RetryPlan(/* shouldRetry = */ false, /* isFatal = */ true, 0, null);
       }
 
+      // 从元数据获取 Server 返回的重试回推时间
       String pushbackStr = trailer.get(GRPC_RETRY_PUSHBACK_MS);
       Integer pushbackMillis = null;
       if (pushbackStr != null) {
@@ -930,33 +980,36 @@ abstract class RetriableStream<ReqT> implements ClientStream {
         }
       }
 
+      // 是否节流
       boolean isThrottled = false;
       if (throttle != null) {
-        if (isRetryableStatusCode || isNonFatalStatusCode
-            || (pushbackMillis != null && pushbackMillis < 0)) {
+        if (isRetryableStatusCode ||
+                isNonFatalStatusCode ||
+                (pushbackMillis != null && pushbackMillis < 0)) {
           isThrottled = !throttle.onQualifiedFailureThenCheckIsAboveThreshold();
         }
       }
 
+      // 没有达到最大重试次数，且没有开启节流
       if (retryPolicy.maxAttempts > substream.previousAttemptCount + 1 && !isThrottled) {
+        // 如果回推延时为空，且是可以重试的状态
         if (pushbackMillis == null) {
           if (isRetryableStatusCode) {
             shouldRetry = true;
+            // 计算延时时间
             backoffNanos = (long) (nextBackoffIntervalNanos * random.nextDouble());
-            nextBackoffIntervalNanos = Math.min(
-                (long) (nextBackoffIntervalNanos * retryPolicy.backoffMultiplier),
-                retryPolicy.maxBackoffNanos);
-
+            // 根据随机的延时时间和最大延时时间，选取最小的
+            nextBackoffIntervalNanos = Math.min((long) (nextBackoffIntervalNanos * retryPolicy.backoffMultiplier), retryPolicy.maxBackoffNanos);
           } // else no retry
         } else if (pushbackMillis >= 0) {
+          // 如果有回推延时时间，则将延时时间作为下次重试时间间隔
           shouldRetry = true;
           backoffNanos = TimeUnit.MILLISECONDS.toNanos(pushbackMillis);
           nextBackoffIntervalNanos = retryPolicy.initialBackoffNanos;
         } // else no retry
       } // else no retry
 
-      return new RetryPlan(
-          shouldRetry, /* isFatal = */ false, backoffNanos, isHedging ? pushbackMillis : null);
+      return new RetryPlan(shouldRetry, /* isFatal = */ false, backoffNanos, isHedging ? pushbackMillis : null);
     }
 
     @Override
@@ -989,6 +1042,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     /**
      * Unmodifiable collection of all the open substreams that are drained. Singleton once
      * passThrough; Empty if committed but not passTrough.
+     * 所有消耗掉的已经打开的流的不可变集合
      */
     final Collection<Substream> drainedSubstreams;
 
@@ -1083,18 +1137,23 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           hedgingFrozen, hedgingAttemptCount);
     }
 
-    /** The given substream is closed. */
+    /**
+     * 关闭指定的流
+     * The given substream is closed.
+     */
     @CheckReturnValue
     // GuardedBy RetriableStream.lock
     State substreamClosed(Substream substream) {
       substream.closed = true;
+      // 如果包含这个流
       if (this.drainedSubstreams.contains(substream)) {
+        // 构建新的集合，将当前流移除
         Collection<Substream> drainedSubstreams = new ArrayList<>(this.drainedSubstreams);
         drainedSubstreams.remove(substream);
         drainedSubstreams = Collections.unmodifiableCollection(drainedSubstreams);
         return new State(
-            buffer, drainedSubstreams, activeHedges, winningSubstream, cancelled, passThrough,
-            hedgingFrozen, hedgingAttemptCount);
+                buffer, drainedSubstreams, activeHedges, winningSubstream, cancelled, passThrough,
+                hedgingFrozen, hedgingAttemptCount);
       } else {
         return this;
       }
@@ -1187,7 +1246,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
   /**
    * A wrapper of a physical stream of a retry/hedging attempt, that comes with some useful
-   *  attributes.
+   * attributes.
+   * 重试/对冲的流的包装
    */
   private static final class Substream {
     ClientStream stream;
@@ -1208,6 +1268,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
   /**
    * Traces the buffer used by a substream.
+   * 追踪 Substream 用的 buffer
    */
   class BufferSizeTracer extends ClientStreamTracer {
     // Each buffer size tracer is dedicated to one specific substream.
@@ -1397,6 +1458,9 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
   }
 
+  /**
+   * 重试计划
+   */
   private static final class RetryPlan {
     final boolean shouldRetry;
     final boolean isFatal; // receiving a status not among the nonFatalStatusCodes
@@ -1404,9 +1468,10 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     @Nullable
     final Integer hedgingPushbackMillis;
 
-    RetryPlan(
-        boolean shouldRetry, boolean isFatal, long backoffNanos,
-        @Nullable Integer hedgingPushbackMillis) {
+    RetryPlan(boolean shouldRetry,
+              boolean isFatal,
+              long backoffNanos,
+              @Nullable Integer hedgingPushbackMillis) {
       this.shouldRetry = shouldRetry;
       this.isFatal = isFatal;
       this.backoffNanos = backoffNanos;
@@ -1414,7 +1479,10 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
   }
 
-  /** Allows cancelling a Future without racing with setting the future. */
+  /**
+   * Allows cancelling a Future without racing with setting the future.
+   * 允许取消Future，而无需设置Future
+   */
   private static final class FutureCanceller {
 
     final Object lock;
@@ -1436,7 +1504,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
 
     @GuardedBy("lock")
-    @CheckForNull // Must cancel the returned future if not null.
+    @CheckForNull
+      // Must cancel the returned future if not null.
     Future<?> markCancelled() {
       cancelled = true;
       return future;

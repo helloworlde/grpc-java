@@ -16,10 +16,6 @@
 
 package io.grpc.netty;
 
-import static io.grpc.internal.GrpcUtil.KEEPALIVE_TIME_NANOS_DISABLED;
-import static io.netty.channel.ChannelOption.ALLOCATOR;
-import static io.netty.channel.ChannelOption.SO_KEEPALIVE;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
@@ -57,12 +53,17 @@ import io.netty.util.AsciiString;
 import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
+
+import javax.annotation.Nullable;
 import java.net.SocketAddress;
 import java.nio.channels.ClosedChannelException;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.Nullable;
+
+import static io.grpc.internal.GrpcUtil.KEEPALIVE_TIME_NANOS_DISABLED;
+import static io.netty.channel.ChannelOption.ALLOCATOR;
+import static io.netty.channel.ChannelOption.SO_KEEPALIVE;
 
 /**
  * A Netty-based {@link ConnectionClientTransport} implementation.
@@ -181,38 +182,42 @@ class NettyClientTransport implements ConnectionClientTransport {
   }
 
   @Override
-  public ClientStream newStream(
-      MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
+  public ClientStream newStream(MethodDescriptor<?, ?> method,
+                                Metadata headers,
+                                CallOptions callOptions) {
     Preconditions.checkNotNull(method, "method");
     Preconditions.checkNotNull(headers, "headers");
+
+    // 如果 channel 是空的，则返回失败的 ClientStream
     if (channel == null) {
       return new FailingClientStream(statusExplainingWhyTheChannelIsNull);
     }
-    StatsTraceContext statsTraceCtx =
-        StatsTraceContext.newClientContext(callOptions, getAttributes(), headers);
+
+    StatsTraceContext statsTraceCtx = StatsTraceContext.newClientContext(callOptions, getAttributes(), headers);
+
+    // 创建 NettyClientStream
     return new NettyClientStream(
-        new NettyClientStream.TransportState(
-            handler,
-            channel.eventLoop(),
-            maxMessageSize,
+            new NettyClientStream.TransportState(handler,
+                    channel.eventLoop(),
+                    maxMessageSize,
+                    statsTraceCtx,
+                    transportTracer,
+                    method.getFullMethodName()) {
+              @Override
+              protected Status statusFromFailedFuture(ChannelFuture f) {
+                return NettyClientTransport.this.statusFromFailedFuture(f);
+              }
+            },
+            method,
+            headers,
+            channel,
+            authority,
+            negotiationScheme,
+            userAgent,
             statsTraceCtx,
             transportTracer,
-            method.getFullMethodName()) {
-          @Override
-          protected Status statusFromFailedFuture(ChannelFuture f) {
-            return NettyClientTransport.this.statusFromFailedFuture(f);
-          }
-        },
-        method,
-        headers,
-        channel,
-        authority,
-        negotiationScheme,
-        userAgent,
-        statsTraceCtx,
-        transportTracer,
-        callOptions,
-        useGetForSafeMethods);
+            callOptions,
+            useGetForSafeMethods);
   }
 
   @SuppressWarnings("unchecked")

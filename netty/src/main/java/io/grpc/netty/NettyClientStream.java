@@ -16,11 +16,6 @@
 
 package io.grpc.netty;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static io.netty.buffer.Unpooled.EMPTY_BUFFER;
-
 import com.google.common.base.Preconditions;
 import com.google.common.io.BaseEncoding;
 import io.grpc.Attributes;
@@ -45,7 +40,13 @@ import io.netty.handler.codec.http2.Http2Stream;
 import io.netty.util.AsciiString;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
+
 import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static io.netty.buffer.Unpooled.EMPTY_BUFFER;
 
 /**
  * Client stream for a Netty transport. Must only be called from the sending application
@@ -65,25 +66,23 @@ class NettyClientStream extends AbstractClientStream {
   private final AsciiString scheme;
   private final AsciiString userAgent;
 
-  NettyClientStream(
-      TransportState state,
-      MethodDescriptor<?, ?> method,
-      Metadata headers,
-      Channel channel,
-      AsciiString authority,
-      AsciiString scheme,
-      AsciiString userAgent,
-      StatsTraceContext statsTraceCtx,
-      TransportTracer transportTracer,
-      CallOptions callOptions,
-      boolean useGetForSafeMethods) {
-    super(
-        new NettyWritableBufferAllocator(channel.alloc()),
-        statsTraceCtx,
-        transportTracer,
-        headers,
-        callOptions,
-        useGetForSafeMethods && method.isSafe());
+  NettyClientStream(TransportState state,
+                    MethodDescriptor<?, ?> method,
+                    Metadata headers,
+                    Channel channel,
+                    AsciiString authority,
+                    AsciiString scheme,
+                    AsciiString userAgent,
+                    StatsTraceContext statsTraceCtx,
+                    TransportTracer transportTracer,
+                    CallOptions callOptions,
+                    boolean useGetForSafeMethods) {
+    super(new NettyWritableBufferAllocator(channel.alloc()),
+            statsTraceCtx,
+            transportTracer,
+            headers,
+            callOptions,
+            useGetForSafeMethods && method.isSafe());
     this.state = checkNotNull(state, "transportState");
     this.writeQueue = state.handler.getWriteQueue();
     this.method = checkNotNull(method, "method");

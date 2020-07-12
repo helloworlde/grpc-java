@@ -21,8 +21,9 @@ import io.grpc.InternalChannelz.SocketStats;
 import io.grpc.InternalInstrumented;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
-import java.util.concurrent.Executor;
+
 import javax.annotation.concurrent.ThreadSafe;
+import java.util.concurrent.Executor;
 
 /**
  * The client-side transport typically encapsulating a single connection to a remote
@@ -35,6 +36,7 @@ public interface ClientTransport extends InternalInstrumented<SocketStats> {
 
   /**
    * Creates a new stream for sending messages to a remote end-point.
+   * 创建新的流，用于给远程服务端发送消息
    *
    * <p>This method returns immediately and does not wait for any validation of the request. If
    * creation fails for any reason, {@link ClientStreamListener#closed} will be called to provide
@@ -43,8 +45,8 @@ public interface ClientTransport extends InternalInstrumented<SocketStats> {
    *
    * <p>This method is called under the {@link io.grpc.Context} of the {@link io.grpc.ClientCall}.
    *
-   * @param method the descriptor of the remote method to be called for this stream.
-   * @param headers to send at the beginning of the call
+   * @param method      the descriptor of the remote method to be called for this stream.
+   * @param headers     to send at the beginning of the call
    * @param callOptions runtime options of the call
    * @return the newly created stream.
    */

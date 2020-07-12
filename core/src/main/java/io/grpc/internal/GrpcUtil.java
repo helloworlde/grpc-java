@@ -693,28 +693,35 @@ public final class GrpcUtil {
 
   /**
    * Returns a transport out of a PickResult, or {@code null} if the result is "buffer".
-   * TODO 根据负载均衡 pick 的结果，获取 Transport
+   * 根据负载均衡 pick 的结果，获取 Transport
    */
   @Nullable
   static ClientTransport getTransportFromPickResult(PickResult result, boolean isWaitForReady) {
     final ClientTransport transport;
+    // 选取的 Subchannel
     Subchannel subchannel = result.getSubchannel();
+    //
     if (subchannel != null) {
+      // 返回用于创建新的 stream 的处于 READY 状态的 ClientTransport
       transport = ((TransportProvider) subchannel.getInternalSubchannel()).obtainActiveTransport();
     } else {
       transport = null;
     }
+    // 如果有 Transport
     if (transport != null) {
       final ClientStreamTracer.Factory streamTracerFactory = result.getStreamTracerFactory();
+      // 如果 ClientStreamTracer.Factory 是空的，则直接返回
       if (streamTracerFactory == null) {
         return transport;
       }
+
+      // TODO RETRY
       return new ClientTransport() {
         @Override
-        public ClientStream newStream(
-            MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
-          return transport.newStream(
-              method, headers, callOptions.withStreamTracerFactory(streamTracerFactory));
+        public ClientStream newStream(MethodDescriptor<?, ?> method,
+                                      Metadata headers,
+                                      CallOptions callOptions) {
+          return transport.newStream(method, headers, callOptions.withStreamTracerFactory(streamTracerFactory));
         }
 
         @Override

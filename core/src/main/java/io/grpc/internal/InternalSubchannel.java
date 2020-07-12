@@ -16,12 +16,6 @@
 
 package io.grpc.internal;
 
-import static io.grpc.ConnectivityState.CONNECTING;
-import static io.grpc.ConnectivityState.IDLE;
-import static io.grpc.ConnectivityState.READY;
-import static io.grpc.ConnectivityState.SHUTDOWN;
-import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
@@ -48,6 +42,9 @@ import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.SynchronizationContext;
 import io.grpc.SynchronizationContext.ScheduledHandle;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.ThreadSafe;
 import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -55,8 +52,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static io.grpc.ConnectivityState.CONNECTING;
+import static io.grpc.ConnectivityState.IDLE;
+import static io.grpc.ConnectivityState.READY;
+import static io.grpc.ConnectivityState.SHUTDOWN;
+import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
 
 /**
  * Transports for a single {@link SocketAddress}.
@@ -187,16 +188,20 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
 
   @Override
   public ClientTransport obtainActiveTransport() {
+    // 如果有活跃的，则直接返回
     ClientTransport savedTransport = activeTransport;
     if (savedTransport != null) {
       return savedTransport;
     }
+    //
     syncContext.execute(new Runnable() {
       @Override
       public void run() {
+        // 如果处于 IDLE 状态，则记录日志，并重新连接
         if (state.getState() == IDLE) {
           channelLogger.log(ChannelLogLevel.INFO, "CONNECTING as requested");
           gotoNonErrorState(CONNECTING);
+          // 开始新的 Transport
           startNewTransport();
         }
       }
@@ -665,10 +670,25 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
       return delegate;
     }
 
+    /**
+     * 创建新的流，用于给服务端发送消息
+     *
+     * @param method
+     * @param headers
+     * @param callOptions
+     * @return
+     */
     @Override
-    public ClientStream newStream(
-        MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
+    public ClientStream newStream(MethodDescriptor<?, ?> method,
+                                  Metadata headers,
+                                  CallOptions callOptions) {
+      // 先调用 io.grpc.internal.CallCredentialsApplyingTransportFactory.CallCredentialsApplyingTransport.newStream 添加鉴权信息
+      // 然后调用 io.grpc.netty.NettyClientTransport.newStream
+
+
       final ClientStream streamDelegate = super.newStream(method, headers, callOptions);
+
+      // 返回 ForwardingClientStream 包装后的 ClientStream
       return new ForwardingClientStream() {
         @Override
         protected ClientStream delegate() {
@@ -691,8 +711,7 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
             }
 
             @Override
-            public void closed(
-                Status status, RpcProgress rpcProgress, Metadata trailers) {
+            public void closed(Status status, RpcProgress rpcProgress, Metadata trailers) {
               callTracer.reportCallEnded(status.isOk());
               super.closed(status, rpcProgress, trailers);
             }

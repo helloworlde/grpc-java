@@ -21,14 +21,17 @@ import javax.annotation.concurrent.ThreadSafe;
 
 /**
  * Provides transports for sending RPCs.
+ * 提供用于发送 RPC 的 Transport
  */
 @ThreadSafe
 interface TransportProvider {
-  /**
-   * Returns a READY transport that will be used to create new streams.
-   *
-   * <p>Returns {@code null} if the state is not READY.  Will try to connect if state is IDLE.
-   */
-  @Nullable
-  ClientTransport obtainActiveTransport();
+    /**
+     * Returns a READY transport that will be used to create new streams.
+     * 返回一个 READY 的 Transport，用于创建新的流
+     *
+     * <p>Returns {@code null} if the state is not READY.  Will try to connect if state is IDLE.
+     * 如果没有 READY 状态的，则返回 null，如果状态是 IDLE，则尝试重新连接
+     */
+    @Nullable
+    ClientTransport obtainActiveTransport();
 }

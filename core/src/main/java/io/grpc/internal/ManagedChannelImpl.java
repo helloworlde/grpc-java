@@ -169,6 +169,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   // Must ONLY be assigned from updateSubchannelPicker(), which is called from syncContext.
   // null if channel is in idle mode.
+  // 必须通过 updateSubchannelPicker 修改，同步上下文时调用，当处于 idle 模式时为null
   @Nullable
   private volatile SubchannelPicker subchannelPicker;
 
@@ -431,49 +432,58 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
-    private final class ChannelTransportProvider implements ClientTransportProvider {
-        /**
-         * TODO
-         * @param args object containing call arguments.
-         * @return
-         */
-        @Override
-        public ClientTransport get(PickSubchannelArgs args) {
-            SubchannelPicker pickerCopy = subchannelPicker;
-            // 如果是关闭状态，则停止调用
-            if (shutdown.get()) {
-                // If channel is shut down, delayedTransport is also shut down which will fail the stream
-                // properly.
-                return delayedTransport;
-            }
-            if (pickerCopy == null) {
-                final class ExitIdleModeForTransport implements Runnable {
-                    @Override
-                    public void run() {
-                        exitIdleMode();
-                    }
-                }
-
-                syncContext.execute(new ExitIdleModeForTransport());
-                return delayedTransport;
-            }
-            // There is no need to reschedule the idle timer here.
-            //
-            // pickerCopy != null, which means idle timer has not expired when this method starts.
-            // Even if idle timer expires right after we grab pickerCopy, and it shuts down LoadBalancer
-            // which calls Subchannel.shutdown(), the InternalSubchannel will be actually shutdown after
-            // SUBCHANNEL_SHUTDOWN_DELAY_SECONDS, which gives the caller time to start RPC on it.
-            //
-            // In most cases the idle timer is scheduled to fire after the transport has created the
-            // stream, which would have reported in-use state to the channel that would have cancelled
-            // the idle timer.
-            PickResult pickResult = pickerCopy.pickSubchannel(args);
-            ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult, args.getCallOptions().isWaitForReady());
-            if (transport != null) {
-                return transport;
-            }
-            return delayedTransport;
+  private final class ChannelTransportProvider implements ClientTransportProvider {
+    /**
+     * 通过参数，选择某个 Subchannel，发起调用
+     *
+     * @param args object containing call arguments.
+     * @return
+     */
+    @Override
+    public ClientTransport get(PickSubchannelArgs args) {
+      SubchannelPicker pickerCopy = subchannelPicker;
+      // 如果是关闭状态，则停止调用
+      if (shutdown.get()) {
+        // If channel is shut down, delayedTransport is also shut down which will fail the stream
+        // properly.
+        return delayedTransport;
+      }
+      // 如果是 SubchannelPicker 是空的，则退出 idle 模模式，返回 delayedTransport
+      if (pickerCopy == null) {
+        final class ExitIdleModeForTransport implements Runnable {
+          @Override
+          public void run() {
+            exitIdleMode();
+          }
         }
+
+        syncContext.execute(new ExitIdleModeForTransport());
+        return delayedTransport;
+      }
+      // There is no need to reschedule the idle timer here.
+      // 此处无需重新调度 idle 计时器
+      //
+      // pickerCopy != null, which means idle timer has not expired when this method starts.
+      // Even if idle timer expires right after we grab pickerCopy, and it shuts down LoadBalancer
+      // which calls Subchannel.shutdown(), the InternalSubchannel will be actually shutdown after
+      // SUBCHANNEL_SHUTDOWN_DELAY_SECONDS, which gives the caller time to start RPC on it.
+      // 如果 pickerCopy 不为null，则意味着 idle 计时器在方法启动时没有过期，即使在检查完 pickerCopy 后过期了
+      // 会在调用  Subchannel.shutdown() 时关闭 LoadBalancer，在 SUBCHANNEL_SHUTDOWN_DELAY_SECONDS 时间
+      // 之后 InternalSubchannel 会被真正关闭，这使调用者有时间在其上启动RPC
+      //
+      // In most cases the idle timer is scheduled to fire after the transport has created the
+      // stream, which would have reported in-use state to the channel that would have cancelled
+      // the idle timer.
+      // 大多数情况下，idle 计时器会在传输创建流后开始启动，它将向正在取消空闲计时器的通道报告使用中状态
+      // 选择某个 SubChannel 发起调用，即选择某个服务端
+      PickResult pickResult = pickerCopy.pickSubchannel(args);
+      ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult, args.getCallOptions().isWaitForReady());
+      // 如果有 Transport，则返回
+      if (transport != null) {
+        return transport;
+      }
+      return delayedTransport;
+    }
 
     @Override
     public <ReqT> ClientStream newRetriableStream(
@@ -508,20 +518,21 @@ final class ManagedChannelImpl extends ManagedChannel implements
           uncommittedRetriableStreamsRegistry.remove(this);
         }
 
-          /**
-           * TODO 发起重试
-           * @param tracerFactory
-           * @param newHeaders
-           * @return
-           */
+        /**
+         * 创建流
+         *
+         * @param tracerFactory
+         * @param newHeaders
+         * @return
+         */
         @Override
         ClientStream newSubstream(ClientStreamTracer.Factory tracerFactory, Metadata newHeaders) {
           CallOptions newOptions = callOptions.withStreamTracerFactory(tracerFactory);
           // 重试，重新 pick subchannel
-          ClientTransport transport =
-              get(new PickSubchannelArgsImpl(method, newHeaders, newOptions));
+          ClientTransport transport = get(new PickSubchannelArgsImpl(method, newHeaders, newOptions));
           Context origContext = context.attach();
           try {
+            // 创建新的流，并返回
             return transport.newStream(method, newHeaders, newOptions);
           } finally {
             context.detach(origContext);
