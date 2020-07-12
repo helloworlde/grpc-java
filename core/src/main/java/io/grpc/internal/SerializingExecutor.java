@@ -16,16 +16,17 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.Preconditions;
+
+import javax.annotation.Nullable;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Executor ensuring that all {@link Runnable} tasks submitted are executed in order
@@ -79,6 +80,7 @@ public final class SerializingExecutor implements Executor, Runnable {
   /**
    * Runs the given runnable strictly after all Runnables that were submitted
    * before it, and using the {@code executor} passed to the constructor.     .
+   * 使用构造参数传入的 executor 在所有 Runnable 执行完成后执行给定的 runnable
    */
   @Override
   public void execute(Runnable r) {

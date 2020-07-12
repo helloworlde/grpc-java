@@ -21,24 +21,26 @@ import io.grpc.Context;
 /**
  * Utility base implementation of {@link Runnable} that performs the same function as
  * {@link Context#wrap(Runnable)} without requiring the construction of an additional object.
+ * <p>
+ * 基于 Runnable 实现的无需构造器的工具
  */
 abstract class ContextRunnable implements Runnable {
 
-  private final Context context;
+    private final Context context;
 
-  public ContextRunnable(Context context) {
-    this.context = context;
-  }
-
-  @Override
-  public final void run() {
-    Context previous = context.attach();
-    try {
-      runInContext();
-    } finally {
-      context.detach(previous);
+    public ContextRunnable(Context context) {
+        this.context = context;
     }
-  }
 
-  public abstract void runInContext();
+    @Override
+    public final void run() {
+        Context previous = context.attach();
+        try {
+            runInContext();
+        } finally {
+            context.detach(previous);
+        }
+    }
+
+    public abstract void runInContext();
 }

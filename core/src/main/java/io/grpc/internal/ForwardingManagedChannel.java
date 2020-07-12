@@ -59,8 +59,7 @@ abstract class ForwardingManagedChannel extends ManagedChannel {
   }
 
   /**
-   * 创建 ClientCall 用于发起调用
-   * BlockingStub 执行请求顺序: 1
+   * BlockingStub 初始化 ClientCall 执行请求顺序: 3
    */
   @Override
   public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(MethodDescriptor<RequestT, ResponseT> methodDescriptor,

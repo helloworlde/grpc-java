@@ -17,6 +17,7 @@
 package io.grpc;
 
 import com.google.common.base.Preconditions;
+
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -123,30 +124,37 @@ public final class Contexts {
   /**
    * Returns the {@link Status} of a cancelled context or {@code null} if the context
    * is not cancelled.
+   * 根据已经取消的上下文返回状态，如果没有取消则返回 null
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1975")
   public static Status statusFromCancelled(Context context) {
     Preconditions.checkNotNull(context, "context must not be null");
+    // 如果没有取消则返回 null
     if (!context.isCancelled()) {
       return null;
     }
 
+    // 如果没有异常，则返回取消
     Throwable cancellationCause = context.cancellationCause();
     if (cancellationCause == null) {
       return Status.CANCELLED.withDescription("io.grpc.Context was cancelled without error");
     }
+    // 如果是超时，则返回超时
     if (cancellationCause instanceof TimeoutException) {
       return Status.DEADLINE_EXCEEDED
-          .withDescription(cancellationCause.getMessage())
-          .withCause(cancellationCause);
+              .withDescription(cancellationCause.getMessage())
+              .withCause(cancellationCause);
     }
+
+    // 如果有异常且状态是未知，返回取消
     Status status = Status.fromThrowable(cancellationCause);
     if (Status.Code.UNKNOWN.equals(status.getCode())
-        && status.getCause() == cancellationCause) {
+            && status.getCause() == cancellationCause) {
       // If fromThrowable could not determine a status, then
       // just return CANCELLED.
       return Status.CANCELLED.withDescription("Context cancelled").withCause(cancellationCause);
     }
+    // 返回状态
     return status.withCause(cancellationCause);
   }
 }

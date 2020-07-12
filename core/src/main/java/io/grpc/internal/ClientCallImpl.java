@@ -157,6 +157,9 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     PerfMark.event("ClientCall.<init>", tag);
   }
 
+  /**
+   * 支持取消流的监听器
+   */
   private final class ContextCancellationListener implements CancellationListener {
     private Listener<RespT> observer;
 
@@ -197,46 +200,77 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
   }
 
+
+  /**
+   * 设置流是否解压缩
+   *
+   * @param fullStreamDecompression
+   * @return
+   */
   ClientCallImpl<ReqT, RespT> setFullStreamDecompression(boolean fullStreamDecompression) {
     this.fullStreamDecompression = fullStreamDecompression;
     return this;
   }
 
+  /**
+   * 设置流解压缩注册器
+   *
+   * @param decompressorRegistry
+   * @return
+   */
   ClientCallImpl<ReqT, RespT> setDecompressorRegistry(DecompressorRegistry decompressorRegistry) {
     this.decompressorRegistry = decompressorRegistry;
     return this;
   }
 
+  /**
+   * 设置流压缩注册器
+   *
+   * @param compressorRegistry
+   * @return
+   */
   ClientCallImpl<ReqT, RespT> setCompressorRegistry(CompressorRegistry compressorRegistry) {
     this.compressorRegistry = compressorRegistry;
     return this;
   }
 
+  /**
+   * 初始化 Header
+   */
   @VisibleForTesting
-  static void prepareHeaders(
-      Metadata headers,
-      DecompressorRegistry decompressorRegistry,
-      Compressor compressor,
-      boolean fullStreamDecompression) {
+  static void prepareHeaders(Metadata headers,
+                             DecompressorRegistry decompressorRegistry,
+                             Compressor compressor,
+                             boolean fullStreamDecompression) {
+
+    // 移除编码的 header，如果有压缩，则根据压缩编码重新设置
     headers.discardAll(MESSAGE_ENCODING_KEY);
     if (compressor != Codec.Identity.NONE) {
       headers.put(MESSAGE_ENCODING_KEY, compressor.getMessageEncoding());
     }
 
+    // 能接受的消息编码格式的头
     headers.discardAll(MESSAGE_ACCEPT_ENCODING_KEY);
-    byte[] advertisedEncodings =
-        InternalDecompressorRegistry.getRawAdvertisedMessageEncodings(decompressorRegistry);
+    byte[] advertisedEncodings = InternalDecompressorRegistry.getRawAdvertisedMessageEncodings(decompressorRegistry);
     if (advertisedEncodings.length != 0) {
       headers.put(MESSAGE_ACCEPT_ENCODING_KEY, advertisedEncodings);
     }
-
+    // 移除 stream 内容编码格式的 header
     headers.discardAll(CONTENT_ENCODING_KEY);
+    // 移除 stream 接收内容的编码格式 header
     headers.discardAll(CONTENT_ACCEPT_ENCODING_KEY);
+    // 如果开启了流的压缩，则重新设置 stream 接收内容的编码格式 header
     if (fullStreamDecompression) {
       headers.put(CONTENT_ACCEPT_ENCODING_KEY, FULL_STREAM_DECOMPRESSION_ENCODINGS);
     }
   }
 
+  /**
+   * 开始一次调用，通过 responseListener 处理返回响应
+   *
+   * @param observer 响应监听器
+   * @param headers  包含额外的元数据，如鉴权
+   */
   @Override
   public void start(Listener<RespT> observer, Metadata headers) {
     PerfMark.startTask("ClientCall.start", tag);
@@ -247,12 +281,19 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
   }
 
+  /**
+   * 执行请求调用
+   *
+   * @param observer 响应监听器
+   * @param headers  包含额外的元数据，如鉴权
+   */
   private void startInternal(final Listener<RespT> observer, Metadata headers) {
     checkState(stream == null, "Already started");
     checkState(!cancelCalled, "call was cancelled");
     checkNotNull(observer, "observer");
     checkNotNull(headers, "headers");
 
+    // 如果已经取消了，则不创建流，通知监听器取消回调
     if (context.isCancelled()) {
       // Context is already cancelled so no need to create a real stream, just notify the observer
       // of cancellation via callback on the executor
@@ -260,84 +301,110 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       executeCloseObserverInContext(observer, statusFromCancelled(context));
       return;
     }
+
+    // 压缩器
     final String compressorName = callOptions.getCompressor();
     Compressor compressor;
     if (compressorName != null) {
       compressor = compressorRegistry.lookupCompressor(compressorName);
+      // 如果设置了压缩器名称，但是没有相应的压缩器，则返回错误，关闭监听器
       if (compressor == null) {
         stream = NoopClientStream.INSTANCE;
-        Status status = Status.INTERNAL.withDescription(
-            String.format("Unable to find compressor by name %s", compressorName));
+        Status status = Status.INTERNAL.withDescription(String.format("Unable to find compressor by name %s", compressorName));
         executeCloseObserverInContext(observer, status);
         return;
       }
     } else {
       compressor = Codec.Identity.NONE;
     }
+
+    // 根据参数添加 Header
     prepareHeaders(headers, decompressorRegistry, compressor, fullStreamDecompression);
 
+    // 最后期限
     Deadline effectiveDeadline = effectiveDeadline();
     boolean deadlineExceeded = effectiveDeadline != null && effectiveDeadline.isExpired();
+    // 如果没有过期
     if (!deadlineExceeded) {
-      logIfContextNarrowedTimeout(
-          effectiveDeadline, context.getDeadline(), callOptions.getDeadline());
+      // 如果超时则记录日志
+      logIfContextNarrowedTimeout(effectiveDeadline, context.getDeadline(), callOptions.getDeadline());
+      // 如果打开了重试，则创建重试流
       if (retryEnabled) {
         stream = clientTransportProvider.newRetriableStream(method, callOptions, headers, context);
       } else {
-        ClientTransport transport = clientTransportProvider.get(
-            new PickSubchannelArgsImpl(method, headers, callOptions));
+        // 根据获取 ClientTransport
+        ClientTransport transport = clientTransportProvider.get(new PickSubchannelArgsImpl(method, headers, callOptions));
         Context origContext = context.attach();
         try {
+          // 创建流
           stream = transport.newStream(method, headers, callOptions);
         } finally {
           context.detach(origContext);
         }
       }
     } else {
-      stream = new FailingClientStream(
-          DEADLINE_EXCEEDED.withDescription(
-              "ClientCall started after deadline exceeded: " + effectiveDeadline));
+      // 初始化超时失败的流
+      stream = new FailingClientStream(DEADLINE_EXCEEDED.withDescription("ClientCall started after deadline exceeded: " + effectiveDeadline));
     }
 
+    // 直接执行器
     if (callExecutorIsDirect) {
       stream.optimizeForDirectExecutor();
     }
+    // 调用地址
     if (callOptions.getAuthority() != null) {
       stream.setAuthority(callOptions.getAuthority());
     }
+    // 最大传入字节数
     if (callOptions.getMaxInboundMessageSize() != null) {
       stream.setMaxInboundMessageSize(callOptions.getMaxInboundMessageSize());
     }
+    // 最大传出字节数
     if (callOptions.getMaxOutboundMessageSize() != null) {
       stream.setMaxOutboundMessageSize(callOptions.getMaxOutboundMessageSize());
     }
+    // 最后执行时间
     if (effectiveDeadline != null) {
       stream.setDeadline(effectiveDeadline);
     }
+    // 压缩器
     stream.setCompressor(compressor);
+    // 解压缩流
     if (fullStreamDecompression) {
       stream.setFullStreamDecompression(fullStreamDecompression);
     }
+    // 解压流注册器
     stream.setDecompressorRegistry(decompressorRegistry);
+    // 记录开始调用
     channelCallsTracer.reportCallStarted();
+    // 封装支持取消的流监听器
     cancellationListener = new ContextCancellationListener(observer);
+    // 初始化支持 header 操作的 ClientStreamListener
+    // 调用 start 方法，修改流的状态
     stream.start(new ClientStreamListenerImpl(observer));
 
     // Delay any sources of cancellation after start(), because most of the transports are broken if
     // they receive cancel before start. Issue #1343 has more details
 
     // Propagate later Context cancellation to the remote side.
+    // 稍后将上下文取消传播到被调用端
     context.addListener(cancellationListener, directExecutor());
+
     if (effectiveDeadline != null
-        // If the context has the effective deadline, we don't need to schedule an extra task.
-        && !effectiveDeadline.equals(context.getDeadline())
-        // If the channel has been terminated, we don't need to schedule an extra task.
-        && deadlineCancellationExecutor != null
-        // if already expired deadline let failing stream handle
-        && !(stream instanceof FailingClientStream)) {
-      deadlineCancellationNotifyApplicationFuture =
-          startDeadlineNotifyApplicationTimer(effectiveDeadline, observer);
+            // If the context has the effective deadline, we don't need to schedule an extra task.
+            // 如果上下文具有有效的截止日期，则无需安排额外的任务
+            && !effectiveDeadline.equals(context.getDeadline())
+            // If the channel has been terminated, we don't need to schedule an extra task.
+            // 如果 channel 已终止，则无需安排额外的任务
+            && deadlineCancellationExecutor != null
+            // if already expired deadline let failing stream handle
+            // 如果截止时间已经到期，请让失败的流处理
+            && !(stream instanceof FailingClientStream)) {
+      // 提交任务，并返回回调
+      deadlineCancellationNotifyApplicationFuture = startDeadlineNotifyApplicationTimer(effectiveDeadline, observer);
     }
+
+    // 移除 context 和监听器
     if (cancelListenersShouldBeRemoved) {
       // Race detected! ClientStreamListener.closed may have been called before
       // deadlineCancellationFuture was set / context listener added, thereby preventing the future
@@ -347,17 +414,21 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
   }
 
-  private static void logIfContextNarrowedTimeout(
-      Deadline effectiveDeadline, @Nullable Deadline outerCallDeadline,
-      @Nullable Deadline callDeadline) {
-    if (!log.isLoggable(Level.FINE) || effectiveDeadline == null
-        || !effectiveDeadline.equals(outerCallDeadline)) {
+  /**
+   * 如果上下文超时则记录日志
+   */
+  private static void logIfContextNarrowedTimeout(Deadline effectiveDeadline,
+                                                  @Nullable Deadline outerCallDeadline,
+                                                  @Nullable Deadline callDeadline) {
+    if (!log.isLoggable(Level.FINE) ||
+            effectiveDeadline == null ||
+            !effectiveDeadline.equals(outerCallDeadline)) {
       return;
     }
 
     long effectiveTimeout = max(0, effectiveDeadline.timeRemaining(TimeUnit.NANOSECONDS));
-    StringBuilder builder = new StringBuilder(String.format(
-        "Call timeout set to '%d' ns, due to context deadline.", effectiveTimeout));
+    StringBuilder builder = new StringBuilder(String.format("Call timeout set to '%d' ns, due to context deadline.", effectiveTimeout));
+
     if (callDeadline == null) {
       builder.append(" Explicit call timeout was not set.");
     } else {
@@ -368,6 +439,9 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     log.fine(builder.toString());
   }
 
+  /**
+   * 移除 context 和监听器
+   */
   private void removeContextListenerAndCancelDeadlineFuture() {
     context.removeListener(cancellationListener);
     ScheduledFuture<?> f = deadlineCancellationSendToServerFuture;
@@ -381,10 +455,19 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
   }
 
+  /**
+   * 根据超时时间，提交任务
+   *
+   * @param deadline
+   * @param observer
+   * @return
+   */
   private ScheduledFuture<?> startDeadlineNotifyApplicationTimer(Deadline deadline,
-      final Listener<RespT> observer) {
+                                                                 final Listener<RespT> observer) {
+    // 计算剩余的时间
     final long remainingNanos = deadline.timeRemaining(TimeUnit.NANOSECONDS);
 
+    // 超时则取消流
     class DeadlineExceededNotifyApplicationTimer implements Runnable {
       @Override
       public void run() {
@@ -393,12 +476,19 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       }
     }
 
+    // 执行延时任务
     return deadlineCancellationExecutor.schedule(
-        new LogExceptionRunnable(new DeadlineExceededNotifyApplicationTimer()),
-        remainingNanos,
-        TimeUnit.NANOSECONDS);
+            new LogExceptionRunnable(new DeadlineExceededNotifyApplicationTimer()),
+            remainingNanos,
+            TimeUnit.NANOSECONDS);
   }
 
+  /**
+   * 根据剩余的时间构建超时状态信息
+   *
+   * @param remainingNanos
+   * @return
+   */
   private Status buildDeadlineExceededStatusWithRemainingNanos(long remainingNanos) {
     final InsightBuilder insight = new InsightBuilder();
     stream.appendTimeoutInsight(insight);
@@ -419,6 +509,12 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     return DEADLINE_EXCEEDED.augmentDescription(buf.toString());
   }
 
+  /**
+   * 如果超时则取消流
+   *
+   * @param status
+   * @param observer
+   */
   private void delayedCancelOnDeadlineExceeded(final Status status, Listener<RespT> observer) {
     if (deadlineCancellationSendToServerFuture != null) {
       return;
@@ -435,13 +531,19 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
 
     // This races with removeContextListenerAndCancelDeadlineFuture(). Since calling cancel() on a
     // stream multiple time is safe, the race here is fine.
-    deadlineCancellationSendToServerFuture =  deadlineCancellationExecutor.schedule(
-        new LogExceptionRunnable(new DeadlineExceededSendCancelToServerTimer()),
-        DEADLINE_EXPIRATION_CANCEL_DELAY_NANOS,
-        TimeUnit.NANOSECONDS);
+    deadlineCancellationSendToServerFuture = deadlineCancellationExecutor.schedule(
+            new LogExceptionRunnable(new DeadlineExceededSendCancelToServerTimer()),
+            DEADLINE_EXPIRATION_CANCEL_DELAY_NANOS,
+            TimeUnit.NANOSECONDS);
     executeCloseObserverInContext(observer, status);
   }
 
+  /**
+   * 关闭监听器
+   *
+   * @param observer
+   * @param status
+   */
   private void executeCloseObserverInContext(final Listener<RespT> observer, final Status status) {
     class CloseInContext extends ContextRunnable {
       CloseInContext() {
@@ -457,6 +559,13 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     callExecutor.execute(new CloseInContext());
   }
 
+  /**
+   * 关闭监听器
+   *
+   * @param observer
+   * @param status
+   * @param trailers
+   */
   private void closeObserver(Listener<RespT> observer, Status status, Metadata trailers) {
     if (!observerClosed) {
       observerClosed = true;
@@ -464,6 +573,11 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
   }
 
+  /**
+   * 计算最后期限
+   *
+   * @return
+   */
   @Nullable
   private Deadline effectiveDeadline() {
     // Call options and context are immutable, so we don't need to cache the deadline.
@@ -481,6 +595,11 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     return deadline0.minimum(deadline1);
   }
 
+  /**
+   * 将请求消息数量传递给监听器
+   *
+   * @param numMessages 要传递给 listener 的请求消息数量，不能为负数
+   */
   @Override
   public void request(int numMessages) {
     PerfMark.startTask("ClientCall.request", tag);
@@ -532,6 +651,9 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
   }
 
+  /**
+   * 关闭请求的消息发送调用，返回的响应不受影响，当客户端不会发送更多消息时调用
+   */
   @Override
   public void halfClose() {
     PerfMark.startTask("ClientCall.halfClose", tag);
@@ -550,6 +672,11 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     stream.halfClose();
   }
 
+  /**
+   * 执行发送消息
+   *
+   * @param message 发给服务端的消息
+   */
   @Override
   public void sendMessage(ReqT message) {
     PerfMark.startTask("ClientCall.sendMessage", tag);
@@ -560,19 +687,27 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
   }
 
+  /**
+   * 发送消息
+   *
+   * @param message
+   */
   private void sendMessageInternal(ReqT message) {
     checkState(stream != null, "Not started");
     checkState(!cancelCalled, "call was cancelled");
     checkState(!halfCloseCalled, "call was half-closed");
     try {
+      // 如果是重试流，则通过重试流的方法发送消息
       if (stream instanceof RetriableStream) {
         @SuppressWarnings("unchecked")
         RetriableStream<ReqT> retriableStream = (RetriableStream<ReqT>) stream;
         retriableStream.sendMessage(message);
       } else {
+        // 不是重试流，将消息转为流，发送
         stream.writeMessage(method.streamRequest(message));
       }
     } catch (RuntimeException e) {
+      // 如果出错则取消请求
       stream.cancel(Status.CANCELLED.withCause(e).withDescription("Failed to stream message"));
       return;
     } catch (Error e) {
@@ -582,6 +717,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     // For unary requests, we don't flush since we know that halfClose should be coming soon. This
     // allows us to piggy-back the END_STREAM=true on the last message frame without opening the
     // possibility of broken applications forgetting to call halfClose without noticing.
+    // 对于 unary 请求，不用flush，因为接下来就是 halfClose, 这样就可以在消息最后搭载 END_STREAM=true，
+    // 而无需打开损坏的流
     if (!unaryRequest) {
       stream.flush();
     }
@@ -717,7 +854,9 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
 
     /**
+     * 关闭流
      * Must be called from application thread.
+     * 必须由应用线程调用
      */
     private void close(Status status, Metadata trailers) {
       closed = true;
@@ -739,31 +878,38 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     public void closed(Status status, RpcProgress rpcProgress, Metadata trailers) {
       PerfMark.startTask("ClientStreamListener.closed", tag);
       try {
+        // 关闭流
         closedInternal(status, rpcProgress, trailers);
       } finally {
         PerfMark.stopTask("ClientStreamListener.closed", tag);
       }
     }
 
-    private void closedInternal(
-        Status status, @SuppressWarnings("unused") RpcProgress rpcProgress, Metadata trailers) {
+    private void closedInternal(Status status, @SuppressWarnings("unused") RpcProgress rpcProgress, Metadata trailers) {
+      // 获取最后调用时间
       Deadline deadline = effectiveDeadline();
+      // 根据状态判断是否是取消，且有超时
       if (status.getCode() == Status.Code.CANCELLED && deadline != null) {
         // When the server's deadline expires, it can only reset the stream with CANCEL and no
         // description. Since our timer may be delayed in firing, we double-check the deadline and
         // turn the failure into the likely more helpful DEADLINE_EXCEEDED status.
+        // 当达到最后的期限时，流只能被重置为 CANCEL 且没有描述，因为计时器可能会延时，所以做了双重检查，
+        // 然后将状态变为更有用的 DEADLINE_EXCEEDED
         if (deadline.isExpired()) {
+          // 追加错误信息
           InsightBuilder insight = new InsightBuilder();
           stream.appendTimeoutInsight(insight);
-          status = DEADLINE_EXCEEDED.augmentDescription(
-              "ClientCall was cancelled at or after deadline. " + insight);
+          status = DEADLINE_EXCEEDED.augmentDescription("ClientCall was cancelled at or after deadline. " + insight);
           // Replace trailers to prevent mixing sources of status and trailers.
+          // 更换 trailers，以防止状态和 trailers 混淆
           trailers = new Metadata();
         }
       }
       final Status savedStatus = status;
       final Metadata savedTrailers = trailers;
       final Link link = PerfMark.linkOut();
+
+      // 构建 runnable 任务
       final class StreamClosed extends ContextRunnable {
         StreamClosed() {
           super(context);
@@ -781,6 +927,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
         }
 
         private void runInternal() {
+          // 如果已经关闭了则直接返回
           if (closed) {
             // We intentionally don't keep the status or metadata from the server.
             return;
@@ -789,6 +936,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
         }
       }
 
+      // 执行关闭流的任务
       callExecutor.execute(new StreamClosed());
     }
 

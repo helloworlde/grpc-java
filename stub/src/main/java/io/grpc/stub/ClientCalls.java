@@ -152,7 +152,7 @@ public final class ClientCalls {
     ClientCall<ReqT, RespT> call = channel.newCall(method, callOptions.withOption(ClientCalls.STUB_TYPE_OPTION, StubType.BLOCKING)
                                                                       .withExecutor(executor));
     try {
-
+      // 执行调用，发出请求
       ListenableFuture<RespT> responseFuture = futureUnaryCall(call, req);
       while (!responseFuture.isDone()) {
         try {
@@ -219,11 +219,14 @@ public final class ClientCalls {
    * Executes a unary call and returns a {@link ListenableFuture} to the response.  The
    * {@code call} should not be already started.  After calling this method, {@code call} should no
    * longer be used.
+   * 执行 unary 调用，并返回 ListenableFuture，在调用之前不应该开始，调用后不应该再被使用
    *
-   * @return a future for the single response message.
+   * @return a future for the single response message 返回用于单个消息响应的 Future
    */
   public static <ReqT, RespT> ListenableFuture<RespT> futureUnaryCall(ClientCall<ReqT, RespT> call, ReqT req) {
+    // 初始化 GrpcFuture
     GrpcFuture<RespT> responseFuture = new GrpcFuture<>(call);
+    // 将 GrpcFuture 包装为继承了 Listener 的 UnaryStreamToFuture，提交任务
     asyncUnaryRequestCall(call, req, new UnaryStreamToFuture<>(responseFuture));
     return responseFuture;
   }
@@ -308,13 +311,22 @@ public final class ClientCalls {
             new CallToStreamObserverAdapter<>(call, streamingResponse)));
   }
 
-  private static <ReqT, RespT> void asyncUnaryRequestCall(
-      ClientCall<ReqT, RespT> call,
-      ReqT req,
-      StartableListener<RespT> responseListener) {
+  /**
+   * 开始异步调用
+   *
+   * @param call             ClientCallImpl 实例
+   * @param req              请求，proto 生成的入参
+   * @param responseListener 继承了 Listener，封装 GrpcFuture 的 UnaryStreamToFuture
+   */
+  private static <ReqT, RespT> void asyncUnaryRequestCall(ClientCall<ReqT, RespT> call,
+                                                          ReqT req,
+                                                          StartableListener<RespT> responseListener) {
+    // 开始调用
     startCall(call, responseListener);
     try {
+      // 发送消息
       call.sendMessage(req);
+      // 半关闭连接
       call.halfClose();
     } catch (RuntimeException e) {
       throw cancelThrow(call, e);
@@ -335,9 +347,8 @@ public final class ClientCalls {
     return adapter;
   }
 
-  private static <ReqT, RespT> void startCall(
-      ClientCall<ReqT, RespT> call,
-      StartableListener<RespT> responseListener) {
+  private static <ReqT, RespT> void startCall(ClientCall<ReqT, RespT> call,
+                                              StartableListener<RespT> responseListener) {
     call.start(responseListener, new Metadata());
     responseListener.onStart();
   }
@@ -505,12 +516,19 @@ public final class ClientCalls {
 
   /**
    * Completes a {@link GrpcFuture} using {@link StreamObserver} events.
+   * 使用 StreamObserver 事件完成 GrpcFuture，继承了 io.grpc.ClientCall.Listener
    */
   private static final class UnaryStreamToFuture<RespT> extends StartableListener<RespT> {
     private final GrpcFuture<RespT> responseFuture;
     private RespT value;
 
     // Non private to avoid synthetic class
+
+    /**
+     * 使用 GrpcFuture 初始化 UnaryStreamToFuture
+     *
+     * @param responseFuture
+     */
     UnaryStreamToFuture(GrpcFuture<RespT> responseFuture) {
       this.responseFuture = responseFuture;
     }
@@ -553,6 +571,12 @@ public final class ClientCalls {
     private final ClientCall<?, RespT> call;
 
     // Non private to avoid synthetic class
+
+    /**
+     * 初始化 GrpcFuture，用于获取响应
+     *
+     * @param call
+     */
     GrpcFuture(ClientCall<?, RespT> call) {
       this.call = call;
     }

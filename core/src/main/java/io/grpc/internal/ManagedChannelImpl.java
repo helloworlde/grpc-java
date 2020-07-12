@@ -868,7 +868,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   /**
    * Creates a new outgoing call on the channel.
    * 在当前 channel 上创建一个新的调用
-   * BlockingStub 执行请求顺序: 2
+   * BlockingStub 初始化 ClientCall 执行请求顺序: 4
    */
   @Override
   public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method,
@@ -911,7 +911,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
 
     /**
-     * BlockingStub 执行请求顺序: 5
+     * BlockingStub 初始化 ClientCall 执行请求顺序: 7
      */
     @Override
     public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method,

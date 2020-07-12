@@ -66,7 +66,7 @@ final class ServiceConfigInterceptor implements ClientInterceptor {
     static final CallOptions.Key<HedgingPolicy.Provider> HEDGING_POLICY_KEY = CallOptions.Key.create("internal-hedging-policy");
 
     /**
-     * BlockingStub 执行请求顺序: 4
+     * BlockingStub 初始化 ClientCall 执行请求顺序: 6
      * 拦截器顺序: 1
      */
     @Override

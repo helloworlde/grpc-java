@@ -16,40 +16,41 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.Throwables;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 /**
+ * Runnable 的包装类， 在抛出异常信息之前打印日志
  * A simple wrapper for a {@link Runnable} that logs any exception thrown by it, before
  * re-throwing it.
  */
 public final class LogExceptionRunnable implements Runnable {
 
-  private static final Logger log = Logger.getLogger(LogExceptionRunnable.class.getName());
+    private static final Logger log = Logger.getLogger(LogExceptionRunnable.class.getName());
 
-  private final Runnable task;
+    private final Runnable task;
 
-  public LogExceptionRunnable(Runnable task) {
-    this.task = checkNotNull(task, "task");
-  }
-
-  @Override
-  public void run() {
-    try {
-      task.run();
-    } catch (Throwable t) {
-      log.log(Level.SEVERE, "Exception while executing runnable " + task, t);
-      Throwables.throwIfUnchecked(t);
-      throw new AssertionError(t);
+    public LogExceptionRunnable(Runnable task) {
+        this.task = checkNotNull(task, "task");
     }
-  }
 
-  @Override
-  public String toString() {
-    return "LogExceptionRunnable(" + task + ")";
-  }
+    @Override
+    public void run() {
+        try {
+            task.run();
+        } catch (Throwable t) {
+            log.log(Level.SEVERE, "Exception while executing runnable " + task, t);
+            Throwables.throwIfUnchecked(t);
+            throw new AssertionError(t);
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "LogExceptionRunnable(" + task + ")";
+    }
 }

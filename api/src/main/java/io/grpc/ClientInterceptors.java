@@ -155,7 +155,8 @@ public class ClientInterceptors {
     }
 
     /**
-     * BlockingStub 执行请求顺序: 3
+     * BlockingStub 初始化 ClientCall 执行请求顺序: 1
+     * BlockingStub 初始化 ClientCall 执行请求顺序: 5
      */
     @Override
     public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method,
@@ -231,6 +232,12 @@ public class ClientInterceptors {
       return delegate;
     }
 
+    /**
+     * 开始一次调用，通过 responseListener 处理返回响应
+     *
+     * @param responseListener 响应监听器
+     * @param headers          元数据
+     */
     @Override
     @SuppressWarnings("unchecked")
     public final void start(Listener<RespT> responseListener, Metadata headers) {

@@ -83,27 +83,31 @@ public final class GrpcUtil {
 
   /**
    * {@link io.grpc.Metadata.Key} for the message encoding header.
+   * 消息编码格式的 header
    */
   public static final Metadata.Key<String> MESSAGE_ENCODING_KEY =
           Metadata.Key.of(GrpcUtil.MESSAGE_ENCODING, Metadata.ASCII_STRING_MARSHALLER);
 
   /**
    * {@link io.grpc.Metadata.Key} for the accepted message encodings header.
+   * 能接受的消息编码格式的 header
    */
   public static final Metadata.Key<byte[]> MESSAGE_ACCEPT_ENCODING_KEY =
-      InternalMetadata.keyOf(GrpcUtil.MESSAGE_ACCEPT_ENCODING, new AcceptEncodingMarshaller());
+          InternalMetadata.keyOf(GrpcUtil.MESSAGE_ACCEPT_ENCODING, new AcceptEncodingMarshaller());
 
   /**
    * {@link io.grpc.Metadata.Key} for the stream's content encoding header.
+   * stream 内容编码格式的 header
    */
   public static final Metadata.Key<String> CONTENT_ENCODING_KEY =
-      Metadata.Key.of(GrpcUtil.CONTENT_ENCODING, Metadata.ASCII_STRING_MARSHALLER);
+          Metadata.Key.of(GrpcUtil.CONTENT_ENCODING, Metadata.ASCII_STRING_MARSHALLER);
 
   /**
    * {@link io.grpc.Metadata.Key} for the stream's accepted content encoding header.
+   * stream 接收内容的编码格式 header
    */
   public static final Metadata.Key<byte[]> CONTENT_ACCEPT_ENCODING_KEY =
-      InternalMetadata.keyOf(GrpcUtil.CONTENT_ACCEPT_ENCODING, new AcceptEncodingMarshaller());
+          InternalMetadata.keyOf(GrpcUtil.CONTENT_ACCEPT_ENCODING, new AcceptEncodingMarshaller());
 
   private static final class AcceptEncodingMarshaller implements TrustedAsciiMarshaller<byte[]> {
     @Override

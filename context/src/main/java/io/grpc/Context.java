@@ -18,6 +18,7 @@ package io.grpc;
 
 import io.grpc.Context.CheckReturnValue;
 import io.grpc.PersistentHashArrayMappedTrie.Node;
+
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.concurrent.Callable;
@@ -446,10 +447,12 @@ public class Context {
 
   /**
    * Reverse an {@code attach()}, restoring the previous context and exiting the current scope.
+   * 反转  attach()，还原先前的上下文并退出当前作用域
    *
    * <p>This context should be the same context that was previously {@link #attach attached}.  The
    * provided replacement should be what was returned by the same {@link #attach attach()} call.  If
    * an {@code attach()} and a {@code detach()} meet above requirements, they match.
+   * 这个上下文应当和之前的 attach 的上下文是一致的，供的替换应该是同一 attach() 调用返回的内容
    *
    * <p>It is expected that between any pair of matching {@code attach()} and {@code detach()}, all
    * {@code attach()}es and {@code detach()}es are called in matching pairs.  If this method finds
@@ -507,6 +510,7 @@ public class Context {
   }
 
   /**
+   * 添加一个监听器，当上下文被取消时会通知
    * Add a listener that will be notified when the context becomes cancelled.
    */
   public void addListener(final CancellationListener cancellationListener,
@@ -516,8 +520,7 @@ public class Context {
     if (cancellableAncestor == null) {
       return;
     }
-    cancellableAncestor.addListenerInternal(
-        new ExecutableListener(executor, cancellationListener, this));
+    cancellableAncestor.addListenerInternal(new ExecutableListener(executor, cancellationListener, this));
   }
 
   /**

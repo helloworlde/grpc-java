@@ -27,6 +27,12 @@ public abstract class ForwardingClientCall<ReqT, RespT>
   @Override
   protected abstract ClientCall<ReqT, RespT> delegate();
 
+  /**
+   * 发送消息
+   *
+   * @param responseListener 接收响应
+   * @param headers          包含额外的元数据，如鉴权
+   */
   @Override
   public void start(Listener<RespT> responseListener, Metadata headers) {
     delegate().start(responseListener, headers);
