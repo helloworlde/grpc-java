@@ -28,6 +28,7 @@ import javax.annotation.Nonnull;
  * Stream 的扩展，用于支持客户端的终止
  *
  * <p>An implementation doesn't need to be thread-safe. All methods are expected to execute quickly.
+ * 实现不需要保证线程安全，所有的方法都有望快速执行
  */
 public interface ClientStream extends Stream {
 
@@ -81,31 +82,38 @@ public interface ClientStream extends Stream {
     /**
      * Starts stream. This method may only be called once.  It is safe to do latent initialization of
      * the stream up until {@link #start} is called.
+     * 开始一个流，这个方法只能被调用一次，在调用 start 之前，对流进行潜在的初始化是安全的
      *
      * <p>This method should not throw any exceptions.
+     * 这个方法不应该抛出异常
      *
      * @param listener non-{@code null} listener of stream events
+     *                 非空的 stream 事件监听器
      */
     void start(ClientStreamListener listener);
 
     /**
      * Sets the max size accepted from the remote endpoint.
+     * 设置接收的最大字节大小
      */
     void setMaxInboundMessageSize(int maxSize);
 
     /**
      * Sets the max size sent to the remote endpoint.
+     * 设置发送的最大字节大小
      */
     void setMaxOutboundMessageSize(int maxSize);
 
     /**
      * Sets the effective deadline of the RPC.
+     * 设置 RPC 的有效截止时间
      */
     void setDeadline(@Nonnull Deadline deadline);
 
     /**
      * Attributes that the stream holds at the current moment.  Thread-safe and can be called at any
      * time, although some attributes are there only after a certain point.
+     * 当前流持有的属性，线程安全的，尽管一些属性在某个节点之后才有，依然可以随时调用
      */
     Attributes getAttributes();
 
@@ -113,6 +121,8 @@ public interface ClientStream extends Stream {
      * Append information that will be included in the locally generated DEADLINE_EXCEEDED errors to
      * the given {@link InsightBuilder}, in order to tell the user about the state of the stream so
      * that they can better diagnose the cause of the error.
+     * 将包含在本地生成的 DEADLINE_EXCEEDED 错误中的信息附加到给定的 InsightBuilder，告诉用户当前流的状态，以便于
+     * 处理错误
      */
     void appendTimeoutInsight(InsightBuilder insight);
 }
