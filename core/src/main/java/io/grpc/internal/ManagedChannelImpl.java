@@ -521,8 +521,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
         /**
          * 创建流
          *
-         * @param tracerFactory
-         * @param newHeaders
+         * @param tracerFactory 跟踪的线程工厂
+         * @param newHeaders 新的 header
          * @return
          */
         @Override

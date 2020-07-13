@@ -201,6 +201,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
   /**
    * 开始重试流程，创建 Substream
+   *
    * @param previousAttemptCount
    * @return
    */
@@ -807,22 +808,25 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     /**
      * 流关闭时调用
      *
-     * @param status      details about the remote closure
-     * @param rpcProgress RPC progress when client stream listener is closed
-     * @param trailers    trailing metadata
+     * @param status      server 端关闭时包的状态
+     * @param rpcProgress 客户端关闭时，RPC 的进程
+     * @param trailers    响应的元数据
      */
     @Override
     public void closed(Status status, RpcProgress rpcProgress, Metadata trailers) {
-      // 关闭流
+
       synchronized (lock) {
+        // 将 Substream 从 drainedSubstreams 中移除
         state = state.substreamClosed(substream);
+        // 追加当前的状态
         closedSubstreamsInsight.append(status.getCode());
       }
 
       // handle a race between buffer limit exceeded and closed, when setting
       // substream.bufferLimitExceeded = true happens before state.substreamClosed(substream).
-      //当设置 substream.bufferLimitExceeded = true  时，将在  state.substreamClosed(substream)
-      // 之前发生事件，从而处理缓冲区超出限制与关闭之间的竞争
+
+      // 当设置 substream.bufferLimitExceeded = true 在 state.substreamClosed(substream)
+      // 之前发生时，缓冲区溢出，则直接提交请求，关闭监听器
       if (substream.bufferLimitExceeded) {
         commitAndRun(substream);
         if (state.winningSubstream == substream) {
@@ -833,9 +837,11 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
       if (state.winningSubstream == null) {
         boolean isFatal = false;
+        // 如果服务端的状态是被拒绝
         if (rpcProgress == RpcProgress.REFUSED &&
                 noMoreTransparentRetry.compareAndSet(false, true)) {
           // transparent retry
+          // 则在 Transport 层重试
           final Substream newSubstream = createSubstream(substream.previousAttemptCount);
           if (isHedging) {
             boolean commit = false;
@@ -1042,7 +1048,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     /**
      * Unmodifiable collection of all the open substreams that are drained. Singleton once
      * passThrough; Empty if committed but not passTrough.
-     * 所有消耗掉的已经打开的流的不可变集合
+     * 所有已释放的打开的 Substream 的不可变集合
+     * 一旦 passTrough 则是单例的，如果提交了但是不是 passTrough 则是空
      */
     final Collection<Substream> drainedSubstreams;
 
@@ -1056,8 +1063,12 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
     final int hedgingAttemptCount;
 
-    /** Null until committed. */
-    @Nullable final Substream winningSubstream;
+    /**
+     * Null until committed.
+     * 提交之前最后一个处理的流，在提交之前是 null
+     */
+    @Nullable
+    final Substream winningSubstream;
 
     /** Not required to set to true when cancelled, but can short-circuit the draining process. */
     final boolean cancelled;
@@ -1138,7 +1149,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
 
     /**
-     * 关闭指定的流
+     * 将 Substream 从 drainedSubstreams 中移除
      * The given substream is closed.
      */
     @CheckReturnValue
@@ -1151,9 +1162,16 @@ abstract class RetriableStream<ReqT> implements ClientStream {
         Collection<Substream> drainedSubstreams = new ArrayList<>(this.drainedSubstreams);
         drainedSubstreams.remove(substream);
         drainedSubstreams = Collections.unmodifiableCollection(drainedSubstreams);
-        return new State(
-                buffer, drainedSubstreams, activeHedges, winningSubstream, cancelled, passThrough,
-                hedgingFrozen, hedgingAttemptCount);
+
+        // 返回状态
+        return new State(buffer,
+                drainedSubstreams,
+                activeHedges,
+                winningSubstream,
+                cancelled,
+                passThrough,
+                hedgingFrozen,
+                hedgingAttemptCount);
       } else {
         return this;
       }
@@ -1253,11 +1271,20 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     ClientStream stream;
 
     // GuardedBy RetriableStream.lock
+    /**
+     * 流是关闭状态
+     */
     boolean closed;
 
     // setting to true must be GuardedBy RetriableStream.lock
+    /**
+     * 缓冲区超出限制
+     */
     boolean bufferLimitExceeded;
 
+    /**
+     * 之前的重试次数
+     */
     final int previousAttemptCount;
 
     Substream(int previousAttemptCount) {
