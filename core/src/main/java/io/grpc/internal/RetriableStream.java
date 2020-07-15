@@ -131,14 +131,17 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   private Runnable commit(final Substream winningSubstream) {
 
     synchronized (lock) {
+      // 如果已经有流提交了，则返回 null
       if (state.winningSubstream != null) {
         return null;
       }
       final Collection<Substream> savedDrainedSubstreams = state.drainedSubstreams;
 
+      // 没有则提交当前的流
       state = state.committed(winningSubstream);
 
       // subtract the share of this RPC from channelBufferUsed.
+      // buffer 减去使用的
       channelBufferUsed.addAndGet(-perRpcBufferUsed);
 
       final Future<?> retryFuture;
@@ -202,7 +205,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   /**
    * 开始重试流程，创建 Substream
    *
-   * @param previousAttemptCount
+   * @param previousAttemptCount 之前重试的次数
    * @return
    */
   private Substream createSubstream(int previousAttemptCount) {
@@ -252,6 +255,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    */
   private void drain(Substream substream) {
     int index = 0;
+    // 128
     int chunk = 0x80;
     List<BufferEntry> list = null;
 
@@ -261,10 +265,13 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       // 加锁
       synchronized (lock) {
         savedState = state;
+        // 如果已经有被提交的流，且提交的流不是当前流，则退出
         if (savedState.winningSubstream != null && savedState.winningSubstream != substream) {
           // committed but not me
           break;
         }
+
+        // 如果缓冲区满了，则将这个流添加的已经枯竭的流中并返回
         if (index == savedState.buffer.size()) { // I'm drained
           state = savedState.substreamDrained(substream);
           return;
@@ -275,6 +282,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           return;
         }
 
+        // 只能缓冲 128 个流，如果有更多的，则截断
         int stop = Math.min(index + chunk, savedState.buffer.size());
         if (list == null) {
           list = new ArrayList<>(savedState.buffer.subList(index, stop));
@@ -285,20 +293,26 @@ abstract class RetriableStream<ReqT> implements ClientStream {
         index = stop;
       }
 
+      // 遍历所有缓冲的流
       for (BufferEntry bufferEntry : list) {
         savedState = state;
+        // 如果请求已经提交了，且不是当前流提交的，则跳出
         if (savedState.winningSubstream != null && savedState.winningSubstream != substream) {
           // committed but not me
           break;
         }
+        // 如果流被取消了，则检查是否是是当前流提交的，并跳出
         if (savedState.cancelled) {
           checkState(savedState.winningSubstream == substream, "substream should be CANCELLED_BECAUSE_COMMITTED already");
           return;
         }
+
+        // 执行流的操作
         bufferEntry.runWith(substream);
       }
     }
 
+    // 如果请求已经被提交，则取消
     substream.stream.cancel(CANCELLED_BECAUSE_COMMITTED);
   }
 
@@ -454,21 +468,31 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
   }
 
+  /**
+   * 取消请求并说明原因
+   *
+   * @param reason must be non-OK
+   */
   @Override
   public final void cancel(Status reason) {
+    // 创建一个空的 Substream
     Substream noopSubstream = new Substream(0 /* previousAttempts doesn't matter here */);
     noopSubstream.stream = new NoopClientStream();
+    // 提交
     Runnable runnable = commit(noopSubstream);
 
+    // 执行返回的任务，关闭监听器
     if (runnable != null) {
       masterListener.closed(reason, new Metadata());
       runnable.run();
       return;
     }
 
+    // 指定原因
     state.winningSubstream.stream.cancel(reason);
     synchronized (lock) {
       // This is not required, but causes a short-circuit in the draining process.
+      // 返回取消的状态
       state = state.cancelled();
     }
   }
@@ -747,13 +771,17 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    * Whether there is any potential hedge at the moment. A false return value implies there is
    * absolutely no potential hedge. At least one of the hedges will observe a false return value
    * when calling this method, unless otherwise the rpc is committed.
+   * <p>
+   * 目前是否可以对冲，返回 false 意味着没有，调用此方法时，意味着至少有一个监听器监听到错误的返回值，
+   * 除非这个 RPC 被提交了
    */
   // only called when isHedging is true
   @GuardedBy("lock")
   private boolean hasPotentialHedging(State state) {
+    // 没有提交的流，且没有达到最大对冲次数，且没有终止
     return state.winningSubstream == null
-        && state.hedgingAttemptCount < hedgingPolicy.maxAttempts
-        && !state.hedgingFrozen;
+            && state.hedgingAttemptCount < hedgingPolicy.maxAttempts
+            && !state.hedgingFrozen;
   }
 
   @SuppressWarnings("GuardedBy")
@@ -850,26 +878,33 @@ abstract class RetriableStream<ReqT> implements ClientStream {
               // noMoreTransparentRetry.compareAndSet(false, true), it does not change the size() of
               // activeHedges, so neither does it affect the commitment decision of other threads,
               // nor do the commitment decision making threads affect itself.
+              // 尽管不是通过 noMoreTransparentRetry.compareAndSet(false, true) 操作的，但是并不会改变
+              // activeHedges 的 size，所以它也不影响其他线程的承诺决策，线程也不会影响它本身
+              // 用新的流替换原有的对冲流
               state = state.replaceActiveHedge(substream, newSubstream);
 
               // optimization for early commit
-              if (!hasPotentialHedging(state)
-                  && state.activeHedges.size() == 1) {
+              // 如果不可以对冲，且活跃的流为 1，则提交
+              if (!hasPotentialHedging(state) && state.activeHedges.size() == 1) {
                 commit = true;
               }
             }
+            // 提交流
             if (commit) {
               commitAndRun(newSubstream);
             }
           } else {
+            // 如果是重试，重试策略为空，则获取
             if (retryPolicy == null) {
               retryPolicy = retryPolicyProvider.get();
             }
+            // 如果不能重试，则提交流
             if (retryPolicy.maxAttempts == 1) {
               // optimization for early commit
               commitAndRun(newSubstream);
             }
           }
+          // 执行新的请求
           callExecutor.execute(new Runnable() {
             @Override
             public void run() {
@@ -1039,28 +1074,40 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   }
 
   private static final class State {
-    /** Committed and the winning substream drained. */
+    /**
+     * Committed and the winning substream drained.
+     * 成功提交且释放流
+     */
     final boolean passThrough;
 
-    /** A list of buffered ClientStream runnables. Set to Null once passThrough. */
-    @Nullable final List<BufferEntry> buffer;
+    /**
+     * A list of buffered ClientStream runnables. Set to Null once passThrough.
+     * 缓冲的 ClientStream 的任务集合，只要完成了就设置为 null
+     */
+    @Nullable
+    final List<BufferEntry> buffer;
 
     /**
      * Unmodifiable collection of all the open substreams that are drained. Singleton once
      * passThrough; Empty if committed but not passTrough.
      * 所有已释放的打开的 Substream 的不可变集合
-     * 一旦 passTrough 则是单例的，如果提交了但是不是 passTrough 则是空
+     * 一旦成功提交且释放流则是单例的，如果提交了但是没有释放流则是空
      */
     final Collection<Substream> drainedSubstreams;
 
     /**
      * Unmodifiable collection of all the active hedging substreams.
+     * 所有活跃的对冲请求流的不可变集合
      *
      * <p>A substream even with the attribute substream.closed being true may be considered still
      * "active" at the moment as long as it is in this collection.
+     * 如果 一个 Substream 的 substream.closed 是 true，且在这个集合中，就认为它是活跃的
      */
     final Collection<Substream> activeHedges; // not null once isHedging = true
 
+    /**
+     * 对冲请求的次数
+     */
     final int hedgingAttemptCount;
 
     /**
@@ -1070,24 +1117,40 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     @Nullable
     final Substream winningSubstream;
 
-    /** Not required to set to true when cancelled, but can short-circuit the draining process. */
+    /**
+     * Not required to set to true when cancelled, but can short-circuit the draining process.
+     * 流是否取消，当取消时不要求设置为 true，但是会短路流
+     */
     final boolean cancelled;
 
-    /** No more hedging due to events like drop or pushback. */
+    /**
+     * No more hedging due to events like drop or pushback.
+     * 因为回推或终止事件导致没有更多的对冲请求
+     */
     final boolean hedgingFrozen;
 
-    State(
-        @Nullable List<BufferEntry> buffer,
-        Collection<Substream> drainedSubstreams,
-        Collection<Substream> activeHedges,
-        @Nullable Substream winningSubstream,
-        boolean cancelled,
-        boolean passThrough,
-        boolean hedgingFrozen,
-        int hedgingAttemptCount) {
+    /**
+     * 构建 State
+     *
+     * @param buffer              缓冲的 ClientStream 的任务集合，只要完成了就设置为 null
+     * @param drainedSubstreams   所有已释放的打开的 Substream 的不可变集合
+     * @param activeHedges        所有活跃的对冲请求流的不可变集合
+     * @param winningSubstream    提交之前最后一个处理的流，在提交之前是 null
+     * @param cancelled           流是否取消，当取消时不要求设置为 true，但是会短路流
+     * @param passThrough         成功提交且释放流
+     * @param hedgingFrozen       因为回推或终止事件导致没有更多的对冲请求
+     * @param hedgingAttemptCount 对冲请求的次数
+     */
+    State(@Nullable List<BufferEntry> buffer,
+          Collection<Substream> drainedSubstreams,
+          Collection<Substream> activeHedges,
+          @Nullable Substream winningSubstream,
+          boolean cancelled,
+          boolean passThrough,
+          boolean hedgingFrozen,
+          int hedgingAttemptCount) {
       this.buffer = buffer;
-      this.drainedSubstreams =
-          checkNotNull(drainedSubstreams, "drainedSubstreams");
+      this.drainedSubstreams = checkNotNull(drainedSubstreams, "drainedSubstreams");
       this.winningSubstream = winningSubstream;
       this.activeHedges = activeHedges;
       this.cancelled = cancelled;
@@ -1096,14 +1159,11 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       this.hedgingAttemptCount = hedgingAttemptCount;
 
       checkState(!passThrough || buffer == null, "passThrough should imply buffer is null");
-      checkState(
-          !passThrough || winningSubstream != null,
-          "passThrough should imply winningSubstream != null");
-      checkState(
-          !passThrough
-              || (drainedSubstreams.size() == 1 && drainedSubstreams.contains(winningSubstream))
-              || (drainedSubstreams.size() == 0 && winningSubstream.closed),
-          "passThrough should imply winningSubstream is drained");
+      checkState(!passThrough || winningSubstream != null, "passThrough should imply winningSubstream != null");
+      checkState(!passThrough ||
+                      (drainedSubstreams.size() == 1 && drainedSubstreams.contains(winningSubstream)) ||
+                      (drainedSubstreams.size() == 0 && winningSubstream.closed),
+              "passThrough should imply winningSubstream is drained");
       checkState(!cancelled || winningSubstream != null, "cancelled should imply committed");
     }
 
@@ -1115,41 +1175,55 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           hedgingFrozen, hedgingAttemptCount);
     }
 
-    /** The given substream is drained. */
+    /**
+     * 将 Substream 移除
+     * The given substream is drained.
+     */
     @CheckReturnValue
     // GuardedBy RetriableStream.lock
     State substreamDrained(Substream substream) {
       checkState(!passThrough, "Already passThrough");
 
       Collection<Substream> drainedSubstreams;
-      
+
+      // 如果这个流已经是关闭状态，则
       if (substream.closed) {
         drainedSubstreams = this.drainedSubstreams;
       } else if (this.drainedSubstreams.isEmpty()) {
+        // 如果没有枯竭的流，则使用这个流创建
         // optimize for 0-retry, which is most of the cases.
         drainedSubstreams = Collections.singletonList(substream);
       } else {
+        // 否则将这个流加入
         drainedSubstreams = new ArrayList<>(this.drainedSubstreams);
         drainedSubstreams.add(substream);
         drainedSubstreams = Collections.unmodifiableCollection(drainedSubstreams);
       }
 
+      // 是否已经有提交的流
       boolean passThrough = winningSubstream != null;
 
       List<BufferEntry> buffer = this.buffer;
+      // 如果有提交的流，则检查是否是当前的流
       if (passThrough) {
-        checkState(
-            winningSubstream == substream, "Another RPC attempt has already committed");
+        checkState(winningSubstream == substream, "Another RPC attempt has already committed");
         buffer = null;
       }
 
+      // 返回 State
       return new State(
-          buffer, drainedSubstreams, activeHedges, winningSubstream, cancelled, passThrough,
-          hedgingFrozen, hedgingAttemptCount);
+              buffer,
+              drainedSubstreams,
+              activeHedges,
+              winningSubstream,
+              cancelled,
+              passThrough,
+              hedgingFrozen,
+              hedgingAttemptCount);
     }
 
     /**
-     * 将 Substream 从 drainedSubstreams 中移除
+     * 将 Substream 从 drainedSubstreams 中移除，并关闭流
      * The given substream is closed.
      */
     @CheckReturnValue
@@ -1247,18 +1321,34 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           hedgingFrozen, hedgingAttemptCount);
     }
 
+    /**
+     * Transport 重试
+     *
+     * @param oldOne
+     * @param newOne
+     * @return
+     */
     @CheckReturnValue
     // GuardedBy RetriableStream.lock
     // The method is only called for transparent retry.
     State replaceActiveHedge(Substream oldOne, Substream newOne) {
+      // 根据之前的对冲请求 Substream 创建新的集合
       Collection<Substream> activeHedges = new ArrayList<>(this.activeHedges);
+      // 移除旧的 Substream，并加入新的
       activeHedges.remove(oldOne);
       activeHedges.add(newOne);
+      // 变为不可变的集合
       activeHedges = Collections.unmodifiableCollection(activeHedges);
 
-      return new State(
-          buffer, drainedSubstreams, activeHedges, winningSubstream, cancelled, passThrough,
-          hedgingFrozen, hedgingAttemptCount);
+      // 返回状态
+      return new State(buffer,
+              drainedSubstreams,
+              activeHedges,
+              winningSubstream,
+              cancelled,
+              passThrough,
+              hedgingFrozen,
+              hedgingAttemptCount);
     }
   }
 
