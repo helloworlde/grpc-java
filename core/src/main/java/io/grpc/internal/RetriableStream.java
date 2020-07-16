@@ -69,6 +69,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   private final ScheduledExecutorService scheduledExecutorService;
   // Must not modify it.
   private final Metadata headers;
+  // 重试策略提供器
   private final RetryPolicy.Provider retryPolicyProvider;
   private final HedgingPolicy.Provider hedgingPolicyProvider;
   private RetryPolicy retryPolicy;
@@ -92,6 +93,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
   /**
    * Either transparent retry happened or reached server's application logic.
+   * 是否还有 Transport 层透明重试的请求
    */
   private final AtomicBoolean noMoreTransparentRetry = new AtomicBoolean();
 
@@ -101,6 +103,10 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   private long perRpcBufferUsed;
 
   private ClientStreamListener masterListener;
+
+  /**
+   * 计划的重试
+   */
   @GuardedBy("lock")
   private FutureCanceller scheduledRetry;
 
@@ -109,6 +115,10 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    */
   @GuardedBy("lock")
   private FutureCanceller scheduledHedging;
+
+  /**
+   * 下一次延时的时间间隔
+   */
   private long nextBackoffIntervalNanos;
 
   RetriableStream(
@@ -773,6 +783,9 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
   }
 
+  /**
+   * 用于计算随机延时的随机器
+   */
   private static Random random = new Random();
 
   @VisibleForTesting
@@ -944,10 +957,13 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           }
         } else {
           // PROCESSED 状态
+          // 没有更多 Transport 层的透明重试
           noMoreTransparentRetry.set(true);
 
+          // 如果重试策略为空，则从 Provider 中获取
           if (retryPolicy == null) {
             retryPolicy = retryPolicyProvider.get();
+            // 下一次重试的延迟时间，nextBackoffIntervalNanos * random.netDouble()
             nextBackoffIntervalNanos = retryPolicy.initialBackoffNanos;
           }
 
