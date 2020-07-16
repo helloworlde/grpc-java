@@ -103,6 +103,10 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   private ClientStreamListener masterListener;
   @GuardedBy("lock")
   private FutureCanceller scheduledRetry;
+
+  /**
+   * 已经计划的对冲请求
+   */
   @GuardedBy("lock")
   private FutureCanceller scheduledHedging;
   private long nextBackoffIntervalNanos;
@@ -145,6 +149,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       channelBufferUsed.addAndGet(-perRpcBufferUsed);
 
       final Future<?> retryFuture;
+      // 如果有计划中的重试，则取消
       if (scheduledRetry != null) {
         // TODO(b/145386688): This access should be guarded by 'this.scheduledRetry.lock'; instead
         // found: 'this.lock'
@@ -154,6 +159,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
         retryFuture = null;
       }
       // cancel the scheduled hedging if it is scheduled prior to the commitment
+      // 如果有计划中的对冲，则取消
       final Future<?> hedgingFuture;
       if (scheduledHedging != null) {
         // TODO(b/145386688): This access should be guarded by 'this.scheduledHedging.lock'; instead
@@ -168,18 +174,22 @@ abstract class RetriableStream<ReqT> implements ClientStream {
         @Override
         public void run() {
           // For hedging only, not needed for normal retry
+          // 遍历保存的枯竭的流，如果不是最后提交的流，则都取消
           for (Substream substream : savedDrainedSubstreams) {
             if (substream != winningSubstream) {
               substream.stream.cancel(CANCELLED_BECAUSE_COMMITTED);
             }
           }
+          // 如果有重试中的，则取消
           if (retryFuture != null) {
             retryFuture.cancel(false);
           }
+          // 如果有对冲中的，则取消
           if (hedgingFuture != null) {
             hedgingFuture.cancel(false);
           }
 
+          // 将当前流从未提交的流中移除
           postCommit();
         }
       }
@@ -250,8 +260,10 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   }
 
   /**
-   * TODO
-   * @param substream
+   * 消耗流中缓冲的请求
+   * 可以理解流为水槽，event 是水，drain 相当于拔掉塞子让水流出去
+   *
+   * @param substream 流
    */
   private void drain(Substream substream) {
     int index = 0;
@@ -478,10 +490,11 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     // 创建一个空的 Substream
     Substream noopSubstream = new Substream(0 /* previousAttempts doesn't matter here */);
     noopSubstream.stream = new NoopClientStream();
-    // 提交
+    // 提交，返回的 runnable 是取消保存的对冲、重试以及当前提交的请求
     Runnable runnable = commit(noopSubstream);
 
     // 执行返回的任务，关闭监听器
+    // 如果已经有流提交了，则返回的 Runnable 是 null
     if (runnable != null) {
       masterListener.closed(reason, new Metadata());
       runnable.run();
@@ -784,19 +797,26 @@ abstract class RetriableStream<ReqT> implements ClientStream {
             && !state.hedgingFrozen;
   }
 
+  /**
+   * 取消所有的对冲，更新状态
+   */
   @SuppressWarnings("GuardedBy")
   private void freezeHedging() {
     Future<?> futureToBeCancelled = null;
+    // 加锁
     synchronized (lock) {
+      // 如果有已经计划的对冲，则取消，并将 scheduledHedging 置为 null
       if (scheduledHedging != null) {
         // TODO(b/145386688): This access should be guarded by 'this.scheduledHedging.lock'; instead
         // found: 'this.lock'
         futureToBeCancelled = scheduledHedging.markCancelled();
         scheduledHedging = null;
       }
+      // 返回状态
       state = state.freezeHedging();
     }
 
+    // 取消相应的 Future
     if (futureToBeCancelled != null) {
       futureToBeCancelled.cancel(false);
     }
@@ -908,14 +928,18 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           callExecutor.execute(new Runnable() {
             @Override
             public void run() {
+              // 处理流中的请求
               drain(newSubstream);
             }
           });
           return;
         } else if (rpcProgress == RpcProgress.DROPPED) {
+          // DROPPED 表示请求被负载均衡丢弃了
           // For normal retry, nothing need be done here, will just commit.
           // For hedging, cancel scheduled hedge that is scheduled prior to the drop
+          // 对于正常的重试，不会做任何操作，直接提交；对于对冲，取消之前计划的对冲
           if (isHedging) {
+            // 取消所有的对冲，更新状态
             freezeHedging();
           }
         } else {
@@ -1273,15 +1297,25 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           hedgingFrozen, hedgingAttemptCount);
     }
 
+    /**
+     * 返回冻结对冲请求的状态
+     *
+     * @return
+     */
     @CheckReturnValue
     // GuardedBy RetriableStream.lock
     State freezeHedging() {
       if (hedgingFrozen) {
         return this;
       }
-      return new State(
-          buffer, drainedSubstreams, activeHedges, winningSubstream, cancelled, passThrough,
-          true, hedgingAttemptCount);
+      return new State(buffer,
+              drainedSubstreams,
+              activeHedges,
+              winningSubstream,
+              cancelled,
+              passThrough,
+              true,
+              hedgingAttemptCount);
     }
 
     @CheckReturnValue
@@ -1620,9 +1654,14 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       }
     }
 
+    /**
+     * 标记为取消
+     *
+     * @return
+     */
     @GuardedBy("lock")
     @CheckForNull
-      // Must cancel the returned future if not null.
+    // Must cancel the returned future if not null.
     Future<?> markCancelled() {
       cancelled = true;
       return future;

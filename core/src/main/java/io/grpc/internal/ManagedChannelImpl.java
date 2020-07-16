@@ -513,8 +513,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
           return uncommittedRetriableStreamsRegistry.add(this);
         }
 
+        /**
+         * 提交后的操作
+         */
         @Override
         void postCommit() {
+          // 将当前流从未提交的流中移除
           uncommittedRetriableStreamsRegistry.remove(this);
         }
 
