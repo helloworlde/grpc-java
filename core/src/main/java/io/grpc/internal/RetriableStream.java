@@ -398,36 +398,50 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     drain(substream);
   }
 
+  /**
+   * 如果有回推延时时间，则取消原来的对冲，根据回推时间重新调度一个对冲请求
+   *
+   * @param delayMillis 回推的延时时间
+   */
   @SuppressWarnings("GuardedBy")
   private void pushbackHedging(@Nullable Integer delayMillis) {
+    // 如果回推的时间为 null，则返回
     if (delayMillis == null) {
       return;
     }
+
+    // 如果回推的时间小于 0，则取消所有的对冲，更新状态
     if (delayMillis < 0) {
       freezeHedging();
       return;
     }
 
     // Cancels the current scheduledHedging and reschedules a new one.
+    // 取消当前计划的对冲，并重新调度一个
     FutureCanceller future;
     Future<?> futureToBeCancelled;
 
     synchronized (lock) {
+      // 如果没有已经计划的对冲请求则返回
       if (scheduledHedging == null) {
         return;
       }
 
       // TODO(b/145386688): This access should be guarded by 'this.scheduledHedging.lock'; instead
       // found: 'this.lock'
+      // 标记已经计划的对冲请求为取消
       futureToBeCancelled = scheduledHedging.markCancelled();
+      // 创建一个新的对冲请求
       scheduledHedging = future = new FutureCanceller(lock);
     }
 
+    // 取消已经计划的对冲
     if (futureToBeCancelled != null) {
       futureToBeCancelled.cancel(false);
     }
-    future.setFuture(scheduledExecutorService.schedule(
-        new HedgingRunnable(future), delayMillis, TimeUnit.MILLISECONDS));
+
+    // 根据延时时间，重新提交对冲请求
+    future.setFuture(scheduledExecutorService.schedule(new HedgingRunnable(future), delayMillis, TimeUnit.MILLISECONDS));
   }
 
   private final class HedgingRunnable implements Runnable {
@@ -1001,19 +1015,27 @@ abstract class RetriableStream<ReqT> implements ClientStream {
                 TimeUnit.NANOSECONDS));
             return;
           }
+          // 是否返回的状态不在 nonFatalStatusCodes 中
           isFatal = retryPlan.isFatal;
+          // 如果有回推延时时间，则取消原来的对冲，根据回推时间重新调度一个对冲请求
           pushbackHedging(retryPlan.hedgingPushbackMillis);
         }
 
+        // 如果是对冲请求，
         if (isHedging) {
           synchronized (lock) {
+            // 从所有活跃的对冲请求流中移除当前的流并返回状态
             state = state.removeActiveHedge(substream);
 
             // The invariant is whether or not #(Potential Hedge + active hedges) > 0.
             // Once hasPotentialHedging(state) is false, it will always be false, and then
             // #(state.activeHedges) will be decreasing. This guarantees that even there may be
             // multiple concurrent hedges, one of the hedges will end up committed.
+            // 不变的是  #(Potential Hedge + active hedges) > 0.
+            // 一旦 hasPotentialHedging(state) 是 false，那么会一直是 false，然后#(state.activeHedges)
+            // 会减少，这保证了即使有多个并发，其中会有一个被提交
             if (!isFatal) {
+              // 如果有对冲或者对话从请求不为空，则返回，继续执行对冲
               if (hasPotentialHedging(state) || !state.activeHedges.isEmpty()) {
                 return;
               }
@@ -1025,6 +1047,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
       // 提交流
       commitAndRun(substream);
+      // 如果当前流是成功关闭的流，则关闭监听器
       if (state.winningSubstream == substream) {
         masterListener.closed(status, trailers);
       }
@@ -1358,17 +1381,30 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           hedgingFrozen, hedgingAttemptCount);
     }
 
+    /**
+     * 从所有活跃的对冲请求流中移除当前的流并返回状态
+     *
+     * @param substream
+     * @return
+     */
     @CheckReturnValue
     // GuardedBy RetriableStream.lock
     // The method is only called in Sublistener.closed()
     State removeActiveHedge(Substream substream) {
+      // 从所有活跃的对冲请求流中移除当前的流
       Collection<Substream> activeHedges = new ArrayList<>(this.activeHedges);
       activeHedges.remove(substream);
       activeHedges = Collections.unmodifiableCollection(activeHedges);
 
-      return new State(
-          buffer, drainedSubstreams, activeHedges, winningSubstream, cancelled, passThrough,
-          hedgingFrozen, hedgingAttemptCount);
+      // 返回状态
+      return new State(buffer,
+              drainedSubstreams,
+              activeHedges,
+              winningSubstream,
+              cancelled,
+              passThrough,
+              hedgingFrozen,
+              hedgingAttemptCount);
     }
 
     /**
@@ -1630,6 +1666,9 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    */
   private static final class RetryPlan {
     final boolean shouldRetry;
+    /**
+     * 返回的状态不在 nonFatalStatusCodes 中
+     */
     final boolean isFatal; // receiving a status not among the nonFatalStatusCodes
     final long backoffNanos;
     @Nullable
