@@ -275,6 +275,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
   public void start(Listener<RespT> observer, Metadata headers) {
     PerfMark.startTask("ClientCall.start", tag);
     try {
+      // 开始调用
       startInternal(observer, headers);
     } finally {
       PerfMark.stopTask("ClientCall.start", tag);
@@ -748,8 +749,17 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     return MoreObjects.toStringHelper(this).add("method", method).toString();
   }
 
+  /**
+   * 客户端流事件监听器实现
+   */
   private class ClientStreamListenerImpl implements ClientStreamListener {
+    /**
+     * 监听器
+     */
     private final Listener<RespT> observer;
+    /**
+     * 是否关闭
+     */
     private boolean closed;
 
     public ClientStreamListenerImpl(Listener<RespT> observer) {

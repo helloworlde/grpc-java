@@ -25,6 +25,9 @@ import io.grpc.MethodDescriptor;
 
 import java.util.concurrent.TimeUnit;
 
+/**
+ * ForwardingManagedChannel 是 ManagedChannel 的代理
+ */
 abstract class ForwardingManagedChannel extends ManagedChannel {
 
   private final ManagedChannel delegate;

@@ -181,8 +181,7 @@ final class ServiceConfigInterceptor implements ClientInterceptor {
         if (info.maxOutboundMessageSize != null) {
             Integer existingLimit = callOptions.getMaxOutboundMessageSize();
             if (existingLimit != null) {
-                callOptions = callOptions.withMaxOutboundMessageSize(
-                        Math.min(existingLimit, info.maxOutboundMessageSize));
+                callOptions = callOptions.withMaxOutboundMessageSize(Math.min(existingLimit, info.maxOutboundMessageSize));
             } else {
                 callOptions = callOptions.withMaxOutboundMessageSize(info.maxOutboundMessageSize);
             }
