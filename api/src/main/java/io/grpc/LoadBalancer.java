@@ -16,23 +16,24 @@
 
 package io.grpc;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.Immutable;
+import javax.annotation.concurrent.NotThreadSafe;
+import javax.annotation.concurrent.ThreadSafe;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
-import javax.annotation.concurrent.NotThreadSafe;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * A pluggable component that receives resolved addresses from {@link NameResolver} and provides the
@@ -910,6 +911,7 @@ public abstract class LoadBalancer {
 
   /**
    * Provides essentials for LoadBalancer implementations.
+   * 提供 LoadBalancer 实现的基本要素
    *
    * @since 1.2.0
    */
@@ -1074,15 +1076,20 @@ public abstract class LoadBalancer {
 
     /**
      * Set a new state with a new picker to the channel.
+     * 使用新的 picker 为 channel 设置新的状态
      *
      * <p>When a new picker is provided via {@code updateBalancingState()}, the channel will apply
      * the picker on all buffered RPCs, by calling {@link SubchannelPicker#pickSubchannel(
-     * LoadBalancer.PickSubchannelArgs)}.
+     *LoadBalancer.PickSubchannelArgs)}.
+     * 如果提供了新的 picker 或调用 updateBalancingState 方法，channel 会通过调用 SubchannelPicker#pickSubchannel
+     * 将 picker 用于所有缓冲的 buffer
      *
      * <p>The channel will hold the picker and use it for all RPCs, until {@code
      * updateBalancingState()} is called again and a new picker replaces the old one.  If {@code
      * updateBalancingState()} has never been called, the channel will buffer all RPCs until a
      * picker is provided.
+     * channel 会持有 picker 并用于所有的 RPC，直到再次调用了 updateBalancingState 提供了新的 picker，
+     * 如果没有调用 updateBalancingState，channel 会缓冲所有的 RPC 直到提供了 picker
      *
      * <p>It should be called from the Synchronization Context.  Currently will log a warning if
      * violated.  It will become an exception eventually.  See <a
@@ -1090,11 +1097,12 @@ public abstract class LoadBalancer {
      *
      * <p>The passed state will be the channel's new state. The SHUTDOWN state should not be passed
      * and its behavior is undefined.
+     * 传入的状态应当是 Channel 的新状态
      *
      * @since 1.6.0
      */
-    public abstract void updateBalancingState(
-        @Nonnull ConnectivityState newState, @Nonnull SubchannelPicker newPicker);
+    public abstract void updateBalancingState(@Nonnull ConnectivityState newState,
+                                              @Nonnull SubchannelPicker newPicker);
 
     /**
      * Call {@link NameResolver#refresh} on the channel's resolver.

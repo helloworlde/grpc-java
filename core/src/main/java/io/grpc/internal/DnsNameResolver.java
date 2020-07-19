@@ -16,8 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
@@ -34,6 +32,8 @@ import io.grpc.ProxyDetector;
 import io.grpc.Status;
 import io.grpc.SynchronizationContext;
 import io.grpc.internal.SharedResourceHolder.Resource;
+
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.net.InetAddress;
@@ -54,7 +54,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * A DNS-based {@link NameResolver}.
@@ -197,6 +198,11 @@ public class DnsNameResolver extends NameResolver {
     return host;
   }
 
+  /**
+   * 开始解析
+   *
+   * @param listener used to receive updates on the target
+   */
   @Override
   public void start(Listener2 listener) {
     Preconditions.checkState(this.listener == null, "already started");
@@ -204,6 +210,7 @@ public class DnsNameResolver extends NameResolver {
       executor = SharedResourceHolder.get(executorResource);
     }
     this.listener = checkNotNull(listener, "listener");
+    // 解析
     resolve();
   }
 
@@ -213,10 +220,16 @@ public class DnsNameResolver extends NameResolver {
     resolve();
   }
 
+  /**
+   * 根据 Host 解析地址
+   *
+   * @return 解析到的地址集合
+   */
   private List<EquivalentAddressGroup> resolveAddresses() {
     List<? extends InetAddress> addresses;
     Exception addressesException = null;
     try {
+      // 根据 Host 解析地址
       addresses = addressResolver.resolveAddress(host);
     } catch (Exception e) {
       addressesException = e;
@@ -227,6 +240,8 @@ public class DnsNameResolver extends NameResolver {
         logger.log(Level.FINE, "Address resolution failure", addressesException);
       }
     }
+
+    // 将地址和端口转换为地址集合
     // Each address forms an EAG
     List<EquivalentAddressGroup> servers = new ArrayList<>(addresses.size());
     for (InetAddress inetAddr : addresses) {
@@ -235,19 +250,29 @@ public class DnsNameResolver extends NameResolver {
     return Collections.unmodifiableList(servers);
   }
 
+  /**
+   * 解析配置
+   * @return 解析到的配置
+   */
   @Nullable
   private ConfigOrError resolveServiceConfig() {
     List<String> txtRecords = Collections.emptyList();
     ResourceResolver resourceResolver = getResourceResolver();
+
     if (resourceResolver != null) {
       try {
+        // 根据前缀查找记录
         txtRecords = resourceResolver.resolveTxt(SERVICE_CONFIG_NAME_PREFIX + host);
       } catch (Exception e) {
         logger.log(Level.FINE, "ServiceConfig resolution failure", e);
       }
     }
+
+    // 如果记录不为空，则解析配置
     if (!txtRecords.isEmpty()) {
+      // 解析配置
       ConfigOrError rawServiceConfig = parseServiceConfig(txtRecords, random, getLocalHostname());
+
       if (rawServiceConfig != null) {
         if (rawServiceConfig.getError() != null) {
           return ConfigOrError.fromError(rawServiceConfig.getError());
@@ -255,6 +280,7 @@ public class DnsNameResolver extends NameResolver {
 
         @SuppressWarnings("unchecked")
         Map<String, ?> verifiedRawServiceConfig = (Map<String, ?>) rawServiceConfig.getConfig();
+        // 将 map 配置解析为对象并返回
         return serviceConfigParser.parseServiceConfig(verifiedRawServiceConfig);
       }
     } else {
@@ -275,6 +301,7 @@ public class DnsNameResolver extends NameResolver {
   }
 
   /**
+   * 解析地址
    * Main logic of name resolution.
    */
   protected InternalResolutionResult doResolve(boolean forceTxt) {
@@ -283,11 +310,11 @@ public class DnsNameResolver extends NameResolver {
       result.addresses = resolveAddresses();
     } catch (Exception e) {
       if (!forceTxt) {
-        result.error =
-            Status.UNAVAILABLE.withDescription("Unable to resolve host " + host).withCause(e);
+        result.error = Status.UNAVAILABLE.withDescription("Unable to resolve host " + host).withCause(e);
         return result;
       }
     }
+    // 如果开启了 txt 解析，则解析配置
     if (enableTxt) {
       result.config = resolveServiceConfig();
     }
@@ -301,6 +328,9 @@ public class DnsNameResolver extends NameResolver {
       this.savedListener = checkNotNull(savedListener, "savedListener");
     }
 
+    /**
+     * 从 DNS 解析服务
+     */
     @Override
     public void run() {
       if (logger.isLoggable(Level.FINER)) {
@@ -310,17 +340,21 @@ public class DnsNameResolver extends NameResolver {
       try {
         EquivalentAddressGroup proxiedAddr = detectProxy();
         ResolutionResult.Builder resolutionResultBuilder = ResolutionResult.newBuilder();
+        // 代理的地址
         if (proxiedAddr != null) {
           if (logger.isLoggable(Level.FINER)) {
             logger.finer("Using proxy address " + proxiedAddr);
           }
           resolutionResultBuilder.setAddresses(Collections.singletonList(proxiedAddr));
         } else {
+          // 根据 HOST 解析地址和配置
           result = doResolve(false);
+
           if (result.error != null) {
             savedListener.onError(result.error);
             return;
           }
+          // 如果有地址，则设置地址
           if (result.addresses != null) {
             resolutionResultBuilder.setAddresses(result.addresses);
           }
@@ -331,10 +365,10 @@ public class DnsNameResolver extends NameResolver {
             resolutionResultBuilder.setAttributes(result.attributes);
           }
         }
+        // 更新负载均衡策略，处理未处理的请求
         savedListener.onResult(resolutionResultBuilder.build());
       } catch (IOException e) {
-        savedListener.onError(
-            Status.UNAVAILABLE.withDescription("Unable to resolve host " + host).withCause(e));
+        savedListener.onError(Status.UNAVAILABLE.withDescription("Unable to resolve host " + host).withCause(e));
       } finally {
         final boolean succeed = result != null && result.error == null;
         syncContext.execute(new Runnable() {
@@ -353,24 +387,34 @@ public class DnsNameResolver extends NameResolver {
     }
   }
 
+  /**
+   * 通过 DNS 解析配置
+   * @param rawTxtRecords
+   * @param random
+   * @param localHostname
+   * @return
+   */
   @Nullable
-  static ConfigOrError parseServiceConfig(
-      List<String> rawTxtRecords, Random random, String localHostname) {
+  static ConfigOrError parseServiceConfig(List<String> rawTxtRecords,
+                                          Random random,
+                                          String localHostname) {
     List<Map<String, ?>> possibleServiceConfigChoices;
     try {
+      // 解析可能的配置
       possibleServiceConfigChoices = parseTxtResults(rawTxtRecords);
     } catch (IOException | RuntimeException e) {
-      return ConfigOrError.fromError(
-          Status.UNKNOWN.withDescription("failed to parse TXT records").withCause(e));
+      return ConfigOrError.fromError(Status.UNKNOWN.withDescription("failed to parse TXT records").withCause(e));
     }
+
     Map<String, ?> possibleServiceConfig = null;
+
+    // 遍历可能的配置
     for (Map<String, ?> possibleServiceConfigChoice : possibleServiceConfigChoices) {
       try {
-        possibleServiceConfig =
-            maybeChooseServiceConfig(possibleServiceConfigChoice, random, localHostname);
+        // 解析配置
+        possibleServiceConfig = maybeChooseServiceConfig(possibleServiceConfigChoice, random, localHostname);
       } catch (RuntimeException e) {
-        return ConfigOrError.fromError(
-            Status.UNKNOWN.withDescription("failed to pick service config choice").withCause(e));
+        return ConfigOrError.fromError(Status.UNKNOWN.withDescription("failed to pick service config choice").withCause(e));
       }
       if (possibleServiceConfig != null) {
         break;
@@ -379,14 +423,19 @@ public class DnsNameResolver extends NameResolver {
     if (possibleServiceConfig == null) {
       return null;
     }
+    // 返回配置
     return ConfigOrError.fromConfig(possibleServiceConfig);
   }
 
+  /**
+   * 解析服务
+   */
   private void resolve() {
     if (resolving || shutdown || !cacheRefreshRequired()) {
       return;
     }
     resolving = true;
+    // 根据监听器，解析名称
     executor.execute(new Resolve(listener));
   }
 
@@ -412,17 +461,21 @@ public class DnsNameResolver extends NameResolver {
   }
 
   /**
+   * 解析 DNS 记录，获取配置
    *
    * @throws IOException if one of the txt records contains improperly formatted JSON.
    */
   @VisibleForTesting
   static List<Map<String, ?>> parseTxtResults(List<String> txtRecords) throws IOException {
     List<Map<String, ?>> possibleServiceConfigChoices = new ArrayList<>();
+
     for (String txtRecord : txtRecords) {
       if (!txtRecord.startsWith(SERVICE_CONFIG_PREFIX)) {
         logger.log(Level.FINE, "Ignoring non service config {0}", new Object[]{txtRecord});
         continue;
       }
+
+      // 解析 JSON，获取配置
       Object rawChoices = JsonParser.parse(txtRecord.substring(SERVICE_CONFIG_PREFIX.length()));
       if (!(rawChoices instanceof List)) {
         throw new ClassCastException("wrong type " + rawChoices);
@@ -439,16 +492,13 @@ public class DnsNameResolver extends NameResolver {
   }
 
   @Nullable
-  private static final List<String> getClientLanguagesFromChoice(
-      Map<String, ?> serviceConfigChoice) {
-    return JsonUtil.getListOfStrings(
-        serviceConfigChoice, SERVICE_CONFIG_CHOICE_CLIENT_LANGUAGE_KEY);
+  private static final List<String> getClientLanguagesFromChoice(Map<String, ?> serviceConfigChoice) {
+    return JsonUtil.getListOfStrings(serviceConfigChoice, SERVICE_CONFIG_CHOICE_CLIENT_LANGUAGE_KEY);
   }
 
   @Nullable
   private static final List<String> getHostnamesFromChoice(Map<String, ?> serviceConfigChoice) {
-    return JsonUtil.getListOfStrings(
-        serviceConfigChoice, SERVICE_CONFIG_CHOICE_CLIENT_HOSTNAME_KEY);
+    return JsonUtil.getListOfStrings(serviceConfigChoice, SERVICE_CONFIG_CHOICE_CLIENT_HOSTNAME_KEY);
   }
 
   /**
@@ -477,22 +527,28 @@ public class DnsNameResolver extends NameResolver {
   }
 
   /**
+   * 确定给定的服务配置选项是否适用，如果适用，则将其返回
    * Determines if a given Service Config choice applies, and if so, returns it.
    *
-   * @see <a href="https://github.com/grpc/proposal/blob/master/A2-service-configs-in-dns.md">
-   *   Service Config in DNS</a>
    * @param choice The service config choice.
    * @return The service config object or {@code null} if this choice does not apply.
+   * @see <a href="https://github.com/grpc/proposal/blob/master/A2-service-configs-in-dns.md">
+   * Service Config in DNS</a>
    */
   @Nullable
   @VisibleForTesting
-  static Map<String, ?> maybeChooseServiceConfig(
-      Map<String, ?> choice, Random random, String hostname) {
+  static Map<String, ?> maybeChooseServiceConfig(Map<String, ?> choice,
+                                                 Random random,
+                                                 String hostname) {
+
     for (Entry<String, ?> entry : choice.entrySet()) {
       Verify.verify(SERVICE_CONFIG_CHOICE_KEYS.contains(entry.getKey()), "Bad key: %s", entry);
     }
 
+    // 获取语言
     List<String> clientLanguages = getClientLanguagesFromChoice(choice);
+
+    // 如果不是 Java 则返回
     if (clientLanguages != null && !clientLanguages.isEmpty()) {
       boolean javaPresent = false;
       for (String lang : clientLanguages) {
@@ -505,6 +561,8 @@ public class DnsNameResolver extends NameResolver {
         return null;
       }
     }
+
+    // 获取百分比，如果大于100，则返回
     Double percentage = getPercentageFromChoice(choice);
     if (percentage != null) {
       int pct = percentage.intValue();
@@ -513,6 +571,8 @@ public class DnsNameResolver extends NameResolver {
         return null;
       }
     }
+
+    // 获取 Hostname
     List<String> clientHostnames = getHostnamesFromChoice(choice);
     if (clientHostnames != null && !clientHostnames.isEmpty()) {
       boolean hostnamePresent = false;
@@ -522,15 +582,15 @@ public class DnsNameResolver extends NameResolver {
           break;
         }
       }
+      // 如果没有 hostname 则返回
       if (!hostnamePresent) {
         return null;
       }
     }
-    Map<String, ?> sc =
-        JsonUtil.getObject(choice, SERVICE_CONFIG_CHOICE_SERVICE_CONFIG_KEY);
+    // 获取配置
+    Map<String, ?> sc = JsonUtil.getObject(choice, SERVICE_CONFIG_CHOICE_SERVICE_CONFIG_KEY);
     if (sc == null) {
-      throw new VerifyException(String.format(
-          "key '%s' missing in '%s'", choice, SERVICE_CONFIG_CHOICE_SERVICE_CONFIG_KEY));
+      throw new VerifyException(String.format("key '%s' missing in '%s'", choice, SERVICE_CONFIG_CHOICE_SERVICE_CONFIG_KEY));
     }
     return sc;
   }
@@ -627,6 +687,13 @@ public class DnsNameResolver extends NameResolver {
   private enum JdkAddressResolver implements AddressResolver {
     INSTANCE;
 
+    /**
+     * 根据 Host 解析所有的地址
+     *
+     * @param host host
+     * @return 解析到的地址集合
+     * @throws UnknownHostException
+     */
     @Override
     public List<InetAddress> resolveAddress(String host) throws UnknownHostException {
       return Collections.unmodifiableList(Arrays.asList(InetAddress.getAllByName(host)));

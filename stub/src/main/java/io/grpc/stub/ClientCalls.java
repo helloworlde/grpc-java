@@ -347,9 +347,18 @@ public final class ClientCalls {
     return adapter;
   }
 
+  /**
+   * 发起调用
+   * @param call ClientCallImpl 调用实现类
+   * @param responseListener 响应监听器
+   * @param <ReqT> 请求
+   * @param <RespT> 响应
+   */
   private static <ReqT, RespT> void startCall(ClientCall<ReqT, RespT> call,
                                               StartableListener<RespT> responseListener) {
+    // 通过 ClientCallImpl 调用 start
     call.start(responseListener, new Metadata());
+    // 启动监听器
     responseListener.onStart();
   }
 
@@ -561,6 +570,9 @@ public final class ClientCalls {
       }
     }
 
+    /**
+     * 启动监听器
+     */
     @Override
     void onStart() {
       responseFuture.call.request(2);

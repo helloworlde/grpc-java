@@ -134,15 +134,15 @@ public class RetryingHelloWorldClient {
         final RetryingHelloWorldClient client = new RetryingHelloWorldClient("localhost", 50051, enableRetries);
         ForkJoinPool executor = new ForkJoinPool();
 
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 1; i++) {
             final String userId = "user" + i;
-            executor.execute(
-                    new Runnable() {
-                        @Override
-                        public void run() {
+            // executor.execute(
+            //         new Runnable() {
+            //             @Override
+            //             public void run() {
                             client.greet(userId);
-                        }
-                    });
+                    //     }
+                    // });
         }
         executor.awaitQuiescence(100, TimeUnit.SECONDS);
         executor.shutdown();

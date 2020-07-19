@@ -71,12 +71,14 @@ public abstract class NameResolver {
   public abstract String getServiceAuthority();
 
   /**
+   * 开始服务解析
    * Starts the resolution.
    *
    * @param listener used to receive updates on the target
    * @since 1.0.0
    */
   public void start(final Listener listener) {
+    // 如果是 Listener2 则开始解析，如果不是则使用 Listener2 解析
     if (listener instanceof Listener2) {
       start((Listener2) listener);
     } else {
@@ -95,6 +97,7 @@ public abstract class NameResolver {
   }
 
   /**
+   * 开始服务解析
    * Starts the resolution.
    *
    * @param listener used to receive updates on the target
@@ -325,8 +328,11 @@ public abstract class NameResolver {
     /**
      * Handles updates on resolved addresses and attributes.  If
      * {@link ResolutionResult#getAddresses()} is empty, {@link #onError(Status)} will be called.
+     * <p>
+     * 处理更新事件，如果地址是空的，则会触发 onError 事件
      *
      * @param resolutionResult the resolved server addresses, attributes, and Service Config.
+     *                         解析的地址，属性，服务配置
      * @since 1.21.0
      */
     public abstract void onResult(ResolutionResult resolutionResult);

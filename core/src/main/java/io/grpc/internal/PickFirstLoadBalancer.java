@@ -16,29 +16,35 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static io.grpc.ConnectivityState.CONNECTING;
-import static io.grpc.ConnectivityState.SHUTDOWN;
-import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
-
 import com.google.common.base.MoreObjects;
 import io.grpc.ConnectivityState;
 import io.grpc.ConnectivityStateInfo;
 import io.grpc.EquivalentAddressGroup;
 import io.grpc.LoadBalancer;
 import io.grpc.Status;
+
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static io.grpc.ConnectivityState.CONNECTING;
+import static io.grpc.ConnectivityState.SHUTDOWN;
+import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
 
 /**
  * A {@link LoadBalancer} that provides no load-balancing over the addresses from the {@link
  * io.grpc.NameResolver}.  The channel's default behavior is used, which is walking down the address
  * list and sticking to the first that works.
+ * 不对来自 NameResolver 的地址负载均衡，channel 使用 channel 默认的行为，即查找地址，并使用第一个
  */
 final class PickFirstLoadBalancer extends LoadBalancer {
   private final Helper helper;
   private Subchannel subchannel;
 
+  /**
+   * 构建负载均衡器
+   * @param helper
+   */
   PickFirstLoadBalancer(Helper helper) {
     this.helper = checkNotNull(helper, "helper");
   }
@@ -47,16 +53,15 @@ final class PickFirstLoadBalancer extends LoadBalancer {
   public void handleResolvedAddresses(ResolvedAddresses resolvedAddresses) {
     List<EquivalentAddressGroup> servers = resolvedAddresses.getAddresses();
     if (subchannel == null) {
-      final Subchannel subchannel = helper.createSubchannel(
-          CreateSubchannelArgs.newBuilder()
-              .setAddresses(servers)
-              .build());
+      final Subchannel subchannel = helper.createSubchannel(CreateSubchannelArgs.newBuilder()
+                                                                                .setAddresses(servers)
+                                                                                .build());
       subchannel.start(new SubchannelStateListener() {
-          @Override
-          public void onSubchannelState(ConnectivityStateInfo stateInfo) {
-            processSubchannelState(subchannel, stateInfo);
-          }
-        });
+        @Override
+        public void onSubchannelState(ConnectivityStateInfo stateInfo) {
+          processSubchannelState(subchannel, stateInfo);
+        }
+      });
       this.subchannel = subchannel;
 
       // The channel state does not get updated when doing name resolving today, so for the moment

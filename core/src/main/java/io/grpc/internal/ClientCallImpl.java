@@ -81,7 +81,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
   private final MethodDescriptor<ReqT, RespT> method;
   private final Tag tag;
   private final Executor callExecutor;
-  // 是否是直接执行器
+  // 是否是直接执行
   private final boolean callExecutorIsDirect;
   private final CallTracer channelCallsTracer;
   private final Context context;
@@ -348,7 +348,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       stream = new FailingClientStream(DEADLINE_EXCEEDED.withDescription("ClientCall started after deadline exceeded: " + effectiveDeadline));
     }
 
-    // 直接执行器
+    // 是否是直接执行
     if (callExecutorIsDirect) {
       stream.optimizeForDirectExecutor();
     }

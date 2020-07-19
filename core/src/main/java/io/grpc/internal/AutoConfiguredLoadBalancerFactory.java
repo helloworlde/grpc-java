@@ -62,6 +62,12 @@ public final class AutoConfiguredLoadBalancerFactory {
     this.defaultPolicy = checkNotNull(defaultPolicy, "defaultPolicy");
   }
 
+  /**
+   * 构建负载均衡配置器
+   *
+   * @param helper
+   * @return
+   */
   public AutoConfiguredLoadBalancer newLoadBalancer(Helper helper) {
     return new AutoConfiguredLoadBalancer(helper);
   }
@@ -82,6 +88,9 @@ public final class AutoConfiguredLoadBalancerFactory {
     public void shutdown() {}
   }
 
+  /**
+   * 自动配置负载均衡
+   */
   @VisibleForTesting
   public final class AutoConfiguredLoadBalancer {
     private final Helper helper;
@@ -90,12 +99,14 @@ public final class AutoConfiguredLoadBalancerFactory {
 
     AutoConfiguredLoadBalancer(Helper helper) {
       this.helper = helper;
+      // 从注册器中获取默认的负载均衡策略提供器
       delegateProvider = registry.getProvider(defaultPolicy);
       if (delegateProvider == null) {
         throw new IllegalStateException("Could not find policy '" + defaultPolicy
-            + "'. Make sure its implementation is either registered to LoadBalancerRegistry or"
-            + " included in META-INF/services/io.grpc.LoadBalancerProvider from your jar files.");
+                + "'. Make sure its implementation is either registered to LoadBalancerRegistry or"
+                + " included in META-INF/services/io.grpc.LoadBalancerProvider from your jar files.");
       }
+      // 创建新的
       delegate = delegateProvider.newLoadBalancer(helper);
     }
 
@@ -104,25 +115,30 @@ public final class AutoConfiguredLoadBalancerFactory {
     }
 
     /**
+     * 更新负载均衡算法，处理未处理的请求
      * Returns non-OK status if resolvedAddresses is empty and delegate lb requires address ({@link
      * LoadBalancer#canHandleEmptyAddressListFromNameResolution()} returns {@code false}). {@code
      * AutoConfiguredLoadBalancer} doesn't expose {@code
      * canHandleEmptyAddressListFromNameResolution} because it depends on the delegated LB.
+     * <p>
+     * 如果 resolvedAddresses 是空的且代理的负载均衡调用 LoadBalancer#canHandleEmptyAddressListFromNameResolution
+     * 返回 false，则返回不是 ok 的状态
      */
     Status tryHandleResolvedAddresses(ResolvedAddresses resolvedAddresses) {
       List<EquivalentAddressGroup> servers = resolvedAddresses.getAddresses();
       Attributes attributes = resolvedAddresses.getAttributes();
+
       if (attributes.get(ATTR_LOAD_BALANCING_CONFIG) != null) {
-        throw new IllegalArgumentException(
-            "Unexpected ATTR_LOAD_BALANCING_CONFIG from upstream: "
-                + attributes.get(ATTR_LOAD_BALANCING_CONFIG));
+        throw new IllegalArgumentException("Unexpected ATTR_LOAD_BALANCING_CONFIG from upstream: " + attributes.get(ATTR_LOAD_BALANCING_CONFIG));
       }
-      PolicySelection policySelection =
-          (PolicySelection) resolvedAddresses.getLoadBalancingPolicyConfig();
+
+      // 负载均衡选择
+      PolicySelection policySelection = (PolicySelection) resolvedAddresses.getLoadBalancingPolicyConfig();
 
       if (policySelection == null) {
         LoadBalancerProvider defaultProvider;
         try {
+          // 更新负载均衡提供器
           defaultProvider = getProviderOrThrow(defaultPolicy, "using default policy");
         } catch (PolicyException e) {
           Status s = Status.INTERNAL.withDescription(e.getMessage());
@@ -132,43 +148,51 @@ public final class AutoConfiguredLoadBalancerFactory {
           delegate = new NoopLoadBalancer();
           return Status.OK;
         }
-        policySelection =
-            new PolicySelection(defaultProvider, /* rawConfig= */ null, /* config= */ null);
+        policySelection = new PolicySelection(defaultProvider,
+                /* rawConfig= */ null,
+                /* config= */ null);
       }
 
+      // 如果负载均衡提供器为空，或者负载均衡算法发生变化
       if (delegateProvider == null
-          || !policySelection.provider.getPolicyName().equals(delegateProvider.getPolicyName())) {
+              || !policySelection.provider.getPolicyName().equals(delegateProvider.getPolicyName())) {
+        // 更新负载均衡状态和选择器，处理待处理的流
         helper.updateBalancingState(ConnectivityState.CONNECTING, new EmptyPicker());
+        // 关闭旧的负载均衡
         delegate.shutdown();
         delegateProvider = policySelection.provider;
         LoadBalancer old = delegate;
+        // 更新负载均衡
         delegate = delegateProvider.newLoadBalancer(helper);
+
         helper.getChannelLogger().log(
-            ChannelLogLevel.INFO, "Load balancer changed from {0} to {1}",
-            old.getClass().getSimpleName(), delegate.getClass().getSimpleName());
+                ChannelLogLevel.INFO, "Load balancer changed from {0} to {1}",
+                old.getClass().getSimpleName(), delegate.getClass().getSimpleName());
       }
       Object lbConfig = policySelection.config;
+
+      // 设置负载均衡算法参数
       if (lbConfig != null) {
-        helper.getChannelLogger().log(
-            ChannelLogLevel.DEBUG, "Load-balancing config: {0}", policySelection.config);
-        attributes =
-            attributes.toBuilder()
-                .set(ATTR_LOAD_BALANCING_CONFIG, policySelection.rawConfig)
-                .build();
+        helper.getChannelLogger().log(ChannelLogLevel.DEBUG, "Load-balancing config: {0}", policySelection.config);
+        attributes = attributes.toBuilder()
+                               .set(ATTR_LOAD_BALANCING_CONFIG, policySelection.rawConfig)
+                               .build();
       }
 
+      // 负载均衡器
       LoadBalancer delegate = getDelegate();
-      if (resolvedAddresses.getAddresses().isEmpty()
-          && !delegate.canHandleEmptyAddressListFromNameResolution()) {
-        return Status.UNAVAILABLE.withDescription(
-            "NameResolver returned no usable address. addrs=" + servers + ", attrs=" + attributes);
+      // 如果地址是空的，或者处理失败，则返回错误
+      if (resolvedAddresses.getAddresses().isEmpty() &&
+              !delegate.canHandleEmptyAddressListFromNameResolution()) {
+        return Status.UNAVAILABLE.withDescription("NameResolver returned no usable address. addrs=" + servers + ", attrs=" + attributes);
       } else {
+        // 返回处理成功
         delegate.handleResolvedAddresses(
-            ResolvedAddresses.newBuilder()
-                .setAddresses(resolvedAddresses.getAddresses())
-                .setAttributes(attributes)
-                .setLoadBalancingPolicyConfig(lbConfig)
-                .build());
+                ResolvedAddresses.newBuilder()
+                                 .setAddresses(resolvedAddresses.getAddresses())
+                                 .setAttributes(attributes)
+                                 .setLoadBalancingPolicyConfig(lbConfig)
+                                 .build());
         return Status.OK;
       }
     }

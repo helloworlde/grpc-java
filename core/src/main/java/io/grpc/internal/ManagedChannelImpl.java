@@ -158,6 +158,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   @Nullable private final String userAgent;
 
   // Only null after channel is terminated. Must be assigned from the syncContext.
+  // 服务发现
   private NameResolver nameResolver;
 
   // Must be accessed from the syncContext.
@@ -186,8 +187,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   // reprocess() must be run from syncContext
   private final DelayedClientTransport delayedTransport;
-  private final UncommittedRetriableStreamsRegistry uncommittedRetriableStreamsRegistry
-      = new UncommittedRetriableStreamsRegistry();
+  // 保存未提交的可重试流的注册器
+  private final UncommittedRetriableStreamsRegistry uncommittedRetriableStreamsRegistry = new UncommittedRetriableStreamsRegistry();
 
   // Shutdown states.
   //
@@ -327,6 +328,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   }
 
   /**
+   * 让 Channel 退出空闲模式
    * Make the channel exit idle mode, if it's in it.
    *
    * <p>Must be called from syncContext
@@ -334,28 +336,39 @@ final class ManagedChannelImpl extends ManagedChannel implements
   @VisibleForTesting
   void exitIdleMode() {
     syncContext.throwIfNotInThisSynchronizationContext();
+
+    // 如果关闭或有错误，则返回
     if (shutdown.get() || panicMode) {
       return;
     }
+    // 如果在使用中，则取消计时器
     if (inUseStateAggregator.isInUse()) {
       // Cancel the timer now, so that a racing due timer will not put Channel on idleness
       // when the caller of exitIdleMode() is about to use the returned loadBalancer.
+      // 现在取消计时器，以便当 exitIdleMode 的调用者将要使用返回的 loadBalancer 时，到期计时器不会将 Channel 置于空闲状态
       cancelIdleTimer(false);
     } else {
       // exitIdleMode() may be called outside of inUseStateAggregator.handleNotInUse() while
       // isInUse() == false, in which case we still need to schedule the timer.
+      // 重新调度计时器
       rescheduleIdleTimer();
     }
+
+    // 如果 lbHelper 不为空，则返回
     if (lbHelper != null) {
       return;
     }
     channelLogger.log(ChannelLogLevel.INFO, "Exiting idle mode");
+    // 构建新的 lbHelper
     LbHelperImpl lbHelper = new LbHelperImpl();
+
+    // 自动配置负载均衡
     lbHelper.lb = loadBalancerFactory.newLoadBalancer(lbHelper);
     // Delay setting lbHelper until fully initialized, since loadBalancerFactory is user code and
     // may throw. We don't want to confuse our state, even if we will enter panic mode.
     this.lbHelper = lbHelper;
 
+    // 服务发现监听器
     NameResolverListener listener = new NameResolverListener(lbHelper, nameResolver);
     nameResolver.start(listener);
     nameResolverStarted = true;
@@ -453,6 +466,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
         final class ExitIdleModeForTransport implements Runnable {
           @Override
           public void run() {
+            // 退出 idle 模式，将会创建 LoadBalancer,NameResovler
             exitIdleMode();
           }
         }
@@ -485,29 +499,47 @@ final class ManagedChannelImpl extends ManagedChannel implements
       return delayedTransport;
     }
 
+    /**
+     * 创建可重试流
+     *
+     * @param method      调用的方法描述
+     * @param callOptions 调用的选项
+     * @param headers     请求头
+     * @param context     请求上下文
+     * @return 可重试的流
+     */
     @Override
-    public <ReqT> ClientStream newRetriableStream(
-        final MethodDescriptor<ReqT, ?> method,
-        final CallOptions callOptions,
-        final Metadata headers,
-        final Context context) {
+    public <ReqT> ClientStream newRetriableStream(final MethodDescriptor<ReqT, ?> method,
+                                                  final CallOptions callOptions,
+                                                  final Metadata headers,
+                                                  final Context context) {
+
       checkState(retryEnabled, "retry should be enabled");
+
+      // 获取节流配置
       final Throttle throttle = lastServiceConfig.getRetryThrottling();
+
+      // 定义可重试流
       final class RetryStream extends RetriableStream<ReqT> {
+        // 构造重试流
         RetryStream() {
-          super(
-              method,
-              headers,
-              channelBufferUsed,
-              perRpcBufferLimit,
-              channelBufferLimit,
-              getCallExecutor(callOptions),
-              transportFactory.getScheduledExecutorService(),
-              callOptions.getOption(RETRY_POLICY_KEY),
-              callOptions.getOption(HEDGING_POLICY_KEY),
-              throttle);
+          super(method,
+                  headers,
+                  channelBufferUsed,
+                  perRpcBufferLimit,
+                  channelBufferLimit,
+                  getCallExecutor(callOptions),
+                  transportFactory.getScheduledExecutorService(),
+                  callOptions.getOption(RETRY_POLICY_KEY),
+                  callOptions.getOption(HEDGING_POLICY_KEY),
+                  throttle);
         }
 
+        /**
+         * 将未提交的可重试流添加到注册器中
+         *
+         * @return 如果 channel 没有关闭则返回 null，否则返回关闭状态
+         */
         @Override
         Status prestart() {
           return uncommittedRetriableStreamsRegistry.add(this);
@@ -859,9 +891,15 @@ final class ManagedChannelImpl extends ManagedChannel implements
     return panicMode;
   }
 
+  /**
+   * 更新 Channel 新的 picker
+   *
+   * @param newPicker
+   */
   // Called from syncContext
   private void updateSubchannelPicker(SubchannelPicker newPicker) {
     subchannelPicker = newPicker;
+    // 处理待处理的流
     delayedTransport.reprocess(newPicker);
   }
 
@@ -1062,12 +1100,16 @@ final class ManagedChannelImpl extends ManagedChannel implements
   /**
    * A registry that prevents channel shutdown from killing existing retry attempts that are in
    * backoff.
+   * 防止关闭 channel 时杀掉存在的退让重试请求的注册器
    */
   private final class UncommittedRetriableStreamsRegistry {
     // TODO(zdapeng): This means we would acquire a lock for each new retry-able stream,
     // it's worthwhile to look for a lock-free approach.
     final Object lock = new Object();
 
+    /**
+     * 用于保存可重试流的集合
+     */
     @GuardedBy("lock")
     Collection<ClientStream> uncommittedRetriableStreams = new HashSet<>();
 
@@ -1111,6 +1153,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     /**
      * Registers a RetriableStream and return null if not shutdown, otherwise just returns the
      * shutdown Status.
+     * 注册一个可重试的流，如果没有关闭则返回 null，否则返回关闭状态
      */
     @Nullable
     Status add(RetriableStream<?> retriableStream) {
@@ -1141,6 +1184,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
       }
     }
   }
+
 
   private class LbHelperImpl extends LoadBalancer.Helper {
     AutoConfiguredLoadBalancer lb;
@@ -1187,9 +1231,16 @@ final class ManagedChannelImpl extends ManagedChannel implements
       return new SubchannelImpl(args, this);
     }
 
+
+    /**
+     * 使用新的 picker 为 channel 设置新的状态
+     *
+     * @param newState  新的状态
+     * @param newPicker 新的 picker
+     */
     @Override
-    public void updateBalancingState(
-        final ConnectivityState newState, final SubchannelPicker newPicker) {
+    public void updateBalancingState(final ConnectivityState newState,
+                                     final SubchannelPicker newPicker) {
       checkNotNull(newState, "newState");
       checkNotNull(newPicker, "newPicker");
       logWarningIfNotInSyncContext("updateBalancingState()");
@@ -1199,17 +1250,19 @@ final class ManagedChannelImpl extends ManagedChannel implements
           if (LbHelperImpl.this != lbHelper) {
             return;
           }
+          // 更新选择器，处理流
           updateSubchannelPicker(newPicker);
           // It's not appropriate to report SHUTDOWN state from lb.
           // Ignore the case of newState == SHUTDOWN for now.
           if (newState != SHUTDOWN) {
-            channelLogger.log(
-                ChannelLogLevel.INFO, "Entering {0} state with picker: {1}", newState, newPicker);
+            channelLogger.log(ChannelLogLevel.INFO, "Entering {0} state with picker: {1}", newState, newPicker);
+            // 更新状态
             channelStateManager.gotoState(newState);
           }
         }
       }
 
+      // 执行更新
       syncContext.execute(new UpdateBalancingState());
     }
 
@@ -1412,11 +1465,25 @@ final class ManagedChannelImpl extends ManagedChannel implements
     final LbHelperImpl helper;
     final NameResolver resolver;
 
+    /**
+     * 构建服务发现监听器
+     *
+     * @param helperImpl 负载均衡提供器
+     * @param resolver   服务发现
+     * @return 服务发现监听器
+     */
     NameResolverListener(LbHelperImpl helperImpl, NameResolver resolver) {
       this.helper = checkNotNull(helperImpl, "helperImpl");
       this.resolver = checkNotNull(resolver, "resolver");
     }
 
+    /**
+     * 更新负载均衡算法，处理未处理的请求
+     * 处理更新事件，如果地址是空的，则会触发 onError 事件
+     *
+     * @param resolutionResult the resolved server addresses, attributes, and Service Config.
+     *                         解析的地址，属性，服务配置
+     */
     @Override
     public void onResult(final ResolutionResult resolutionResult) {
       final class NamesResolved implements Runnable {
@@ -1427,10 +1494,10 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
           List<EquivalentAddressGroup> servers = resolutionResult.getAddresses();
           channelLogger.log(
-              ChannelLogLevel.DEBUG,
-              "Resolved address: {0}, config={1}",
-              servers,
-              resolutionResult.getAttributes());
+                  ChannelLogLevel.DEBUG,
+                  "Resolved address: {0}, config={1}",
+                  servers,
+                  resolutionResult.getAttributes());
 
           if (lastResolutionState != ResolutionState.SUCCESS) {
             channelLogger.log(ChannelLogLevel.INFO, "Address resolved: {0}", servers);
@@ -1438,38 +1505,41 @@ final class ManagedChannelImpl extends ManagedChannel implements
           }
 
           nameResolverBackoffPolicy = null;
+          // 获取配置
           ConfigOrError configOrError = resolutionResult.getServiceConfig();
-          ManagedChannelServiceConfig validServiceConfig =
-              configOrError != null && configOrError.getConfig() != null
-                  ? (ManagedChannelServiceConfig) resolutionResult.getServiceConfig().getConfig()
-                  : null;
+          // 如果配置没有错误则使用这个配置
+          ManagedChannelServiceConfig validServiceConfig = configOrError != null && configOrError.getConfig() != null ?
+                  (ManagedChannelServiceConfig) resolutionResult.getServiceConfig().getConfig() :
+                  null;
           Status serviceConfigError = configOrError != null ? configOrError.getError() : null;
 
           ManagedChannelServiceConfig effectiveServiceConfig;
+          // 如果不查找配置，则使用默认配置
           if (!lookUpServiceConfig) {
             if (validServiceConfig != null) {
               channelLogger.log(
-                  ChannelLogLevel.INFO,
-                  "Service config from name resolver discarded by channel settings");
+                      ChannelLogLevel.INFO,
+                      "Service config from name resolver discarded by channel settings");
             }
-            effectiveServiceConfig =
-                defaultServiceConfig == null ? EMPTY_SERVICE_CONFIG : defaultServiceConfig;
+            effectiveServiceConfig = defaultServiceConfig == null ? EMPTY_SERVICE_CONFIG : defaultServiceConfig;
           } else {
             // Try to use config if returned from name resolver
             // Otherwise, try to use the default config if available
+            // 尝试使用服务发现返回的配置
             if (validServiceConfig != null) {
               effectiveServiceConfig = validServiceConfig;
             } else if (defaultServiceConfig != null) {
               effectiveServiceConfig = defaultServiceConfig;
               channelLogger.log(
-                  ChannelLogLevel.INFO,
-                  "Received no service config, using default service config");
+                      ChannelLogLevel.INFO,
+                      "Received no service config, using default service config");
             } else if (serviceConfigError != null) {
+              // 如果不更新服务配置，则报错
               if (!serviceConfigUpdated) {
                 // First DNS lookup has invalid service config, and cannot fall back to default
                 channelLogger.log(
-                    ChannelLogLevel.INFO,
-                    "Fallback to error due to invalid first service config without default config");
+                        ChannelLogLevel.INFO,
+                        "Fallback to error due to invalid first service config without default config");
                 onError(configOrError.getError());
                 return;
               } else {
@@ -1478,11 +1548,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
             } else {
               effectiveServiceConfig = EMPTY_SERVICE_CONFIG;
             }
+            // 如果配置发生变化，则更新
             if (!effectiveServiceConfig.equals(lastServiceConfig)) {
               channelLogger.log(
-                  ChannelLogLevel.INFO,
-                  "Service config changed{0}",
-                  effectiveServiceConfig == EMPTY_SERVICE_CONFIG ? " to empty" : "");
+                      ChannelLogLevel.INFO,
+                      "Service config changed{0}",
+                      effectiveServiceConfig == EMPTY_SERVICE_CONFIG ? " to empty" : "");
               lastServiceConfig = effectiveServiceConfig;
             }
 
@@ -1490,32 +1561,37 @@ final class ManagedChannelImpl extends ManagedChannel implements
               // TODO(creamsoup): when `servers` is empty and lastResolutionStateCopy == SUCCESS
               //  and lbNeedAddress, it shouldn't call the handleServiceConfigUpdate. But,
               //  lbNeedAddress is not deterministic
+              // 更新配置
               handleServiceConfigUpdate();
             } catch (RuntimeException re) {
               logger.log(
-                  Level.WARNING,
-                  "[" + getLogId() + "] Unexpected exception from parsing service config",
-                  re);
+                      Level.WARNING,
+                      "[" + getLogId() + "] Unexpected exception from parsing service config",
+                      re);
             }
           }
 
+          // 获取属性
           Attributes effectiveAttrs = resolutionResult.getAttributes();
           // Call LB only if it's not shutdown.  If LB is shutdown, lbHelper won't match.
+          // 如果服务发现没有关闭
           if (NameResolverListener.this.helper == ManagedChannelImpl.this.lbHelper) {
-            Map<String, ?> healthCheckingConfig =
-                effectiveServiceConfig.getHealthCheckingConfig();
+            // 获取健康检查
+            Map<String, ?> healthCheckingConfig = effectiveServiceConfig.getHealthCheckingConfig();
+            // 构建健康检查配置
             if (healthCheckingConfig != null) {
               effectiveAttrs = effectiveAttrs.toBuilder()
-                  .set(LoadBalancer.ATTR_HEALTH_CHECKING_CONFIG, healthCheckingConfig)
-                  .build();
+                                             .set(LoadBalancer.ATTR_HEALTH_CHECKING_CONFIG, healthCheckingConfig)
+                                             .build();
             }
 
+            // 更新负载均衡算法，处理未处理的请求
             Status handleResult = helper.lb.tryHandleResolvedAddresses(
-                ResolvedAddresses.newBuilder()
-                    .setAddresses(servers)
-                    .setAttributes(effectiveAttrs)
-                    .setLoadBalancingPolicyConfig(effectiveServiceConfig.getLoadBalancingConfig())
-                    .build());
+                    ResolvedAddresses.newBuilder()
+                                     .setAddresses(servers)
+                                     .setAttributes(effectiveAttrs)
+                                     .setLoadBalancingPolicyConfig(effectiveServiceConfig.getLoadBalancingConfig())
+                                     .build());
 
             if (!handleResult.isOk()) {
               handleErrorInSyncContext(handleResult.augmentDescription(resolver + " was used"));
@@ -1524,6 +1600,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
         }
       }
 
+      // 执行处理
       syncContext.execute(new NamesResolved());
     }
 

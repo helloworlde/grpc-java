@@ -87,9 +87,15 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   @GuardedBy("lock")
   private final InsightBuilder closedSubstreamsInsight = new InsightBuilder();
 
-  private volatile State state = new State(
-      new ArrayList<BufferEntry>(8), Collections.<Substream>emptyList(), null, null, false, false,
-      false, 0);
+  // 状态
+  private volatile State state = new State(new ArrayList<BufferEntry>(8),
+          Collections.<Substream>emptyList(),
+          null,
+          null,
+          false,
+          false,
+          false,
+          0);
 
   /**
    * Either transparent retry happened or reached server's application logic.
@@ -121,12 +127,30 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    */
   private long nextBackoffIntervalNanos;
 
-  RetriableStream(
-      MethodDescriptor<ReqT, ?> method, Metadata headers,
-      ChannelBufferMeter channelBufferUsed, long perRpcBufferLimit, long channelBufferLimit,
-      Executor callExecutor, ScheduledExecutorService scheduledExecutorService,
-      RetryPolicy.Provider retryPolicyProvider, HedgingPolicy.Provider hedgingPolicyProvider,
-      @Nullable Throttle throttle) {
+  /**
+   * 构造可重试的流
+   *
+   * @param method                   调用的方法
+   * @param headers                  请求头
+   * @param channelBufferUsed        channel使用的buffer
+   * @param perRpcBufferLimit        每个请求的Buffer限制
+   * @param channelBufferLimit       channel的buffer限制
+   * @param callExecutor             执行的线程池
+   * @param scheduledExecutorService 线程池
+   * @param retryPolicyProvider      重试策略提供器
+   * @param hedgingPolicyProvider    对冲策略提供器
+   * @param throttle                 节流配置
+   */
+  RetriableStream(MethodDescriptor<ReqT, ?> method,
+                  Metadata headers,
+                  ChannelBufferMeter channelBufferUsed,
+                  long perRpcBufferLimit,
+                  long channelBufferLimit,
+                  Executor callExecutor,
+                  ScheduledExecutorService scheduledExecutorService,
+                  RetryPolicy.Provider retryPolicyProvider,
+                  HedgingPolicy.Provider hedgingPolicyProvider,
+                  @Nullable Throttle throttle) {
     this.method = method;
     this.channelBufferUsed = channelBufferUsed;
     this.perRpcBufferLimit = perRpcBufferLimit;
@@ -339,24 +363,31 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   }
 
   /**
+   * 执行 pre-start 任务，如果 channel 被关闭，则返回状态
    * Runs pre-start tasks. Returns the Status of shutdown if the channel is shutdown.
    */
   @CheckReturnValue
   @Nullable
   abstract Status prestart();
 
-  /** Starts the first PRC attempt. */
+  /**
+   * 开始第一个 RPC 调用
+   * Starts the first PRC attempt.
+   */
   @Override
   public final void start(ClientStreamListener listener) {
     masterListener = listener;
 
+    // 调用监听器的 prestart 方法，将流添加到未提交的流注册器中
     Status shutdownStatus = prestart();
 
+    // 如果返回 channel 关闭状态不为空则取消
     if (shutdownStatus != null) {
       cancel(shutdownStatus);
       return;
     }
 
+    // 构造一个 BufferEntry
     class StartEntry implements BufferEntry {
       @Override
       public void runWith(Substream substream) {
@@ -365,9 +396,11 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
 
     synchronized (lock) {
+      // 新建 BufferEntry，添加到 buffer 中
       state.buffer.add(new StartEntry());
     }
 
+    // 创建 Substream
     Substream substream = createSubstream(0);
     checkState(hedgingPolicy == null, "hedgingPolicy has been initialized unexpectedly");
     // TODO(zdapeng): if substream is a DelayedStream, do this when name resolution finishes
@@ -381,17 +414,17 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       synchronized (lock) {
         state = state.addActiveHedge(substream);
         if (hasPotentialHedging(state)
-            && (throttle == null || throttle.isAboveThreshold())) {
+                && (throttle == null || throttle.isAboveThreshold())) {
           scheduledHedging = scheduledHedgingRef = new FutureCanceller(lock);
         }
       }
 
       if (scheduledHedgingRef != null) {
         scheduledHedgingRef.setFuture(
-            scheduledExecutorService.schedule(
-                new HedgingRunnable(scheduledHedgingRef),
-                hedgingPolicy.hedgingDelayNanos,
-                TimeUnit.NANOSECONDS));
+                scheduledExecutorService.schedule(
+                        new HedgingRunnable(scheduledHedgingRef),
+                        hedgingPolicy.hedgingDelayNanos,
+                        TimeUnit.NANOSECONDS));
       }
     }
 
@@ -857,6 +890,9 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     void runWith(Substream substream);
   }
 
+  /**
+   * Substream 监听器
+   */
   private final class Sublistener implements ClientStreamListener {
     final Substream substream;
 
@@ -1136,6 +1172,9 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     }
   }
 
+  /**
+   * 状态
+   */
   private static final class State {
     /**
      * Committed and the winning substream drained.

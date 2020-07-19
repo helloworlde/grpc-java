@@ -125,7 +125,7 @@ final class DelayedClientTransport implements ManagedClientTransport {
   }
 
   /**
-   * TODO 发起请求
+   * 创建请求的流
    * If a {@link SubchannelPicker} is being, or has been provided via {@link #reprocess}, the last
    * picker will be consulted.
    * 如果正在使用 SubchannelPicker 或者已经通过 reprocess 提供了 SubchannelPicker 则将查询最后一个*选择器。
@@ -136,20 +136,25 @@ final class DelayedClientTransport implements ManagedClientTransport {
    * 除此之外，如果 delayed transport 没有关闭，会返回 PendingStream，如果关闭了，则返回 FailingClientStream
    */
   @Override
-  public final ClientStream newStream(
-          MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
+  public final ClientStream newStream(MethodDescriptor<?, ?> method,
+                                      Metadata headers,
+                                      CallOptions callOptions) {
     try {
+      // 创建 subchannel 选择参数
       PickSubchannelArgs args = new PickSubchannelArgsImpl(method, headers, callOptions);
       SubchannelPicker picker = null;
       long pickerVersion = -1;
       while (true) {
         synchronized (lock) {
+          // 如果关闭，则返回关闭状态
           if (shutdownStatus != null) {
             return new FailingClientStream(shutdownStatus);
           }
+          // 如果选择器是空的，则创建等待处理的流
           if (lastPicker == null) {
             return createPendingStream(args);
           }
+          // 如果选择器没有变化，则创建等待处理的流
           // Check for second time through the loop, and whether anything changed
           if (picker != null && pickerVersion == lastPickerVersion) {
             return createPendingStream(args);
@@ -157,12 +162,16 @@ final class DelayedClientTransport implements ManagedClientTransport {
           picker = lastPicker;
           pickerVersion = lastPickerVersion;
         }
+
+        // 选择 subchannel
         PickResult pickResult = picker.pickSubchannel(args);
-        ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult,
-                callOptions.isWaitForReady());
+        // 选择 Transport
+        ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult, callOptions.isWaitForReady());
         if (transport != null) {
-          return transport.newStream(
-                  args.getMethodDescriptor(), args.getHeaders(), args.getCallOptions());
+          // 创建流
+          return transport.newStream(args.getMethodDescriptor(),
+                  args.getHeaders(),
+                  args.getCallOptions());
         }
         // This picker's conclusion is "buffer".  If there hasn't been a newer picker set (possible
         // race with reprocess()), we will buffer it.  Otherwise, will try with the new picker.
@@ -173,10 +182,9 @@ final class DelayedClientTransport implements ManagedClientTransport {
   }
 
   /**
-   * TODO 创建请求流
+   * 创建等待处理的流
    * Caller must call {@code syncContext.drain()} outside of lock because this method may
    * schedule tasks on syncContext.
-   *
    */
   @GuardedBy("lock")
   private PendingStream createPendingStream(PickSubchannelArgs args) {
@@ -267,12 +275,17 @@ final class DelayedClientTransport implements ManagedClientTransport {
   }
 
   /**
+   * 设置选择器，重新创建 Transport，处理流
+   * <p>
    * Use the picker to try picking a transport for every pending stream, proceed the stream if the
    * pick is successful, otherwise keep it pending.
+   * <p>
+   * 使用选择器尝试为每个等待的流选择 Transport，如果选择成功则处理刘，如果失败则继续等待
    *
    * <p>This method may be called concurrently with {@code newStream()}, and it's safe.  All pending
    * streams will be served by the latest picker (if a same picker is given more than once, they are
    * considered different pickers) as soon as possible.
+   * 所有流都会尽可能的被最后一个选择器处理
    *
    * <p>This method <strong>must not</strong> be called concurrently with itself.
    */
@@ -286,13 +299,17 @@ final class DelayedClientTransport implements ManagedClientTransport {
       }
       toProcess = new ArrayList<>(pendingStreams);
     }
+
     ArrayList<PendingStream> toRemove = new ArrayList<>();
 
+    //遍历待处理的流
     for (final PendingStream stream : toProcess) {
+      // 重新选择 subchannel
       PickResult pickResult = picker.pickSubchannel(stream.args);
+      // 调用参数
       CallOptions callOptions = stream.args.getCallOptions();
-      final ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult,
-          callOptions.isWaitForReady());
+      // 获取 Transport
+      final ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult, callOptions.isWaitForReady());
       if (transport != null) {
         Executor executor = defaultAppExecutor;
         // createRealStream may be expensive. It will start real streams on the transport. If
@@ -301,12 +318,15 @@ final class DelayedClientTransport implements ManagedClientTransport {
         if (callOptions.getExecutor() != null) {
           executor = callOptions.getExecutor();
         }
+        // 创建流
         executor.execute(new Runnable() {
-            @Override
-            public void run() {
-              stream.createRealStream(transport);
-            }
-          });
+          @Override
+          public void run() {
+            // 创建流，建立连接
+            stream.createRealStream(transport);
+          }
+        });
+        // 从待处理中移除
         toRemove.add(stream);
       }  // else: stay pending
     }
@@ -315,15 +335,18 @@ final class DelayedClientTransport implements ManagedClientTransport {
       // Between this synchronized and the previous one:
       //   - Streams may have been cancelled, which may turn pendingStreams into emptiness.
       //   - shutdown() may be called, which may turn pendingStreams into null.
+      // 如果没有待处理的流，则返回
       if (!hasPendingStreams()) {
         return;
       }
+      // 将处理过的流移除
       pendingStreams.removeAll(toRemove);
       // Because delayed transport is long-lived, we take this opportunity to down-size the
       // hashmap.
       if (pendingStreams.isEmpty()) {
         pendingStreams = new LinkedHashSet<>();
       }
+
       if (!hasPendingStreams()) {
         // There may be a brief gap between delayed transport clearing in-use state, and first real
         // transport starting streams and setting in-use state.  During the gap the whole channel's
@@ -353,12 +376,16 @@ final class DelayedClientTransport implements ManagedClientTransport {
       this.args = args;
     }
 
+    /**
+     * 创建流
+     * @param transport
+     */
     private void createRealStream(ClientTransport transport) {
       ClientStream realStream;
       Context origContext = context.attach();
       try {
-        realStream = transport.newStream(
-            args.getMethodDescriptor(), args.getHeaders(), args.getCallOptions());
+        // 创建流
+        realStream = transport.newStream(args.getMethodDescriptor(), args.getHeaders(), args.getCallOptions());
       } finally {
         context.detach(origContext);
       }

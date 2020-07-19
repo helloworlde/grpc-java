@@ -181,6 +181,14 @@ class NettyClientTransport implements ConnectionClientTransport {
         .addListener(failureListener);
   }
 
+  /**
+   * 创建流
+   *
+   * @param method      调用的方法
+   * @param headers     请求的Header
+   * @param callOptions 调用的选项
+   * @return 客户端流
+   */
   @Override
   public ClientStream newStream(MethodDescriptor<?, ?> method,
                                 Metadata headers,
