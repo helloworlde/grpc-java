@@ -16,12 +16,6 @@
 
 package io.grpc.netty;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static io.grpc.internal.GrpcUtil.DEFAULT_KEEPALIVE_TIMEOUT_NANOS;
-import static io.grpc.internal.GrpcUtil.KEEPALIVE_TIME_NANOS_DISABLED;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import io.grpc.Attributes;
@@ -47,6 +41,10 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ReflectiveChannelFactory;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslContext;
+
+import javax.annotation.CheckReturnValue;
+import javax.annotation.Nullable;
+import javax.net.ssl.SSLException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.HashMap;
@@ -54,9 +52,12 @@ import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.CheckReturnValue;
-import javax.annotation.Nullable;
-import javax.net.ssl.SSLException;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static io.grpc.internal.GrpcUtil.DEFAULT_KEEPALIVE_TIMEOUT_NANOS;
+import static io.grpc.internal.GrpcUtil.KEEPALIVE_TIME_NANOS_DISABLED;
 
 /**
  * A builder to help simplify construction of channels using the Netty transport.
@@ -577,22 +578,34 @@ public final class NettyChannelBuilder
       this.useGetForSafeMethods = useGetForSafeMethods;
     }
 
+    /**
+     * 构建新的 Transport
+     *
+     * @param serverAddress the address that the transport is connected to
+     *                      连接的地址
+     * @param options       additional configuration
+     *                      附加的配置
+     * @param channelLogger logger for the transport.
+     * @return
+     */
     @Override
-    public ConnectionClientTransport newClientTransport(
-        SocketAddress serverAddress, ClientTransportOptions options, ChannelLogger channelLogger) {
+    public ConnectionClientTransport newClientTransport(SocketAddress serverAddress,
+                                                        ClientTransportOptions options,
+                                                        ChannelLogger channelLogger) {
       checkState(!closed, "The transport factory is closed.");
 
       ProtocolNegotiator localNegotiator = protocolNegotiator;
+      // 获取地址
       HttpConnectProxiedSocketAddress proxiedAddr = options.getHttpConnectProxiedSocketAddress();
       if (proxiedAddr != null) {
         serverAddress = proxiedAddr.getTargetAddress();
-        localNegotiator = ProtocolNegotiators.httpProxy(
-            proxiedAddr.getProxyAddress(),
-            proxiedAddr.getUsername(),
-            proxiedAddr.getPassword(),
-            protocolNegotiator);
+        localNegotiator = ProtocolNegotiators.httpProxy(proxiedAddr.getProxyAddress(),
+                proxiedAddr.getUsername(),
+                proxiedAddr.getPassword(),
+                protocolNegotiator);
       }
 
+      // 存活时间
       final AtomicBackoff.State keepAliveTimeNanosState = keepAliveTimeNanos.getState();
       Runnable tooManyPingsRunnable = new Runnable() {
         @Override
@@ -602,13 +615,28 @@ public final class NettyChannelBuilder
       };
 
       // TODO(carl-mastrangelo): Pass channelLogger in.
+      // 构建 Netty 的 Transport
       NettyClientTransport transport = new NettyClientTransport(
-          serverAddress, channelFactory, channelOptions, group,
-          localNegotiator, autoFlowControl, flowControlWindow,
-          maxMessageSize, maxHeaderListSize, keepAliveTimeNanosState.get(), keepAliveTimeoutNanos,
-          keepAliveWithoutCalls, options.getAuthority(), options.getUserAgent(),
-          tooManyPingsRunnable, transportTracerFactory.create(), options.getEagAttributes(),
-          localSocketPicker, channelLogger, useGetForSafeMethods);
+              serverAddress,
+              channelFactory,
+              channelOptions,
+              group,
+              localNegotiator,
+              autoFlowControl,
+              flowControlWindow,
+              maxMessageSize,
+              maxHeaderListSize,
+              keepAliveTimeNanosState.get(),
+              keepAliveTimeoutNanos,
+              keepAliveWithoutCalls,
+              options.getAuthority(),
+              options.getUserAgent(),
+              tooManyPingsRunnable,
+              transportTracerFactory.create(),
+              options.getEagAttributes(),
+              localSocketPicker,
+              channelLogger,
+              useGetForSafeMethods);
       return transport;
     }
 

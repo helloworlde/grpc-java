@@ -16,15 +16,6 @@
 
 package io.grpc.grpclb;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static io.grpc.ConnectivityState.CONNECTING;
-import static io.grpc.ConnectivityState.IDLE;
-import static io.grpc.ConnectivityState.READY;
-import static io.grpc.ConnectivityState.SHUTDOWN;
-import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
@@ -61,6 +52,9 @@ import io.grpc.lb.v1.LoadBalancerGrpc;
 import io.grpc.lb.v1.Server;
 import io.grpc.lb.v1.ServerList;
 import io.grpc.stub.StreamObserver;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.NotThreadSafe;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -76,8 +70,15 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.NotThreadSafe;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static io.grpc.ConnectivityState.CONNECTING;
+import static io.grpc.ConnectivityState.IDLE;
+import static io.grpc.ConnectivityState.READY;
+import static io.grpc.ConnectivityState.SHUTDOWN;
+import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
 
 /**
  * The states of a GRPCLB working session of {@link GrpclbLoadBalancer}.  Created when
@@ -940,10 +941,12 @@ final class GrpclbState {
 
     @Override
     public PickResult picked(Metadata headers) {
+      // 重新放入 token
       headers.discardAll(GrpclbConstants.TOKEN_METADATA_KEY);
       if (token != null) {
         headers.put(GrpclbConstants.TOKEN_METADATA_KEY, token);
       }
+      // 返回选择的对象
       return result;
     }
 
@@ -1073,22 +1076,29 @@ final class GrpclbState {
         // a non-drop entry is selected, then round-robin on pickList.  This makes sure requests are
         // dropped at the same proportion as the drop entries appear on the round-robin list from
         // the balancer, while only backends from pickList are selected for the non-drop cases.
+        // 两个层级的轮询，第一层是删除的列表，如果已经删除的被选择了，请求也会被删除，如果选择了没有删除的，那么从
+        // pickList 中轮询，这确保删除请求的比例与删除的 Subchannel 比例相同，而对于非删除情况，只选择来自
+        // pickList 的后端
         if (!dropList.isEmpty()) {
+          // 如果有删除的，则使用删除的
           DropEntry drop = dropList.get(dropIndex);
           dropIndex++;
           if (dropIndex == dropList.size()) {
             dropIndex = 0;
           }
           if (drop != null) {
+            // 记录请求，返回错误信息
             return drop.picked();
           }
         }
 
+        // 没有删除的，则轮询
         RoundRobinEntry pick = pickList.get(pickIndex);
         pickIndex++;
         if (pickIndex == pickList.size()) {
           pickIndex = 0;
         }
+        // 重新放置 token
         return pick.picked(args.getHeaders());
       }
     }

@@ -276,6 +276,12 @@ final class RoundRobinLoadBalancer extends LoadBalancer {
     @SuppressWarnings("unused")
     private volatile int index;
 
+    /**
+     * 构造可用的 subchannel picker
+     *
+     * @param list       可用的 Subchannel
+     * @param startIndex 开始的下标
+     */
     ReadyPicker(List<Subchannel> list, int startIndex) {
       Preconditions.checkArgument(!list.isEmpty(), "empty list");
       this.list = list;

@@ -163,6 +163,7 @@ final class PickFirstLoadBalancer extends LoadBalancer {
         helper.getSynchronizationContext().execute(new Runnable() {
             @Override
             public void run() {
+              // 建立连接
               subchannel.requestConnection();
             }
           });
