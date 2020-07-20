@@ -17,6 +17,7 @@
 package io.grpc.internal;
 
 import io.grpc.Status;
+
 import javax.annotation.CheckReturnValue;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
@@ -37,14 +38,18 @@ public interface ManagedClientTransport extends ClientTransport {
 
   /**
    * Starts transport. This method may only be called once.
+   * 开始 Transport，这个方法只能调用一次
    *
    * <p>Implementations must not call {@code listener} from within {@link #start}; implementations
    * are expected to notify listener on a separate thread or when the returned {@link Runnable} is
    * run. This method and the returned {@code Runnable} should not throw any exceptions.
+   * 实现不能从这个方法里调用 Listener 的 start 方法，期望在返回 Runnable 时通过独立的线程通知，
+   * 这个方法和返回的 Runnable 不应当返回异常
    *
    * @param listener non-{@code null} listener of transport events
+   *                 非空的 Transport 事件监听器
    * @return a {@link Runnable} that is executed after-the-fact by the original caller, typically
-   *     after locks are released
+   * after locks are released 返回在原始调用之后执行的 Runnable，通常是在加锁或者释放后
    */
   @CheckReturnValue
   @Nullable

@@ -186,6 +186,10 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
     return channelLogger;
   }
 
+  /**
+   * 返回一个 READY 的 Transport，用于创建新的流
+   * @return
+   */
   @Override
   public ClientTransport obtainActiveTransport() {
     // 如果有活跃的，则直接返回
@@ -201,7 +205,7 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
         if (state.getState() == IDLE) {
           channelLogger.log(ChannelLogLevel.INFO, "CONNECTING as requested");
           gotoNonErrorState(CONNECTING);
-          // 开始新的 Transport
+          // 开始新的 Transport，建立连接
           startNewTransport();
         }
       }
@@ -224,14 +228,19 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
     return authority;
   }
 
+  /**
+   * 开始一个新的 Transport
+   */
   private void startNewTransport() {
     syncContext.throwIfNotInThisSynchronizationContext();
 
     Preconditions.checkState(reconnectTask == null, "Should have no reconnectTask scheduled");
 
+    // 如果是第一个地址，则重置计时器
     if (addressIndex.isAtBeginning()) {
       connectingTimer.reset().start();
     }
+    // 获取当前地址
     SocketAddress address = addressIndex.getCurrentAddress();
 
     HttpConnectProxiedSocketAddress proxiedAddr = null;
@@ -241,25 +250,28 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
     }
 
     Attributes currentEagAttributes = addressIndex.getCurrentEagAttributes();
-    String eagChannelAuthority = currentEagAttributes
-            .get(EquivalentAddressGroup.ATTR_AUTHORITY_OVERRIDE);
+    String eagChannelAuthority = currentEagAttributes.get(EquivalentAddressGroup.ATTR_AUTHORITY_OVERRIDE);
+
+    // 设置地址，UserAgent 等信息
     ClientTransportFactory.ClientTransportOptions options =
-        new ClientTransportFactory.ClientTransportOptions()
-          .setAuthority(eagChannelAuthority != null ? eagChannelAuthority : authority)
-          .setEagAttributes(currentEagAttributes)
-          .setUserAgent(userAgent)
-          .setHttpConnectProxiedSocketAddress(proxiedAddr);
+            new ClientTransportFactory.ClientTransportOptions()
+                    .setAuthority(eagChannelAuthority != null ? eagChannelAuthority : authority)
+                    .setEagAttributes(currentEagAttributes)
+                    .setUserAgent(userAgent)
+                    .setHttpConnectProxiedSocketAddress(proxiedAddr);
+
     TransportLogger transportLogger = new TransportLogger();
     // In case the transport logs in the constructor, use the subchannel logId
     transportLogger.logId = getLogId();
-    ConnectionClientTransport transport =
-        new CallTracingTransport(
-            transportFactory
-                .newClientTransport(address, options, transportLogger), callsTracer);
+    // 创建 Transport，并使用 CallTracingTransport 封装
+    ConnectionClientTransport transport = new CallTracingTransport(transportFactory.newClientTransport(address, options, transportLogger), callsTracer);
     transportLogger.logId = transport.getLogId();
+    // 将 Transport 添加到 channel 中
     channelz.addClientSocket(transport);
     pendingTransport = transport;
     transports.add(transport);
+
+    // 创建 Transport 监听器，建立连接
     Runnable runnable = transport.start(new TransportListener(transport, address));
     if (runnable != null) {
       syncContext.executeLater(runnable);

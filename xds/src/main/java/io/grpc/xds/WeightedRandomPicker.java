@@ -16,17 +16,18 @@
 
 package io.grpc.xds;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import io.grpc.LoadBalancer.PickResult;
 import io.grpc.LoadBalancer.PickSubchannelArgs;
 import io.grpc.LoadBalancer.SubchannelPicker;
+
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 final class WeightedRandomPicker extends SubchannelPicker {
 
@@ -103,21 +104,31 @@ final class WeightedRandomPicker extends SubchannelPicker {
     this.random = random;
   }
 
+  /**
+   * 加权随机选择 channel
+   *
+   * @param args the pick arguments
+   * @return
+   */
   @Override
   public final PickResult pickSubchannel(PickSubchannelArgs args) {
     SubchannelPicker childPicker = null;
 
+    // 如果总权重为 0，则随机挑选一个
     if (totalWeight == 0) {
-      childPicker =
-          weightedChildPickers.get(random.nextInt(weightedChildPickers.size())).getPicker();
+      childPicker = weightedChildPickers.get(random.nextInt(weightedChildPickers.size())).getPicker();
     } else {
+      // 随机权重
       int rand = random.nextInt(totalWeight);
 
       // Find the first idx such that rand < accumulatedWeights[idx]
       // Not using Arrays.binarySearch for better readability.
       int accumulatedWeight = 0;
+
       for (int idx = 0; idx < weightedChildPickers.size(); idx++) {
+        // 获取每一个的权重，累加
         accumulatedWeight += weightedChildPickers.get(idx).getWeight();
+        // 如果当前的累加的权重超过了随机权重，则使用这个 childPicker
         if (rand < accumulatedWeight) {
           childPicker = weightedChildPickers.get(idx).getPicker();
           break;
@@ -126,6 +137,7 @@ final class WeightedRandomPicker extends SubchannelPicker {
       checkNotNull(childPicker, "childPicker not found");
     }
 
+    // 从 childPicker 中选择 channel
     return childPicker.pickSubchannel(args);
   }
 

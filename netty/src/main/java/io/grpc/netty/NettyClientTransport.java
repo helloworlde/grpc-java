@@ -223,29 +223,34 @@ class NettyClientTransport implements ConnectionClientTransport {
   @SuppressWarnings("unchecked")
   @Override
   public Runnable start(Listener transportListener) {
-    lifecycleManager = new ClientTransportLifecycleManager(
-        Preconditions.checkNotNull(transportListener, "listener"));
+    // 创建 ClientTransportLifecycleManager
+    lifecycleManager = new ClientTransportLifecycleManager(Preconditions.checkNotNull(transportListener, "listener"));
+
     EventLoop eventLoop = group.next();
+
+    // 如果 keepAlive 有效，则创建 KeepAliveManager
     if (keepAliveTimeNanos != KEEPALIVE_TIME_NANOS_DISABLED) {
-      keepAliveManager = new KeepAliveManager(
-          new ClientKeepAlivePinger(this), eventLoop, keepAliveTimeNanos, keepAliveTimeoutNanos,
-          keepAliveWithoutCalls);
+      keepAliveManager = new KeepAliveManager(new ClientKeepAlivePinger(this),
+              eventLoop,
+              keepAliveTimeNanos,
+              keepAliveTimeoutNanos,
+              keepAliveWithoutCalls);
     }
 
-    handler = NettyClientHandler.newHandler(
-        lifecycleManager,
-        keepAliveManager,
-        autoFlowControl,
-        flowControlWindow,
-        maxHeaderListSize,
-        GrpcUtil.STOPWATCH_SUPPLIER,
-        tooManyPingsRunnable,
-        transportTracer,
-        eagAttributes,
-        authorityString);
+    handler = NettyClientHandler.newHandler(lifecycleManager,
+            keepAliveManager,
+            autoFlowControl,
+            flowControlWindow,
+            maxHeaderListSize,
+            GrpcUtil.STOPWATCH_SUPPLIER,
+            tooManyPingsRunnable,
+            transportTracer,
+            eagAttributes,
+            authorityString);
 
     ChannelHandler negotiationHandler = negotiator.newHandler(handler);
 
+    // 创建 Bootstrap 并设置属性
     Bootstrap b = new Bootstrap();
     b.option(ALLOCATOR, Utils.getByteBufAllocator(false));
     b.attr(LOGGER_KEY, channelLogger);
@@ -260,6 +265,7 @@ class NettyClientTransport implements ConnectionClientTransport {
         b.option(tcpUserTimeout, (int) TimeUnit.NANOSECONDS.toMillis(keepAliveTimeoutNanos));
       }
     }
+    // 可用的 channel
     for (Map.Entry<ChannelOption<?>, ?> entry : channelOptions.entrySet()) {
       // Every entry in the map is obtained from
       // NettyChannelBuilder#withOption(ChannelOption<T> option, T value)
@@ -316,8 +322,8 @@ class NettyClientTransport implements ConnectionClientTransport {
       }
     });
     // Start the connection operation to the server.
-    SocketAddress localAddress =
-        localSocketPicker.createSocketAddress(remoteAddress, eagAttributes);
+    // 建立连接
+    SocketAddress localAddress = localSocketPicker.createSocketAddress(remoteAddress, eagAttributes);
     if (localAddress != null) {
       channel.connect(remoteAddress, localAddress);
     } else {

@@ -32,15 +32,19 @@ public interface ClientTransportFactory extends Closeable {
   /**
    * Creates an unstarted transport for exclusive use. Ownership of {@code options} is passed to the
    * callee; the caller should not reuse or read from the options after this method is called.
+   * <p>
+   * 创建一个未开始的 Transport，所有者通过 options 传递，当这个方法调用之后，不应当再读取或使用 options
    *
    * @param serverAddress the address that the transport is connected to
-   * @param options additional configuration
+   *                      连接的地址
+   * @param options       additional configuration
+   *                      附加的配置
    * @param channelLogger logger for the transport.
+   *                      日志
    */
-  ConnectionClientTransport newClientTransport(
-      SocketAddress serverAddress,
-      ClientTransportOptions options,
-      ChannelLogger channelLogger);
+  ConnectionClientTransport newClientTransport(SocketAddress serverAddress,
+                                               ClientTransportOptions options,
+                                               ChannelLogger channelLogger);
 
   /**
    * Returns an executor for scheduling provided by the transport. The service should be configured

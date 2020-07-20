@@ -16,23 +16,24 @@
 
 package io.grpc;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.Immutable;
+import javax.annotation.concurrent.NotThreadSafe;
+import javax.annotation.concurrent.ThreadSafe;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
-import javax.annotation.concurrent.NotThreadSafe;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * A pluggable component that receives resolved addresses from {@link NameResolver} and provides the
@@ -412,6 +413,7 @@ public abstract class LoadBalancer {
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1771")
   public abstract static class SubchannelPicker {
     /**
+     * 为新的请求做负载均衡，选择一个 subchannel
      * Make a balancing decision for a new RPC.
      *
      * @param args the pick arguments
@@ -1249,6 +1251,7 @@ public abstract class LoadBalancer {
 
     /**
      * Asks the Subchannel to create a connection (aka transport), if there isn't an active one.
+     * 如果没有活跃的连接，则要求 Subchannel 建立连接（即 Transport）
      *
      * <p>It should be called from the Synchronization Context.  Currently will log a warning if
      * violated.  It will become an exception eventually.  See <a

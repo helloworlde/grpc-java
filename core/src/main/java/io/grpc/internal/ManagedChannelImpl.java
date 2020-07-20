@@ -1753,10 +1753,14 @@ final class ManagedChannelImpl extends ManagedChannel implements
       subchannel.shutdown(SHUTDOWN_STATUS);
     }
 
+    /**
+     * 如果没有连接，则要求 Subchannel 建立连接
+     */
     @Override
     public void requestConnection() {
       logWarningIfNotInSyncContext("Subchannel.requestConnection()");
       checkState(started, "not started");
+      // 选择 Transport，建立连接
       subchannel.obtainActiveTransport();
     }
 

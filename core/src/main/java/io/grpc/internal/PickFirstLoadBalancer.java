@@ -16,19 +16,20 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static io.grpc.ConnectivityState.CONNECTING;
-import static io.grpc.ConnectivityState.SHUTDOWN;
-import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
-
 import com.google.common.base.MoreObjects;
 import io.grpc.ConnectivityState;
 import io.grpc.ConnectivityStateInfo;
 import io.grpc.EquivalentAddressGroup;
 import io.grpc.LoadBalancer;
 import io.grpc.Status;
+
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static io.grpc.ConnectivityState.CONNECTING;
+import static io.grpc.ConnectivityState.SHUTDOWN;
+import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
 
 /**
  * A {@link LoadBalancer} that provides no load-balancing over the addresses from the {@link
@@ -158,6 +159,7 @@ final class PickFirstLoadBalancer extends LoadBalancer {
         helper.getSynchronizationContext().execute(new Runnable() {
             @Override
             public void run() {
+              // 建立连接
               subchannel.requestConnection();
             }
           });
