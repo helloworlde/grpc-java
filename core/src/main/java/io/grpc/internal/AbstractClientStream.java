@@ -16,13 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static io.grpc.internal.GrpcUtil.CONTENT_ENCODING_KEY;
-import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
-import static io.grpc.internal.GrpcUtil.TIMEOUT_KEY;
-import static java.lang.Math.max;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.io.ByteStreams;
@@ -37,11 +30,19 @@ import io.grpc.Grpc;
 import io.grpc.Metadata;
 import io.grpc.Status;
 import io.grpc.internal.ClientStreamListener.RpcProgress;
+
+import javax.annotation.Nullable;
 import java.io.InputStream;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static io.grpc.internal.GrpcUtil.CONTENT_ENCODING_KEY;
+import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
+import static io.grpc.internal.GrpcUtil.TIMEOUT_KEY;
+import static java.lang.Math.max;
 
 /**
  * The abstract base class for {@link ClientStream} implementations. Extending classes only need to
@@ -152,6 +153,10 @@ public abstract class AbstractClientStream extends AbstractStream
   @Override
   protected abstract TransportState transportState();
 
+  /**
+   * 开始一个流，
+   * @param listener non-{@code null} listener of stream events
+   */
   @Override
   public final void start(ClientStreamListener listener) {
     transportState().setListener(listener);
@@ -187,6 +192,9 @@ public abstract class AbstractClientStream extends AbstractStream
     abstractClientStreamSink().writeFrame(frame, endOfStream, flush, numMessages);
   }
 
+  /**
+   * 客户端关闭流
+   */
   @Override
   public final void halfClose() {
     if (!transportState().isOutboundClosed()) {

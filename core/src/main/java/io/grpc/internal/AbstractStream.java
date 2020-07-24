@@ -16,17 +16,18 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.Codec;
 import io.grpc.Compressor;
 import io.grpc.Decompressor;
 import io.perfmark.Link;
 import io.perfmark.PerfMark;
-import java.io.InputStream;
+
 import javax.annotation.concurrent.GuardedBy;
+import java.io.InputStream;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * The stream and stream state as used by the application. Must only be called from the sending
@@ -52,11 +53,19 @@ public abstract class AbstractStream implements Stream {
     framer().setMessageCompression(enable);
   }
 
+  /**
+   * 执行发送指定数量的消息
+   * @param numMessages the requested number of messages to be delivered to the listener.
+   */
   @Override
   public final void request(int numMessages) {
     transportState().requestMessagesFromDeframer(numMessages);
   }
 
+  /**
+   * 调用 Transport 执行写入消息
+   * @param message stream containing the serialized message to be sent
+   */
   @Override
   public final void writeMessage(InputStream message) {
     checkNotNull(message, "message");
@@ -219,6 +228,7 @@ public abstract class AbstractStream implements Stream {
     /**
      * Called to request the given number of messages from the deframer. May be called from any
      * thread.
+     * 执行发送指定数量的消息的任务
      */
     private void requestMessagesFromDeframer(final int numMessages) {
       if (deframer instanceof ThreadOptimizedDeframer) {

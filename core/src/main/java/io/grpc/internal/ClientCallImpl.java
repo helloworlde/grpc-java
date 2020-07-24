@@ -950,6 +950,9 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       callExecutor.execute(new StreamClosed());
     }
 
+    /**
+     * 监听器 ready
+     */
     @Override
     public void onReady() {
       if (method.getType().clientSendsOneMessage()) {

@@ -130,6 +130,26 @@ public class RetryingHelloWorldClient {
     }
 
     public static void main(String[] args) throws Exception {
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (true) {
+                    try {
+                        call();
+
+                        Thread.sleep(10000);
+                        System.out.println("sleep ");
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        });
+        thread.start();
+
+    }
+
+    private static void call() throws InterruptedException {
         boolean enableRetries = !Boolean.parseBoolean(System.getenv(ENV_DISABLE_RETRYING));
         final RetryingHelloWorldClient client = new RetryingHelloWorldClient("localhost", 50051, enableRetries);
         ForkJoinPool executor = new ForkJoinPool();
@@ -140,11 +160,11 @@ public class RetryingHelloWorldClient {
             //         new Runnable() {
             //             @Override
             //             public void run() {
-                            client.greet(userId);
-                    //     }
-                    // });
+            client.greet(userId);
+            //     }
+            // });
         }
-        executor.awaitQuiescence(100, TimeUnit.SECONDS);
+        // executor.awaitQuiescence(100, TimeUnit.SECONDS);
         executor.shutdown();
         client.printSummary();
         client.shutdown();

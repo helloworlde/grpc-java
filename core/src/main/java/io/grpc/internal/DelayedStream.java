@@ -16,9 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.Attributes;
 import io.grpc.Compressor;
@@ -26,10 +23,14 @@ import io.grpc.Deadline;
 import io.grpc.DecompressorRegistry;
 import io.grpc.Metadata;
 import io.grpc.Status;
+
+import javax.annotation.concurrent.GuardedBy;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import javax.annotation.concurrent.GuardedBy;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * A stream that queues requests before the transport is available, and delegates to a real stream
@@ -116,16 +117,18 @@ class DelayedStream implements ClientStream {
 
   /**
    * Transfers all pending and future requests and mutations to the given stream.
-   *
+   * 将所有等待发送后者等待返回的请求转移给这个流
    * <p>No-op if either this method or {@link #cancel} have already been called.
    */
   // When this method returns, passThrough is guaranteed to be true
+  // 当这个方法返回的时候，passThrough 是 true
   final void setStream(ClientStream stream) {
     synchronized (this) {
       // If realStream != null, then either setStream() or cancel() has been called.
       if (realStream != null) {
         return;
       }
+      // 设置流
       setRealStream(checkNotNull(stream, "stream"));
     }
 
@@ -136,6 +139,7 @@ class DelayedStream implements ClientStream {
    * Called to transition {@code passThrough} to {@code true}. This method is not safe to be called
    * multiple times; the caller must ensure it will only be called once, ever. {@code this} lock
    * should not be held when calling this method.
+   * 将 passThrough 的值设置为 true，这个方法多次调用是不安全的，调用者必须确保只调用一次
    */
   private void drainPendingCalls() {
     assert realStream != null;
@@ -144,6 +148,7 @@ class DelayedStream implements ClientStream {
     DelayedStreamListener delayedListener = null;
     while (true) {
       synchronized (this) {
+        // 如果等待调用的为空，则设置 passThrough 为 true
         if (pendingCalls.isEmpty()) {
           pendingCalls = null;
           passThrough = true;
@@ -153,15 +158,18 @@ class DelayedStream implements ClientStream {
         // Since there were pendingCalls, we need to process them. To maintain ordering we can't set
         // passThrough=true until we run all pendingCalls, but new Runnables may be added after we
         // drop the lock. So we will have to re-check pendingCalls.
+        // 如果有等待调用的，则赋值给 toRun
         List<Runnable> tmp = toRun;
         toRun = pendingCalls;
         pendingCalls = tmp;
       }
+      // 执行 toRun 中的任务，
       for (Runnable runnable : toRun) {
         // Must not call transport while lock is held to prevent deadlocks.
         // TODO(ejona): exception handling
         runnable.run();
       }
+      // 执行后清除
       toRun.clear();
     }
     if (delayedListener != null) {
@@ -198,6 +206,10 @@ class DelayedStream implements ClientStream {
     });
   }
 
+  /**
+   * 开始一个流
+   * @param listener non-{@code null} listener of stream events
+   */
   @Override
   public void start(ClientStreamListener listener) {
     checkState(this.listener == null, "already started");
@@ -245,6 +257,10 @@ class DelayedStream implements ClientStream {
     }
   }
 
+  /**
+   * 写入消息
+   * @param message stream containing the serialized message to be sent
+   */
   @Override
   public void writeMessage(final InputStream message) {
     checkNotNull(message, "message");
@@ -322,6 +338,10 @@ class DelayedStream implements ClientStream {
     });
   }
 
+  /**
+   * 发送给定数量的消息
+   * @param numMessages the requested number of messages to be delivered to the listener.
+   */
   @Override
   public void request(final int numMessages) {
     if (passThrough) {

@@ -721,6 +721,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
   @Override
   public final void halfClose() {
+    // 从客户端关闭流
     class HalfCloseEntry implements BufferEntry {
       @Override
       public void runWith(Substream substream) {
@@ -728,6 +729,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       }
     }
 
+    // 延迟执行
     delayOrExecute(new HalfCloseEntry());
   }
 

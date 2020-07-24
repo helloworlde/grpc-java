@@ -324,9 +324,9 @@ public final class ClientCalls {
     // 开始调用
     startCall(call, responseListener);
     try {
-      // 发送消息
+      // 发送消息，提交 BufferEntry 任务
       call.sendMessage(req);
-      // 半关闭连接
+      // 从客户端关闭流
       call.halfClose();
     } catch (RuntimeException e) {
       throw cancelThrow(call, e);
@@ -358,7 +358,7 @@ public final class ClientCalls {
                                               StartableListener<RespT> responseListener) {
     // 通过 ClientCallImpl 调用 start
     call.start(responseListener, new Metadata());
-    // 启动监听器
+    // 启动监听器，延迟执行 Stream 的 request 方法
     responseListener.onStart();
   }
 

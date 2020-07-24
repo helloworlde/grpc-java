@@ -323,6 +323,7 @@ final class DelayedClientTransport implements ManagedClientTransport {
           @Override
           public void run() {
             // 创建流，建立连接
+            // 第一个执行的任务
             stream.createRealStream(transport);
           }
         });
@@ -389,6 +390,7 @@ final class DelayedClientTransport implements ManagedClientTransport {
       } finally {
         context.detach(origContext);
       }
+      // 设置流
       setStream(realStream);
     }
 
