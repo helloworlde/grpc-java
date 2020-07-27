@@ -30,6 +30,8 @@ public interface KnownLength {
   /**
    * Returns the total number of bytes that can be read (or skipped over) from this object until all
    * bytes have been read out.
+   *
+   * 返回可以从该对象读取(或跳过)的总字节数，直到所有字节都被读出
    */
   int available() throws IOException;
 }

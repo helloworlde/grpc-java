@@ -16,17 +16,14 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static java.lang.Math.min;
-
 import com.google.common.io.ByteStreams;
 import io.grpc.Codec;
 import io.grpc.Compressor;
 import io.grpc.Drainable;
 import io.grpc.KnownLength;
 import io.grpc.Status;
+
+import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,7 +31,11 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static java.lang.Math.min;
 
 /**
  * Encodes gRPC messages to be delivered via the transport layer which implements {@link
@@ -51,7 +52,7 @@ public class MessageFramer implements Framer {
   public interface Sink {
     /**
      * Delivers a frame via the transport.
-     *
+     * 将 framer 传递给 Transport
      * @param frame a non-empty buffer to deliver or {@code null} if the framer is being
      *              closed and there is no data to deliver.
      * @param endOfStream whether the frame is the last one for the GRPC stream
@@ -119,12 +120,15 @@ public class MessageFramer implements Framer {
   }
 
   /**
+   * 写出有效负载消息
    * Writes out a payload message.
    *
    * @param message contains the message to be written out. It will be completely consumed.
+   *                包含要写入的消息，它会被完全消耗掉
    */
   @Override
   public void writePayload(InputStream message) {
+    // 检测是否关闭
     verifyNotClosed();
     messagesBuffered++;
     currentMessageSeqNo++;
@@ -134,23 +138,26 @@ public class MessageFramer implements Framer {
     int written = -1;
     int messageLength = -2;
     try {
+      // 获取消息长度
       messageLength = getKnownLength(message);
       if (messageLength != 0 && compressed) {
+        // 压缩写入
         written = writeCompressed(message, messageLength);
       } else {
+        // 不压缩写入
         written = writeUncompressed(message, messageLength);
       }
     } catch (IOException e) {
       // This should not be possible, since sink#deliverFrame doesn't throw.
       throw Status.INTERNAL
-          .withDescription("Failed to frame message")
-          .withCause(e)
-          .asRuntimeException();
+              .withDescription("Failed to frame message")
+              .withCause(e)
+              .asRuntimeException();
     } catch (RuntimeException e) {
       throw Status.INTERNAL
-          .withDescription("Failed to frame message")
-          .withCause(e)
-          .asRuntimeException();
+              .withDescription("Failed to frame message")
+              .withCause(e)
+              .asRuntimeException();
     }
 
     if (messageLength != -1 && written != messageLength) {
@@ -162,6 +169,13 @@ public class MessageFramer implements Framer {
     statsTraceCtx.outboundMessageSent(currentMessageSeqNo, currentMessageWireSize, written);
   }
 
+  /**
+   * 不压缩写入
+   * @param message 消息体
+   * @param messageLength 长度
+   * @return
+   * @throws IOException
+   */
   private int writeUncompressed(InputStream message, int messageLength) throws IOException {
     if (messageLength != -1) {
       currentMessageWireSize = messageLength;
@@ -171,9 +185,8 @@ public class MessageFramer implements Framer {
     int written = writeToOutputStream(message, bufferChain);
     if (maxOutboundMessageSize >= 0 && written > maxOutboundMessageSize) {
       throw Status.RESOURCE_EXHAUSTED
-          .withDescription(
-              String.format("message too large %d > %d", written , maxOutboundMessageSize))
-          .asRuntimeException();
+              .withDescription(String.format("message too large %d > %d", written, maxOutboundMessageSize))
+              .asRuntimeException();
     }
     writeBufferChain(bufferChain, false);
     return written;
@@ -209,14 +222,15 @@ public class MessageFramer implements Framer {
 
   /**
    * Write an unserialized message with a known length, uncompressed.
+   * 将已知长度的非序列化消息不压缩写入
    */
   private int writeKnownLengthUncompressed(InputStream message, int messageLength)
-      throws IOException {
+          throws IOException {
     if (maxOutboundMessageSize >= 0 && messageLength > maxOutboundMessageSize) {
       throw Status.RESOURCE_EXHAUSTED
-          .withDescription(
-              String.format("message too large %d > %d", messageLength , maxOutboundMessageSize))
-          .asRuntimeException();
+              .withDescription(
+                      String.format("message too large %d > %d", messageLength, maxOutboundMessageSize))
+              .asRuntimeException();
     }
     ByteBuffer header = ByteBuffer.wrap(headerScratch);
     header.put(UNCOMPRESSED);
@@ -315,6 +329,7 @@ public class MessageFramer implements Framer {
   /**
    * Flushes and closes the framer and releases any buffers. After the framer is closed or
    * disposed, additional calls to this method will have no affect.
+   * flush 并关闭 framer，释放所有的缓冲，当 framer 关闭后，后续调用这个方法不会有效果
    */
   @Override
   public void close() {
@@ -346,6 +361,11 @@ public class MessageFramer implements Framer {
     }
   }
 
+  /**
+   * 提交
+   * @param endOfStream
+   * @param flush
+   */
   private void commitToSink(boolean endOfStream, boolean flush) {
     WritableBuffer buf = buffer;
     buffer = null;

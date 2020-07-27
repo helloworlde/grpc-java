@@ -185,10 +185,21 @@ public abstract class AbstractClientStream extends AbstractStream
     return shouldBeCountedForInUse;
   }
 
+  /**
+   * 将 framer 传递给 Transport
+   * @param frame a non-empty buffer to deliver or {@code null} if the framer is being
+   *              closed and there is no data to deliver.
+   * @param endOfStream whether the frame is the last one for the GRPC stream
+   * @param flush {@code true} if more data may not be arriving soon
+   * @param numMessages the number of messages that this series of frames represents
+   */
   @Override
-  public final void deliverFrame(
-      WritableBuffer frame, boolean endOfStream, boolean flush, int numMessages) {
+  public final void deliverFrame(WritableBuffer frame,
+                                 boolean endOfStream,
+                                 boolean flush,
+                                 int numMessages) {
     Preconditions.checkArgument(frame != null || endOfStream, "null frame before EOS");
+    // 通过 netty 写入
     abstractClientStreamSink().writeFrame(frame, endOfStream, flush, numMessages);
   }
 
@@ -199,6 +210,7 @@ public abstract class AbstractClientStream extends AbstractStream
   public final void halfClose() {
     if (!transportState().isOutboundClosed()) {
       transportState().setOutboundClosed();
+      // 输出已经到达消息结尾
       endOfMessages();
     }
   }

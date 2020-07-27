@@ -21,11 +21,12 @@ import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
 import io.grpc.Drainable;
 import io.grpc.KnownLength;
+
+import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import javax.annotation.Nullable;
 
 /**
  * An {@link InputStream} backed by a protobuf.
@@ -102,6 +103,10 @@ final class ProtoInputStream extends InputStream implements Drainable, KnownLeng
     return -1;
   }
 
+  /**
+   * 返回可以从该对象读取(或跳过)的总字节数，直到所有字节都被读出
+   * @return 字节数
+   */
   @Override
   public int available() {
     if (message != null) {

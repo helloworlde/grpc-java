@@ -71,6 +71,7 @@ public abstract class AbstractStream implements Stream {
     checkNotNull(message, "message");
     try {
       if (!framer().isClosed()) {
+        // 写入消息体
         framer().writePayload(message);
       }
     } finally {
@@ -88,6 +89,7 @@ public abstract class AbstractStream implements Stream {
   /**
    * Closes the underlying framer. Should be called when the outgoing stream is gracefully closed
    * (half closure on client; closure on server).
+   * 关闭底层 framer，当输出流优雅地关闭时应该调用
    */
   protected final void endOfMessages() {
     framer().close();
