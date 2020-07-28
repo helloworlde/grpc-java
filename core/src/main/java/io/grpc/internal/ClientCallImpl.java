@@ -242,7 +242,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
                              DecompressorRegistry decompressorRegistry,
                              Compressor compressor,
                              boolean fullStreamDecompression) {
-
+    log.warning("==> io.grpc.internal.ClientCallImpl.prepareHeaders");
     // 移除编码的 header，如果有压缩，则根据压缩编码重新设置
     headers.discardAll(MESSAGE_ENCODING_KEY);
     if (compressor != Codec.Identity.NONE) {
@@ -273,6 +273,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
    */
   @Override
   public void start(Listener<RespT> observer, Metadata headers) {
+    log.warning("==> io.grpc.internal.ClientCallImpl.start");
+
     PerfMark.startTask("ClientCall.start", tag);
     try {
       // 开始调用
@@ -289,6 +291,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
    * @param headers  包含额外的元数据，如鉴权
    */
   private void startInternal(final Listener<RespT> observer, Metadata headers) {
+    log.warning("==> io.grpc.internal.ClientCallImpl.startInternal");
+
     checkState(stream == null, "Already started");
     checkState(!cancelCalled, "call was cancelled");
     checkNotNull(observer, "observer");
@@ -304,6 +308,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
 
     // 压缩器
+    log.info("设置压缩器");
     final String compressorName = callOptions.getCompressor();
     Compressor compressor;
     if (compressorName != null) {
@@ -320,9 +325,11 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
 
     // 根据参数添加 Header
+    log.info("准备 Headers");
     prepareHeaders(headers, decompressorRegistry, compressor, fullStreamDecompression);
 
     // 最后期限
+    log.info("准备 Deadline");
     Deadline effectiveDeadline = effectiveDeadline();
     boolean deadlineExceeded = effectiveDeadline != null && effectiveDeadline.isExpired();
     // 如果没有过期
@@ -331,6 +338,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       logIfContextNarrowedTimeout(effectiveDeadline, context.getDeadline(), callOptions.getDeadline());
       // 如果打开了重试，则创建重试流
       if (retryEnabled) {
+        log.info("开启了重试，创建重试 Stream");
         stream = clientTransportProvider.newRetriableStream(method, callOptions, headers, context);
       } else {
         // 根据获取 ClientTransport

@@ -513,13 +513,16 @@ final class ManagedChannelImpl extends ManagedChannel implements
                                                   final CallOptions callOptions,
                                                   final Metadata headers,
                                                   final Context context) {
+      logger.warning("==> io.grpc.internal.ManagedChannelImpl.ChannelTransportProvider#newRetriableStream");
 
       checkState(retryEnabled, "retry should be enabled");
 
       // 获取节流配置
+      logger.info("获取节流设置 Throttle");
       final Throttle throttle = lastServiceConfig.getRetryThrottling();
 
       // 定义可重试流
+      logger.info("定义可重试流 RetryStream");
       final class RetryStream extends RetriableStream<ReqT> {
         // 构造重试流
         RetryStream() {
@@ -542,6 +545,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
          */
         @Override
         Status prestart() {
+          logger.info("io/grpc/internal/ManagedChannelImpl.RetryStream prestart, 将未提交的可重试流添加到注册器中");
           return uncommittedRetriableStreamsRegistry.add(this);
         }
 
@@ -550,6 +554,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
          */
         @Override
         void postCommit() {
+          logger.info("io/grpc/internal/ManagedChannelImpl.RetryStream postCommit, 将当前流从未提交的流中移除");
           // 将当前流从未提交的流中移除
           uncommittedRetriableStreamsRegistry.remove(this);
         }
@@ -563,6 +568,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
          */
         @Override
         ClientStream newSubstream(ClientStreamTracer.Factory tracerFactory, Metadata newHeaders) {
+          logger.info("io/grpc/internal/ManagedChannelImpl.RetryStream newSubstream, 创建流");
+
           CallOptions newOptions = callOptions.withStreamTracerFactory(tracerFactory);
           // 重试，重新 pick subchannel
           ClientTransport transport = get(new PickSubchannelArgsImpl(method, newHeaders, newOptions));

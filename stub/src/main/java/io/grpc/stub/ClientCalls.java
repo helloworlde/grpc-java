@@ -123,6 +123,7 @@ public final class ClientCalls {
    */
   public static <ReqT, RespT> RespT blockingUnaryCall(ClientCall<ReqT, RespT> call, ReqT req) {
     try {
+      logger.warning("==> io.grpc.stub.ClientCalls.blockingUnaryCall(io.grpc.ClientCall<ReqT,RespT>, ReqT)");
       return getUnchecked(futureUnaryCall(call, req));
     } catch (RuntimeException e) {
       throw cancelThrow(call, e);
@@ -224,6 +225,7 @@ public final class ClientCalls {
    * @return a future for the single response message 返回用于单个消息响应的 Future
    */
   public static <ReqT, RespT> ListenableFuture<RespT> futureUnaryCall(ClientCall<ReqT, RespT> call, ReqT req) {
+    logger.warning("==> io.grpc.stub.ClientCalls.futureUnaryCall");
     // 初始化 GrpcFuture
     GrpcFuture<RespT> responseFuture = new GrpcFuture<>(call);
     // 将 GrpcFuture 包装为继承了 Listener 的 UnaryStreamToFuture，提交任务
@@ -321,12 +323,18 @@ public final class ClientCalls {
   private static <ReqT, RespT> void asyncUnaryRequestCall(ClientCall<ReqT, RespT> call,
                                                           ReqT req,
                                                           StartableListener<RespT> responseListener) {
+    logger.warning("==> io.grpc.stub.ClientCalls.asyncUnaryRequestCall(io.grpc.ClientCall<ReqT,RespT>, ReqT, io.grpc.stub.ClientCalls.StartableListener<RespT>)");
+
+    logger.info("startCall 开始调用");
     // 开始调用
     startCall(call, responseListener);
     try {
       // 发送消息，提交 BufferEntry 任务
+      logger.info( "startCall 调用结束，开始调用 sendMessage");
       call.sendMessage(req);
+
       // 从客户端关闭流
+      logger.info("sendMessage 调用结束，开始调用 halfClose");
       call.halfClose();
     } catch (RuntimeException e) {
       throw cancelThrow(call, e);
@@ -357,8 +365,12 @@ public final class ClientCalls {
   private static <ReqT, RespT> void startCall(ClientCall<ReqT, RespT> call,
                                               StartableListener<RespT> responseListener) {
     // 通过 ClientCallImpl 调用 start
+    logger.warning("==> io.grpc.stub.ClientCalls.startCall");
+    logger.info("开始调用 ClientCall.Start");
     call.start(responseListener, new Metadata());
+
     // 启动监听器，延迟执行 Stream 的 request 方法
+    logger.info("调用 Start 结束，开始 responseListener.onStart");
     responseListener.onStart();
   }
 
