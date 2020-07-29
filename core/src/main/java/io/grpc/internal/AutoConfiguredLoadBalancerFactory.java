@@ -41,6 +41,7 @@ import io.grpc.internal.ServiceConfigUtil.PolicySelection;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static io.grpc.LoadBalancer.ATTR_LOAD_BALANCING_CONFIG;
@@ -51,6 +52,8 @@ public final class AutoConfiguredLoadBalancerFactory {
 
   private final LoadBalancerRegistry registry;
   private final String defaultPolicy;
+
+  static final Logger logger = Logger.getLogger(AutoConfiguredLoadBalancerFactory.class.getName());
 
   public AutoConfiguredLoadBalancerFactory(String defaultPolicy) {
     this(LoadBalancerRegistry.getDefaultRegistry(), defaultPolicy);
@@ -98,8 +101,10 @@ public final class AutoConfiguredLoadBalancerFactory {
     private LoadBalancerProvider delegateProvider;
 
     AutoConfiguredLoadBalancer(Helper helper) {
+      logger.warning("==> io.grpc.internal.AutoConfiguredLoadBalancerFactory.AutoConfiguredLoadBalancer.AutoConfiguredLoadBalancer");
       this.helper = helper;
       // 从注册器中获取默认的负载均衡策略提供器
+      logger.info("从注册器中获取默认的负载均衡策略提供器");
       delegateProvider = registry.getProvider(defaultPolicy);
       if (delegateProvider == null) {
         throw new IllegalStateException("Could not find policy '" + defaultPolicy
@@ -107,6 +112,7 @@ public final class AutoConfiguredLoadBalancerFactory {
                 + " included in META-INF/services/io.grpc.LoadBalancerProvider from your jar files.");
       }
       // 创建新的
+      logger.info("创建新的负载均衡器");
       delegate = delegateProvider.newLoadBalancer(helper);
     }
 

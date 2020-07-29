@@ -52,6 +52,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 import static io.grpc.ConnectivityState.CONNECTING;
 import static io.grpc.ConnectivityState.IDLE;
@@ -64,6 +65,9 @@ import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
  */
 @ThreadSafe
 final class InternalSubchannel implements InternalInstrumented<ChannelStats>, TransportProvider {
+
+  static final Logger logger = Logger.getLogger(InternalSubchannel.class.getName());
+
 
   private final InternalLogId logId;
   private final String authority;
@@ -192,6 +196,8 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
    */
   @Override
   public ClientTransport obtainActiveTransport() {
+    logger.warning("==> io.grpc.internal.InternalSubchannel#obtainActiveTransport");
+    logger.info("返回一个 READY 的 Transport，用于创建新的流");
     // 如果有活跃的，则直接返回
     ClientTransport savedTransport = activeTransport;
     if (savedTransport != null) {
@@ -232,6 +238,8 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
    * 开始一个新的 Transport
    */
   private void startNewTransport() {
+    logger.warning("==> io.grpc.internal.InternalSubchannel#startNewTransport");
+    logger.info("没有 ready 的 Transport，开始一个新的 Transport");
     syncContext.throwIfNotInThisSynchronizationContext();
 
     Preconditions.checkState(reconnectTask == null, "Should have no reconnectTask scheduled");
@@ -274,6 +282,7 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
     // 创建 Transport 监听器，建立连接
     Runnable runnable = transport.start(new TransportListener(transport, address));
     if (runnable != null) {
+      logger.info("创建 Transport 监听器，稍后建立连接");
       syncContext.executeLater(runnable);
     }
     channelLogger.log(ChannelLogLevel.INFO, "Started transport {0}", transportLogger.logId);

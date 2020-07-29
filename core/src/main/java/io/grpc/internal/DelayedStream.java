@@ -28,6 +28,7 @@ import javax.annotation.concurrent.GuardedBy;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -41,6 +42,8 @@ import static com.google.common.base.Preconditions.checkState;
  * necessary.
  */
 class DelayedStream implements ClientStream {
+  static final Logger logger = Logger.getLogger(DelayedStream.class.getName());
+
   /** {@code true} once realStream is valid and all pending calls have been drained. */
   private volatile boolean passThrough;
   /**
@@ -212,6 +215,8 @@ class DelayedStream implements ClientStream {
    */
   @Override
   public void start(ClientStreamListener listener) {
+    logger.warning("==> io.grpc.internal.DelayedStream#start");
+    logger.info("开始一个 Delayed 流");
     checkState(this.listener == null, "already started");
 
     Status savedError;
@@ -222,22 +227,26 @@ class DelayedStream implements ClientStream {
       savedError = error;
       savedPassThrough = passThrough;
       if (!savedPassThrough) {
+        logger.info("创建新的 DelayedStreamListener");
         listener = delayedListener = new DelayedStreamListener(listener);
       }
       startTimeNanos = System.nanoTime();
     }
     if (savedError != null) {
+      logger.info("创建失败，关闭监听器");
       listener.closed(savedError, new Metadata());
       return;
     }
 
     if (savedPassThrough) {
+      logger.info("开始真正的流");
       realStream.start(listener);
     } else {
       final ClientStreamListener finalListener = listener;
       delayOrExecute(new Runnable() {
         @Override
         public void run() {
+          logger.info("延迟执行真正的流");
           realStream.start(finalListener);
         }
       });
@@ -438,12 +447,14 @@ class DelayedStream implements ClientStream {
     }
 
     private void delayOrExecute(Runnable runnable) {
+      logger.warning("==> io.grpc.internal.DelayedStream.DelayedStreamListener#delayOrExecute");
       synchronized (this) {
         if (!passThrough) {
           pendingCallbacks.add(runnable);
           return;
         }
       }
+      logger.info("延迟或执行任务,class:" + runnable.getClass().getName());
       runnable.run();
     }
 

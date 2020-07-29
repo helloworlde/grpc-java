@@ -25,6 +25,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -59,6 +60,8 @@ import static com.google.common.base.Preconditions.checkState;
 @ThreadSafe
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/4984")
 public final class SynchronizationContext implements Executor {
+  static final Logger logger = Logger.getLogger(SynchronizationContext.class.getName());
+
   private final UncaughtExceptionHandler uncaughtExceptionHandler;
 
   private final Queue<Runnable> queue = new ConcurrentLinkedQueue<>();
@@ -79,11 +82,14 @@ public final class SynchronizationContext implements Executor {
   /**
    * Run all tasks in the queue in the current thread, if no other thread is running this method.
    * Otherwise do nothing.
+   * 当没有其他线程执行这个方法时，执行当前线程队列中的任务
    *
    * <p>Upon returning, it guarantees that all tasks submitted by {@code #executeLater} before it
    * have been or will eventually be run, while not requiring any more calls to {@code drain()}.
+   * 在返回时，要确保之前提交的任务已经运行或最终将会运行
    */
   public final void drain() {
+    logger.warning("==> io.grpc.SynchronizationContext#drain");
     do {
       if (!drainingThread.compareAndSet(null, Thread.currentThread())) {
         return;
@@ -92,6 +98,7 @@ public final class SynchronizationContext implements Executor {
         Runnable runnable;
         while ((runnable = queue.poll()) != null) {
           try {
+            logger.info("运行提交的任务，class:" + runnable.getClass().getName());
             runnable.run();
           } catch (Throwable t) {
             uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), t);

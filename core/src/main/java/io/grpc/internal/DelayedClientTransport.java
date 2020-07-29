@@ -39,6 +39,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.concurrent.Executor;
+import java.util.logging.Logger;
 
 /**
  * A client transport that queues requests before a real transport is available. When {@link
@@ -50,6 +51,8 @@ import java.util.concurrent.Executor;
  * thus the delayed transport stops owning the stream.
  */
 final class DelayedClientTransport implements ManagedClientTransport {
+  static final Logger logger = Logger.getLogger(DelayedClientTransport.class.getName());
+
   // lazily allocated, since it is infrequently used.
   private final InternalLogId logId =
       InternalLogId.allocate(DelayedClientTransport.class, /*details=*/ null);
@@ -139,6 +142,8 @@ final class DelayedClientTransport implements ManagedClientTransport {
   public final ClientStream newStream(MethodDescriptor<?, ?> method,
                                       Metadata headers,
                                       CallOptions callOptions) {
+    logger.warning("==> io.grpc.internal.DelayedClientTransport#newStream");
+    logger.info("创建新的流");
     try {
       // 创建 subchannel 选择参数
       PickSubchannelArgs args = new PickSubchannelArgsImpl(method, headers, callOptions);
@@ -164,6 +169,7 @@ final class DelayedClientTransport implements ManagedClientTransport {
         }
 
         // 选择 subchannel
+        logger.info("pickSubchannel 选择可用的 Subchannel");
         PickResult pickResult = picker.pickSubchannel(args);
         // 选择 Transport
         ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult, callOptions.isWaitForReady());
@@ -188,9 +194,11 @@ final class DelayedClientTransport implements ManagedClientTransport {
    */
   @GuardedBy("lock")
   private PendingStream createPendingStream(PickSubchannelArgs args) {
+    logger.warning("==> io.grpc.internal.DelayedClientTransport#createPendingStream");
     PendingStream pendingStream = new PendingStream(args);
     pendingStreams.add(pendingStream);
     if (getPendingStreamsCount() == 1) {
+      logger.info("创建并提交等待稍后执行的流");
       syncContext.executeLater(reportTransportInUse);
     }
     return pendingStream;

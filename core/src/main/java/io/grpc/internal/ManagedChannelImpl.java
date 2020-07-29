@@ -335,6 +335,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
    */
   @VisibleForTesting
   void exitIdleMode() {
+    logger.warning("==> io.grpc.internal.ManagedChannelImpl.exitIdleMode");
+    logger.info("退出 Idle 模式");
     syncContext.throwIfNotInThisSynchronizationContext();
 
     // 如果关闭或有错误，则返回
@@ -363,12 +365,14 @@ final class ManagedChannelImpl extends ManagedChannel implements
     LbHelperImpl lbHelper = new LbHelperImpl();
 
     // 自动配置负载均衡
+    logger.info("创建负载均衡器实例");
     lbHelper.lb = loadBalancerFactory.newLoadBalancer(lbHelper);
     // Delay setting lbHelper until fully initialized, since loadBalancerFactory is user code and
     // may throw. We don't want to confuse our state, even if we will enter panic mode.
     this.lbHelper = lbHelper;
 
     // 服务发现监听器
+    logger.info("创建服务发现监听器");
     NameResolverListener listener = new NameResolverListener(lbHelper, nameResolver);
     nameResolver.start(listener);
     nameResolverStarted = true;
@@ -454,6 +458,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
      */
     @Override
     public ClientTransport get(PickSubchannelArgs args) {
+      logger.warning("==> io.grpc.internal.ManagedChannelImpl.ChannelTransportProvider#get");
+      logger.info("使用负载均衡算法获取 Subchannel");
+
       SubchannelPicker pickerCopy = subchannelPicker;
       // 如果是关闭状态，则停止调用
       if (shutdown.get()) {
@@ -467,10 +474,13 @@ final class ManagedChannelImpl extends ManagedChannel implements
           @Override
           public void run() {
             // 退出 idle 模式，将会创建 LoadBalancer,NameResovler
+            logger.warning("==> io.grpc.internal.ManagedChannelImpl.ChannelTransportProvider#get#ExitIdleModeForTransport#run");
+            logger.info("退出 idle 模式");
             exitIdleMode();
           }
         }
 
+        logger.info("提交退出 idle 模式的任务");
         syncContext.execute(new ExitIdleModeForTransport());
         return delayedTransport;
       }
@@ -490,6 +500,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
       // the idle timer.
       // 大多数情况下，idle 计时器会在传输创建流后开始启动，它将向正在取消空闲计时器的通道报告使用中状态
       // 选择某个 SubChannel 发起调用，即选择某个服务端
+
+      logger.info("选择 SubChannel ");
       PickResult pickResult = pickerCopy.pickSubchannel(args);
       ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult, args.getCallOptions().isWaitForReady());
       // 如果有 Transport，则返回
@@ -545,7 +557,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
          */
         @Override
         Status prestart() {
-          logger.info("io/grpc/internal/ManagedChannelImpl.RetryStream prestart, 将未提交的可重试流添加到注册器中");
+          logger.info("io.grpc.internal.ManagedChannelImpl.RetryStream#prestart, 将未提交的可重试流添加到注册器中");
           return uncommittedRetriableStreamsRegistry.add(this);
         }
 
@@ -554,7 +566,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
          */
         @Override
         void postCommit() {
-          logger.info("io/grpc/internal/ManagedChannelImpl.RetryStream postCommit, 将当前流从未提交的流中移除");
+          logger.info("io.grpc.internal.ManagedChannelImpl.RetryStream#postCommit, 将当前流从未提交的流中移除");
           // 将当前流从未提交的流中移除
           uncommittedRetriableStreamsRegistry.remove(this);
         }
@@ -568,7 +580,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
          */
         @Override
         ClientStream newSubstream(ClientStreamTracer.Factory tracerFactory, Metadata newHeaders) {
-          logger.info("io/grpc/internal/ManagedChannelImpl.RetryStream newSubstream, 创建流");
+          logger.warning("==> io.grpc.internal.ManagedChannelImpl#RetryStream newSubstream, 创建流");
 
           CallOptions newOptions = callOptions.withStreamTracerFactory(tracerFactory);
           // 重试，重新 pick subchannel

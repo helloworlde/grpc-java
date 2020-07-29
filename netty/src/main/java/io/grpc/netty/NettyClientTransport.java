@@ -60,6 +60,7 @@ import java.nio.channels.ClosedChannelException;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 import static io.grpc.internal.GrpcUtil.KEEPALIVE_TIME_NANOS_DISABLED;
 import static io.netty.channel.ChannelOption.ALLOCATOR;
@@ -69,6 +70,8 @@ import static io.netty.channel.ChannelOption.SO_KEEPALIVE;
  * A Netty-based {@link ConnectionClientTransport} implementation.
  */
 class NettyClientTransport implements ConnectionClientTransport {
+
+  static final Logger logger = Logger.getLogger(NettyClientTransport.class.getName());
 
   /**
    * Get the existing {@link ChannelLogger} key in case a separate, isolated class loader has
@@ -193,6 +196,9 @@ class NettyClientTransport implements ConnectionClientTransport {
   public ClientStream newStream(MethodDescriptor<?, ?> method,
                                 Metadata headers,
                                 CallOptions callOptions) {
+    logger.warning("==> io.grpc.netty.NettyClientTransport#newStream");
+    logger.info("创建新的 Stream");
+
     Preconditions.checkNotNull(method, "method");
     Preconditions.checkNotNull(headers, "headers");
 

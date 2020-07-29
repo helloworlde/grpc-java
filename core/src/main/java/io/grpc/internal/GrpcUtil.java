@@ -697,6 +697,9 @@ public final class GrpcUtil {
    */
   @Nullable
   static ClientTransport getTransportFromPickResult(PickResult result, boolean isWaitForReady) {
+    log.warning("==> io.grpc.internal.GrpcUtil#getTransportFromPickResult");
+    log.info("根据 PickResult 获取 Transport");
+
     final ClientTransport transport;
     // 选取的 Subchannel
     Subchannel subchannel = result.getSubchannel();

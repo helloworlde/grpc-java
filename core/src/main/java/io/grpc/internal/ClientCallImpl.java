@@ -342,6 +342,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
         stream = clientTransportProvider.newRetriableStream(method, callOptions, headers, context);
       } else {
         // 根据获取 ClientTransport
+        log.info("没有开启重试，获取 Transport");
         ClientTransport transport = clientTransportProvider.get(new PickSubchannelArgsImpl(method, headers, callOptions));
         Context origContext = context.attach();
         try {
@@ -353,6 +354,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       }
     } else {
       // 初始化超时失败的流
+      log.info("初始化时已经过了 deadline，创建失败的流 FailingClientStream");
       stream = new FailingClientStream(DEADLINE_EXCEEDED.withDescription("ClientCall started after deadline exceeded: " + effectiveDeadline));
     }
 
@@ -390,6 +392,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     cancellationListener = new ContextCancellationListener(observer);
     // 初始化支持 header 操作的 ClientStreamListener
     // 调用 start 方法，修改流的状态
+    log.info("调用 start 方法，修改流的状态");
     stream.start(new ClientStreamListenerImpl(observer));
 
     // Delay any sources of cancellation after start(), because most of the transports are broken if

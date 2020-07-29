@@ -44,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -53,6 +54,8 @@ import static com.google.common.base.Preconditions.checkState;
  * 支持重试的逻辑 ClientStream
  */
 abstract class RetriableStream<ReqT> implements ClientStream {
+  static final Logger logger = Logger.getLogger(RetriableStream.class.getName());
+
   @VisibleForTesting
   static final Metadata.Key<String> GRPC_PREVIOUS_RPC_ATTEMPTS =
       Metadata.Key.of("grpc-previous-rpc-attempts", Metadata.ASCII_STRING_MARSHALLER);
@@ -167,7 +170,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   @Nullable // null if already committed
   @CheckReturnValue
   private Runnable commit(final Substream winningSubstream) {
-
+    logger.warning("==> io.grpc.internal.RetriableStream#commit");
+    logger.info("提交流");
     synchronized (lock) {
       // 如果已经有流提交了，则返回 null
       if (state.winningSubstream != null) {
@@ -187,6 +191,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       if (scheduledRetry != null) {
         // TODO(b/145386688): This access should be guarded by 'this.scheduledRetry.lock'; instead
         // found: 'this.lock'
+        logger.info("取消计划的重试");
         retryFuture = scheduledRetry.markCancelled();
         scheduledRetry = null;
       } else {
@@ -198,6 +203,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       if (scheduledHedging != null) {
         // TODO(b/145386688): This access should be guarded by 'this.scheduledHedging.lock'; instead
         // found: 'this.lock'
+        logger.info("取消计划的对冲");
         hedgingFuture = scheduledHedging.markCancelled();
         scheduledHedging = null;
       } else {
@@ -209,6 +215,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
         public void run() {
           // For hedging only, not needed for normal retry
           // 遍历保存的枯竭的流，如果不是最后提交的流，则都取消
+          logger.warning("==> io.grpc.internal.RetriableStream#commit#CommitTask#run");
+          logger.info("遍历保存的枯竭的流，如果不是最后提交的流，则都取消");
           for (Substream substream : savedDrainedSubstreams) {
             if (substream != winningSubstream) {
               substream.stream.cancel(CANCELLED_BECAUSE_COMMITTED);
@@ -376,6 +384,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    */
   @Override
   public final void start(ClientStreamListener listener) {
+    logger.warning("==> io.grpc.internal.RetriableStream#start");
+    logger.info("开始 Retriable 流");
     masterListener = listener;
 
     // 调用监听器的 prestart 方法，将流添加到未提交的流注册器中
@@ -391,6 +401,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     class StartEntry implements BufferEntry {
       @Override
       public void runWith(Substream substream) {
+        logger.warning("==> io.grpc.internal.RetriableStream#start#StartEntry#runWith");
+        logger.info("开始执行 StartEntry");
         substream.stream.start(new Sublistener(substream));
       }
     }
@@ -544,6 +556,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    */
   @Override
   public final void cancel(Status reason) {
+    logger.warning("==> io.grpc.internal.RetriableStream#cancel");
+    logger.info("取消流");
     // 创建一个空的 Substream
     Substream noopSubstream = new Substream(0 /* previousAttempts doesn't matter here */);
     noopSubstream.stream = new NoopClientStream();
@@ -1358,6 +1372,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     @CheckReturnValue
     // GuardedBy RetriableStream.lock
     State committed(Substream winningSubstream) {
+      logger.warning("==> io.grpc.internal.RetriableStream.State#committed");
+      logger.warning("提交流并返回状态");
       checkState(this.winningSubstream == null, "Already committed");
 
       boolean passThrough = false;

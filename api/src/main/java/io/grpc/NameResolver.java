@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -57,6 +58,9 @@ import static com.google.common.base.Preconditions.checkNotNull;
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1770")
 public abstract class NameResolver {
+
+  static final Logger logger = Logger.getLogger(NameResolver.class.getName());
+
   /**
    * Returns the authority used to authenticate connections to servers.  It <strong>must</strong> be
    * from a trusted source, because if the authority is tampered with, RPCs may be sent to the
@@ -78,6 +82,7 @@ public abstract class NameResolver {
    * @since 1.0.0
    */
   public void start(final Listener listener) {
+    logger.warning("==> io.grpc.NameResolver.start(io.grpc.NameResolver.Listener)");
     // 如果是 Listener2 则开始解析，如果不是则使用 Listener2 解析
     if (listener instanceof Listener2) {
       start((Listener2) listener);
