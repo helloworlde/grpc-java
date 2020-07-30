@@ -208,6 +208,7 @@ public abstract class AbstractClientStream extends AbstractStream
    */
   @Override
   public final void halfClose() {
+    log.warning("==> io.grpc.internal.AbstractClientStream#halfClose");
     if (!transportState().isOutboundClosed()) {
       transportState().setOutboundClosed();
       // 输出已经到达消息结尾

@@ -22,9 +22,14 @@ import io.grpc.Compressor;
 import io.grpc.Deadline;
 import io.grpc.DecompressorRegistry;
 import io.grpc.Status;
+
 import java.io.InputStream;
+import java.util.logging.Logger;
 
 abstract class ForwardingClientStream implements ClientStream {
+
+  static final Logger logger = Logger.getLogger(ForwardingClientStream.class.getName());
+
   protected abstract ClientStream delegate();
 
   @Override
@@ -34,6 +39,7 @@ abstract class ForwardingClientStream implements ClientStream {
 
   @Override
   public void writeMessage(InputStream message) {
+    logger.warning("==> io.grpc.internal.ForwardingClientStream#writeMessage");
     delegate().writeMessage(message);
   }
 

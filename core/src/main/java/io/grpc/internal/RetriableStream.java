@@ -247,6 +247,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    * 当成功后调用 commit 方法
    */
   private void commitAndRun(Substream winningSubstream) {
+    logger.warning("==> io.grpc.internal.RetriableStream#commitAndRun");
+    logger.info("提交流并执行任务");
     Runnable postCommitTask = commit(winningSubstream);
 
     if (postCommitTask != null) {
@@ -261,6 +263,9 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    * @return
    */
   private Substream createSubstream(int previousAttemptCount) {
+    logger.warning("==> io.grpc.internal.RetriableStream#createSubstream");
+    logger.info("创建 Substream, previousAttemptCount:" + previousAttemptCount);
+
     // 重试流
     Substream sub = new Substream(previousAttemptCount);
     // one tracer per substream
@@ -291,8 +296,10 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
   /** Adds grpc-previous-rpc-attempts in the headers of a retry/hedging RPC. */
   @VisibleForTesting
-  final Metadata updateHeaders(
-      Metadata originalHeaders, int previousAttemptCount) {
+  final Metadata updateHeaders(Metadata originalHeaders,
+                               int previousAttemptCount) {
+    logger.warning("==> io.grpc.internal.RetriableStream#updateHeaders");
+    logger.info("更新请求头，修改重试次数");
     Metadata newHeaders = new Metadata();
     newHeaders.merge(originalHeaders);
     if (previousAttemptCount > 0) {
@@ -308,6 +315,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    * @param substream 流
    */
   private void drain(Substream substream) {
+    logger.warning("==> io.grpc.internal.RetriableStream#drain");
+    logger.info("消耗流中缓冲的请求");
     int index = 0;
     // 128
     int chunk = 0x80;
@@ -362,6 +371,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
         }
 
         // 执行流的操作
+        logger.info("执行流的操作，当前 BufferEntry:" + bufferEntry.getClass().getName());
         bufferEntry.runWith(substream);
       }
     }
@@ -424,6 +434,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       FutureCanceller scheduledHedgingRef = null;
 
       synchronized (lock) {
+        logger.info("对冲策略生效，将流添加到对冲流中");
         state = state.addActiveHedge(substream);
         if (hasPotentialHedging(state)
                 && (throttle == null || throttle.isAboveThreshold())) {
@@ -432,6 +443,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       }
 
       if (scheduledHedgingRef != null) {
+        logger.info("提交计划的将对冲任务到线程池，" + hedgingPolicy.hedgingDelayNanos + "ns 后执行");
         scheduledHedgingRef.setFuture(
                 scheduledExecutorService.schedule(
                         new HedgingRunnable(scheduledHedgingRef),
@@ -450,6 +462,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    */
   @SuppressWarnings("GuardedBy")
   private void pushbackHedging(@Nullable Integer delayMillis) {
+    logger.warning("==> io.grpc.internal.RetriableStream#pushbackHedging");
+    logger.info("根据服务端返回的回推时间，重新调度对冲请求");
     // 如果回推的时间为 null，则返回
     if (delayMillis == null) {
       return;
@@ -610,11 +624,12 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   }
 
   /**
-   * 发送请求
+   * 发送消息
    *
    * @param message
    */
   final void sendMessage(final ReqT message) {
+    logger.info("发送重试消息");
     State savedState = state;
     if (savedState.passThrough) {
       savedState.winningSubstream.stream.writeMessage(method.streamRequest(message));
@@ -636,6 +651,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
    */
   @Override
   public final void request(final int numMessages) {
+    logger.warning("==> io.grpc.internal.RetriableStream#request");
+    logger.info("调用指定数量的请求:" + numMessages);
     State savedState = state;
     if (savedState.passThrough) {
       savedState.winningSubstream.stream.request(numMessages);
@@ -659,6 +676,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
   @Override
   public final void flush() {
+
     State savedState = state;
     if (savedState.passThrough) {
       savedState.winningSubstream.stream.flush();
@@ -735,6 +753,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
   @Override
   public final void halfClose() {
+    logger.warning("==> io.grpc.internal.RetriableStream#halfClose");
     // 从客户端关闭流
     class HalfCloseEntry implements BufferEntry {
       @Override
@@ -941,7 +960,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
      */
     @Override
     public void closed(Status status, RpcProgress rpcProgress, Metadata trailers) {
-
+      logger.warning("==> io.grpc.internal.RetriableStream.Sublistener#closed(io.grpc.Status, io.grpc.internal.ClientStreamListener.RpcProgress, io.grpc.Metadata)");
+      logger.info("流关闭时执行操作");
       synchronized (lock) {
         // 将 Substream 从 drainedSubstreams 中移除
         state = state.substreamClosed(substream);
@@ -964,15 +984,18 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
       if (state.winningSubstream == null) {
         boolean isFatal = false;
+        logger.info("根据服务端返回的状态执行后续操作,当前状态:"+rpcProgress.name());
         // 如果服务端的状态是被拒绝
         if (rpcProgress == RpcProgress.REFUSED &&
                 noMoreTransparentRetry.compareAndSet(false, true)) {
           // transparent retry
           // 则在 Transport 层重试
+          logger.info("请求 REFUSED 透明重试");
           final Substream newSubstream = createSubstream(substream.previousAttemptCount);
           if (isHedging) {
             boolean commit = false;
             synchronized (lock) {
+              logger.info("开始透明对冲");
               // Although this operation is not done atomically with
               // noMoreTransparentRetry.compareAndSet(false, true), it does not change the size() of
               // activeHedges, so neither does it affect the commitment decision of other threads,
@@ -993,6 +1016,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
               commitAndRun(newSubstream);
             }
           } else {
+            logger.info("开始透明重试");
             // 如果是重试，重试策略为空，则获取
             if (retryPolicy == null) {
               retryPolicy = retryPolicyProvider.get();
@@ -1013,6 +1037,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           });
           return;
         } else if (rpcProgress == RpcProgress.DROPPED) {
+          logger.info("请求 DROPPED，取消所有的对冲");
           // DROPPED 表示请求被负载均衡丢弃了
           // For normal retry, nothing need be done here, will just commit.
           // For hedging, cancel scheduled hedge that is scheduled prior to the drop
@@ -1022,6 +1047,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
             freezeHedging();
           }
         } else {
+          logger.info("请求 PROCESSED，根据策略执行后续操作");
           // PROCESSED 状态
           // 没有更多 Transport 层的透明重试
           noMoreTransparentRetry.set(true);
@@ -1046,6 +1072,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
               scheduledRetry = scheduledRetryCopy = new FutureCanceller(lock);
             }
 
+            logger.info("提交重试任务");
             // 通过执行新的 Runnable，将返回的 Future 作为参数，设置给 scheduledRetryCopy
             scheduledRetryCopy.setFuture(scheduledExecutorService.schedule(
                 //  提交的新的任务
@@ -1075,6 +1102,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
         // 如果是对冲请求，
         if (isHedging) {
+          logger.info("对冲请求");
           synchronized (lock) {
             // 从所有活跃的对冲请求流中移除当前的流并返回状态
             state = state.removeActiveHedge(substream);
@@ -1113,6 +1141,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
      * 同时更新了节流配置，不改变状态
      */
     private RetryPlan makeRetryDecision(Status status, Metadata trailer) {
+      logger.warning("==> io.grpc.internal.RetriableStream.Sublistener#makeRetryDecision");
+      logger.info("根据当前条件决定是否需要重试");
       boolean shouldRetry = false;
       long backoffNanos = 0L;
       // 可以重试的状态
@@ -1121,6 +1151,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       boolean isNonFatalStatusCode = hedgingPolicy.nonFatalStatusCodes.contains(status.getCode());
       // 如果是对冲，且是失败状态，则直接返回不能重试的策略
       if (isHedging && !isNonFatalStatusCode) {
+        logger.info("当前是对冲，不重试");
         // isFatal is true, no pushback
         return new RetryPlan(/* shouldRetry = */ false, /* isFatal = */ true, 0, null);
       }
@@ -1131,6 +1162,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
       if (pushbackStr != null) {
         try {
           pushbackMillis = Integer.valueOf(pushbackStr);
+          logger.info("服务端返回的重试回退时间:" + pushbackMillis + "ms");
         } catch (NumberFormatException e) {
           pushbackMillis = -1;
         }
@@ -1164,7 +1196,7 @@ abstract class RetriableStream<ReqT> implements ClientStream {
           nextBackoffIntervalNanos = retryPolicy.initialBackoffNanos;
         } // else no retry
       } // else no retry
-
+      logger.info("重试的延迟时间:" + backoffNanos + "ns, 下一次初始延迟时间:" + nextBackoffIntervalNanos + "ns");
       return new RetryPlan(shouldRetry, /* isFatal = */ false, backoffNanos, isHedging ? pushbackMillis : null);
     }
 
@@ -1300,6 +1332,8 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     @CheckReturnValue
     // GuardedBy RetriableStream.lock
     State substreamDrained(Substream substream) {
+      logger.warning("==> io.grpc.internal.RetriableStream.State#substreamDrained");
+      logger.info("当前流变为提交的流，并返回状态");
       checkState(!passThrough, "Already passThrough");
 
       Collection<Substream> drainedSubstreams;
@@ -1347,6 +1381,9 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     @CheckReturnValue
     // GuardedBy RetriableStream.lock
     State substreamClosed(Substream substream) {
+      logger.warning("==> io.grpc.internal.RetriableStream.State#substreamClosed");
+      logger.info("移除当前流，并返回状态");
+
       substream.closed = true;
       // 如果包含这个流
       if (this.drainedSubstreams.contains(substream)) {

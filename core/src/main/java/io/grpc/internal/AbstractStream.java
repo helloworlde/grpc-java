@@ -25,6 +25,7 @@ import io.perfmark.PerfMark;
 
 import javax.annotation.concurrent.GuardedBy;
 import java.io.InputStream;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -34,6 +35,9 @@ import static com.google.common.base.Preconditions.checkState;
  * application thread.
  */
 public abstract class AbstractStream implements Stream {
+
+  static final Logger logger = Logger.getLogger(AbstractStream.class.getName());
+
   /** The framer to use for sending messages. */
   protected abstract Framer framer();
 
@@ -59,6 +63,7 @@ public abstract class AbstractStream implements Stream {
    */
   @Override
   public final void request(int numMessages) {
+    logger.warning("==> io.grpc.internal.AbstractStream#request");
     transportState().requestMessagesFromDeframer(numMessages);
   }
 
@@ -92,6 +97,7 @@ public abstract class AbstractStream implements Stream {
    * 关闭底层 framer，当输出流优雅地关闭时应该调用
    */
   protected final void endOfMessages() {
+    logger.warning("==> io.grpc.internal.AbstractStream#endOfMessages");
     framer().close();
   }
 
@@ -233,6 +239,8 @@ public abstract class AbstractStream implements Stream {
      * 执行发送指定数量的消息的任务
      */
     private void requestMessagesFromDeframer(final int numMessages) {
+      logger.warning("==> io.grpc.internal.AbstractStream.TransportState#requestMessagesFromDeframer");
+      logger.info("执行发送指定数量的消息的任务:" + numMessages);
       if (deframer instanceof ThreadOptimizedDeframer) {
         PerfMark.startTask("AbstractStream.request");
         try {

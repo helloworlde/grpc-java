@@ -412,7 +412,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
             // if already expired deadline let failing stream handle
             // 如果截止时间已经到期，请让失败的流处理
             && !(stream instanceof FailingClientStream)) {
-      // 提交任务，并返回回调
+      // 提交超时通知任务
       deadlineCancellationNotifyApplicationFuture = startDeadlineNotifyApplicationTimer(effectiveDeadline, observer);
     }
 
@@ -455,6 +455,9 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
    * 移除 context 和监听器
    */
   private void removeContextListenerAndCancelDeadlineFuture() {
+    log.warning("==> io.grpc.internal.ClientCallImpl#removeContextListenerAndCancelDeadlineFuture");
+    log.info("移除 context 和监听器");
+
     context.removeListener(cancellationListener);
     ScheduledFuture<?> f = deadlineCancellationSendToServerFuture;
     if (f != null) {
@@ -468,7 +471,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
   }
 
   /**
-   * 根据超时时间，提交任务
+   * 提交超时通知任务
    *
    * @param deadline
    * @param observer
@@ -476,6 +479,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
    */
   private ScheduledFuture<?> startDeadlineNotifyApplicationTimer(Deadline deadline,
                                                                  final Listener<RespT> observer) {
+    log.warning("==> io.grpc.internal.ClientCallImpl#startDeadlineNotifyApplicationTimer");
+    log.info("提交超时通知任务");
     // 计算剩余的时间
     final long remainingNanos = deadline.timeRemaining(TimeUnit.NANOSECONDS);
 
@@ -614,6 +619,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
    */
   @Override
   public void request(int numMessages) {
+    log.warning("==> io.grpc.internal.ClientCallImpl#request");
     PerfMark.startTask("ClientCall.request", tag);
     try {
       checkState(stream != null, "Not started");
@@ -668,6 +674,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
    */
   @Override
   public void halfClose() {
+    log.warning("==> io.grpc.internal.ClientCallImpl#halfClose");
+    log.info("关闭请求的消息发送调用，返回的响应不受影响，当客户端不会发送更多消息时调用");
     PerfMark.startTask("ClientCall.halfClose", tag);
     try {
       halfCloseInternal();
@@ -677,6 +685,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
   }
 
   private void halfCloseInternal() {
+    log.warning("==> io.grpc.internal.ClientCallImpl#halfCloseInternal");
     checkState(stream != null, "Not started");
     checkState(!cancelCalled, "call was cancelled");
     checkState(!halfCloseCalled, "call already half-closed");
@@ -691,6 +700,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
    */
   @Override
   public void sendMessage(ReqT message) {
+    log.warning("==> io.grpc.internal.ClientCallImpl#sendMessage");
     PerfMark.startTask("ClientCall.sendMessage", tag);
     try {
       sendMessageInternal(message);
@@ -705,6 +715,8 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
    * @param message
    */
   private void sendMessageInternal(ReqT message) {
+    log.warning("==> io.grpc.internal.ClientCallImpl#sendMessageInternal");
+    log.info("发送消息");
     checkState(stream != null, "Not started");
     checkState(!cancelCalled, "call was cancelled");
     checkState(!halfCloseCalled, "call was half-closed");
@@ -732,6 +744,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     // 对于 unary 请求，不用flush，因为接下来就是 halfClose, 这样就可以在消息最后搭载 END_STREAM=true，
     // 而无需打开损坏的流
     if (!unaryRequest) {
+      log.info("flush 流");
       stream.flush();
     }
   }

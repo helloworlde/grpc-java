@@ -272,6 +272,7 @@ class DelayedStream implements ClientStream {
    */
   @Override
   public void writeMessage(final InputStream message) {
+    logger.warning("==> io.grpc.internal.DelayedStream#writeMessage");
     checkNotNull(message, "message");
     if (passThrough) {
       realStream.writeMessage(message);
@@ -353,9 +354,12 @@ class DelayedStream implements ClientStream {
    */
   @Override
   public void request(final int numMessages) {
+    logger.warning("==> io.grpc.internal.DelayedStream#request");
     if (passThrough) {
+      logger.info("发送指定数量的请求:" + numMessages);
       realStream.request(numMessages);
     } else {
+      logger.info("延时发送指定数量的请求:" + numMessages);
       delayOrExecute(new Runnable() {
         @Override
         public void run() {

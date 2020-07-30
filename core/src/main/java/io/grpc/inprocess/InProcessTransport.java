@@ -16,10 +16,6 @@
 
 package io.grpc.inprocess;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static io.grpc.internal.GrpcUtil.TIMEOUT_KEY;
-import static java.lang.Math.max;
-
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Optional;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -56,6 +52,11 @@ import io.grpc.internal.ServerTransport;
 import io.grpc.internal.ServerTransportListener;
 import io.grpc.internal.StatsTraceContext;
 import io.grpc.internal.StreamListener;
+
+import javax.annotation.CheckReturnValue;
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
+import javax.annotation.concurrent.ThreadSafe;
 import java.io.InputStream;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -67,10 +68,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.CheckReturnValue;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static io.grpc.internal.GrpcUtil.TIMEOUT_KEY;
+import static java.lang.Math.max;
 
 @ThreadSafe
 final class InProcessTransport implements ServerTransport, ConnectionClientTransport {
@@ -720,6 +721,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
 
       @Override
       public synchronized void writeMessage(InputStream message) {
+        log.warning("==> io.grpc.inprocess.InProcessTransport.InProcessStream.InProcessClientStream#writeMessage");
         if (closed) {
           return;
         }

@@ -16,30 +16,36 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.Codec;
 import io.grpc.Decompressor;
 import io.grpc.Status;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.NotThreadSafe;
 import java.io.Closeable;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.logging.Logger;
 import java.util.zip.DataFormatException;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.NotThreadSafe;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Deframer for GRPC frames.
+ * GRPC 帧解码
  *
  * <p>This class is not thread-safe. Unless otherwise stated, all calls to public methods should be
  * made in the deframing thread.
  */
 @NotThreadSafe
 public class MessageDeframer implements Closeable, Deframer {
+  static final Logger logger = Logger.getLogger(MessageDeframer.class.getName());
+
+
   private static final int HEADER_LENGTH = 5;
   private static final int COMPRESSED_FLAG_MASK = 1;
   private static final int RESERVED_MASK = 0xFE;
@@ -153,6 +159,7 @@ public class MessageDeframer implements Closeable, Deframer {
 
   @Override
   public void request(int numMessages) {
+    logger.warning("==> io.grpc.internal.MessageDeframer#request");
     checkArgument(numMessages > 0, "numMessages must be > 0");
     if (isClosed()) {
       return;
@@ -210,6 +217,8 @@ public class MessageDeframer implements Closeable, Deframer {
 
   @Override
   public void close() {
+    logger.warning("==> io.grpc.internal.MessageDeframer#close");
+    logger.info("关闭压缩器、解压缩器、帧");
     if (isClosed()) {
       return;
     }
@@ -255,8 +264,10 @@ public class MessageDeframer implements Closeable, Deframer {
 
   /**
    * Reads and delivers as many messages to the listener as possible.
+   * 读取消息并将其传递给监听器
    */
   private void deliver() {
+    logger.warning("==> io.grpc.internal.MessageDeframer#deliver");
     // We can have reentrancy here when using a direct executor, triggered by calls to
     // request more messages. This is safe as we simply loop until pendingDelivers = 0
     if (inDelivery) {
@@ -372,8 +383,12 @@ public class MessageDeframer implements Closeable, Deframer {
   /**
    * Processes the GRPC compression header which is composed of the compression flag and the outer
    * frame length.
+   * 处理由压缩标志和外部帧长度组成的 gRPC 压缩头
    */
   private void processHeader() {
+    logger.warning("==> io.grpc.internal.MessageDeframer#processHeader");
+    logger.info("处理消息头");
+    // TODO
     int type = nextFrame.readUnsignedByte();
     if ((type & RESERVED_MASK) != 0) {
       throw Status.INTERNAL.withDescription(
@@ -400,8 +415,11 @@ public class MessageDeframer implements Closeable, Deframer {
 
   /**
    * Processes the GRPC message body, which depending on frame header flags may be compressed.
+   * 处理 gRPC 消息体，这取决于帧头标志可能被压缩
    */
   private void processBody() {
+    logger.warning("==> io.grpc.internal.MessageDeframer#processBody");
+    logger.info("处理消息体");
     // There is no reliable way to get the uncompressed size per message when it's compressed,
     // because the uncompressed bytes are provided through an InputStream whose total size is
     // unknown until all bytes are read, and we don't know when it happens.

@@ -31,6 +31,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -42,6 +43,8 @@ import static java.lang.Math.min;
  * MessageFramer.Sink}.
  */
 public class MessageFramer implements Framer {
+
+  static final Logger logger = Logger.getLogger(MessageFramer.class.getName());
 
   private static final int NO_MAX_OUTBOUND_MESSAGE_SIZE = -1;
 
@@ -333,6 +336,9 @@ public class MessageFramer implements Framer {
    */
   @Override
   public void close() {
+    logger.warning("==> io.grpc.internal.MessageFramer#close");
+    logger.info("flush 并关闭 framer，释放所有的缓冲");
+
     if (!isClosed()) {
       closed = true;
       // With the current code we don't expect readableBytes > 0 to be possible here, added

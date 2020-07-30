@@ -587,6 +587,7 @@ public final class ClientCalls {
      */
     @Override
     void onStart() {
+      logger.warning("==> io.grpc.stub.ClientCalls.UnaryStreamToFuture#onStart");
       responseFuture.call.request(2);
     }
   }
