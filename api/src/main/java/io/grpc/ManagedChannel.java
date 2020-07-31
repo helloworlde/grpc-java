@@ -16,17 +16,19 @@
 
 package io.grpc;
 
-import java.util.concurrent.TimeUnit;
 import javax.annotation.concurrent.ThreadSafe;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A {@link Channel} that provides lifecycle management.
+ * 提供生命周期管理的 Channel
  */
 @ThreadSafe
 public abstract class ManagedChannel extends Channel {
   /**
    * Initiates an orderly shutdown in which preexisting calls continue but new calls are immediately
    * cancelled.
+   * 初始化一个顺序的关闭，既有的调用会继续执行，但是新的调用会被立即取消
    *
    * @return this
    * @since 1.0.0
@@ -36,6 +38,7 @@ public abstract class ManagedChannel extends Channel {
   /**
    * Returns whether the channel is shutdown. Shutdown channels immediately cancel any new calls,
    * but may still have some calls being processed.
+   * 返回 Channel 是否关闭，关闭的 Channel 会立即取消新的调用，但是可能会继续执行已有的调用
    *
    * @see #shutdown()
    * @see #isTerminated()
@@ -46,6 +49,7 @@ public abstract class ManagedChannel extends Channel {
   /**
    * Returns whether the channel is terminated. Terminated channels have no running calls and
    * relevant resources released (like TCP connections).
+   * 返回 Channel 是否被终止，终止的 Channel 没有执行中的调用，相关的资源被释放(如 TCP 连接)
    *
    * @see #isShutdown()
    * @since 1.0.0
@@ -56,6 +60,8 @@ public abstract class ManagedChannel extends Channel {
    * Initiates a forceful shutdown in which preexisting and new calls are cancelled. Although
    * forceful, the shutdown process is still not instantaneous; {@link #isTerminated()} will likely
    * return {@code false} immediately after this method returns.
+   * 初始化一个强制的关闭，会取消所有的调用，即使是强制关闭，也不是瞬间停止，这个方法调用后 isTerminated
+   * 方法可能会立即返回 false
    *
    * @return this
    * @since 1.0.0
@@ -64,8 +70,10 @@ public abstract class ManagedChannel extends Channel {
 
   /**
    * Waits for the channel to become terminated, giving up if the timeout is reached.
+   * 等待 Channel 变为终止，如果超时则放弃等待
    *
    * @return whether the channel is terminated, as would be done by {@link #isTerminated()}.
+   * 返回 Channel 是否终止
    * @since 1.0.0
    */
   public abstract boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException;
