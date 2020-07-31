@@ -18,17 +18,21 @@ package io.grpc;
 
 /**
  * An internal class. Do not use.
+ * 内部类，不要使用
  *
  * <p>A loggable ID, unique for the duration of the program.
+ * 可记录的 ID，在运行期间是唯一的
  */
 @Internal
 public interface InternalWithLogId {
-  /**
-   * Returns an ID that is primarily used in debug logs. It usually contains the class name and a
-   * numeric ID that is unique among the instances.
-   *
-   * <p>The subclasses of this interface usually want to include the log ID in their {@link
-   * #toString} results.
-   */
-  InternalLogId getLogId();
+    /**
+     * Returns an ID that is primarily used in debug logs. It usually contains the class name and a
+     * numeric ID that is unique among the instances.
+     * 返回一个主要用于调试日志的 ID，通常包含一个类名和应用中唯一的数值 ID
+     *
+     * <p>The subclasses of this interface usually want to include the log ID in their {@link
+     * #toString} results.
+     * 实现通常会在 toString() 中包含日志 ID
+     */
+    InternalLogId getLogId();
 }

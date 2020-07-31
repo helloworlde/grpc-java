@@ -20,15 +20,18 @@ import com.google.common.util.concurrent.ListenableFuture;
 
 /**
  * An internal class. Do not use.
+ * 内部类，不要使用
  *
  * <p>An interface for types that <b>may</b> support instrumentation. If the actual type does not
  * support instrumentation, then the future will return a {@code null}.
+ * 用于可能支持插装类型的接口，如果实现不支持，则 future 会返回 null
  */
 @Internal
 public interface InternalInstrumented<T> extends InternalWithLogId {
 
-  /**
-   * Returns the stats object.
-   */
-  ListenableFuture<T> getStats();
+    /**
+     * Returns the stats object.
+     * 返回统计对象
+     */
+    ListenableFuture<T> getStats();
 }

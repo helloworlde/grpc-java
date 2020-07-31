@@ -16,12 +16,14 @@
 
 package io.grpc;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.Immutable;
+import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.SSLSession;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.util.ArrayList;
@@ -36,10 +38,9 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
-import javax.net.ssl.SSLPeerUnverifiedException;
-import javax.net.ssl.SSLSession;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * This is an internal API. Do NOT use.
@@ -358,12 +359,14 @@ public final class InternalChannelz {
 
   /**
    * A data class to represent a channel's stats.
+   * 表示 Channel 统计数据的类
    */
   @Immutable
   public static final class ChannelStats {
     public final String target;
     public final ConnectivityState state;
-    @Nullable public final ChannelTrace channelTrace;
+    @Nullable
+    public final ChannelTrace channelTrace;
     public final long callsStarted;
     public final long callsSucceeded;
     public final long callsFailed;
@@ -375,19 +378,18 @@ public final class InternalChannelz {
      * Creates an instance.
      */
     private ChannelStats(
-        String target,
-        ConnectivityState state,
-        @Nullable ChannelTrace channelTrace,
-        long callsStarted,
-        long callsSucceeded,
-        long callsFailed,
-        long lastCallStartedNanos,
-        List<InternalWithLogId> subchannels,
-        List<InternalWithLogId> sockets) {
-      checkState(
-          subchannels.isEmpty() || sockets.isEmpty(),
-          "channels can have subchannels only, subchannels can have either sockets OR subchannels, "
-              + "neither can have both");
+            String target,
+            ConnectivityState state,
+            @Nullable ChannelTrace channelTrace,
+            long callsStarted,
+            long callsSucceeded,
+            long callsFailed,
+            long lastCallStartedNanos,
+            List<InternalWithLogId> subchannels,
+            List<InternalWithLogId> sockets) {
+      checkState(subchannels.isEmpty() || sockets.isEmpty(),
+              "channels can have subchannels only, subchannels can have either sockets OR subchannels, "
+                      + "neither can have both");
       this.target = target;
       this.state = state;
       this.channelTrace = channelTrace;
@@ -445,14 +447,18 @@ public final class InternalChannelz {
         return this;
       }
 
-      /** Sets the subchannels. */
+      /**
+       * Sets the subchannels.
+       */
       public Builder setSubchannels(List<InternalWithLogId> subchannels) {
         checkState(sockets.isEmpty());
         this.subchannels = Collections.unmodifiableList(checkNotNull(subchannels));
         return this;
       }
 
-      /** Sets the sockets. */
+      /**
+       * Sets the sockets.
+       */
       public Builder setSockets(List<InternalWithLogId> sockets) {
         checkState(subchannels.isEmpty());
         this.sockets = Collections.unmodifiableList(checkNotNull(sockets));
@@ -464,15 +470,15 @@ public final class InternalChannelz {
        */
       public ChannelStats build() {
         return new ChannelStats(
-            target,
-            state,
-            channelTrace,
-            callsStarted,
-            callsSucceeded,
-            callsFailed,
-            lastCallStartedNanos,
-            subchannels,
-            sockets);
+                target,
+                state,
+                channelTrace,
+                callsStarted,
+                callsSucceeded,
+                callsFailed,
+                lastCallStartedNanos,
+                subchannels,
+                sockets);
       }
     }
   }
