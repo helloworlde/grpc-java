@@ -30,73 +30,73 @@ import java.util.concurrent.TimeUnit;
  */
 abstract class ForwardingManagedChannel extends ManagedChannel {
 
-  private final ManagedChannel delegate;
+    private final ManagedChannel delegate;
 
-  ForwardingManagedChannel(ManagedChannel delegate) {
-    this.delegate = delegate;
-  }
+    ForwardingManagedChannel(ManagedChannel delegate) {
+        this.delegate = delegate;
+    }
 
-  @Override
-  public ManagedChannel shutdown() {
-    return delegate.shutdown();
-  }
+    @Override
+    public ManagedChannel shutdown() {
+        return delegate.shutdown();
+    }
 
-  @Override
-  public boolean isShutdown() {
-    return delegate.isShutdown();
-  }
+    @Override
+    public boolean isShutdown() {
+        return delegate.isShutdown();
+    }
 
-  @Override
-  public boolean isTerminated() {
-    return delegate.isTerminated();
-  }
+    @Override
+    public boolean isTerminated() {
+        return delegate.isTerminated();
+    }
 
-  @Override
-  public ManagedChannel shutdownNow() {
-    return delegate.shutdownNow();
-  }
+    @Override
+    public ManagedChannel shutdownNow() {
+        return delegate.shutdownNow();
+    }
 
-  @Override
-  public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-    return delegate.awaitTermination(timeout, unit);
-  }
+    @Override
+    public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+        return delegate.awaitTermination(timeout, unit);
+    }
 
-  /**
-   * BlockingStub 初始化 ClientCall 执行请求顺序: 3
-   */
-  @Override
-  public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(MethodDescriptor<RequestT, ResponseT> methodDescriptor,
-                                                                       CallOptions callOptions) {
-    return delegate.newCall(methodDescriptor, callOptions);
-  }
+    /**
+     * BlockingStub 初始化 ClientCall 执行请求顺序: 3
+     */
+    @Override
+    public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(MethodDescriptor<RequestT, ResponseT> methodDescriptor,
+                                                                         CallOptions callOptions) {
+        return delegate.newCall(methodDescriptor, callOptions);
+    }
 
-  @Override
-  public String authority() {
-    return delegate.authority();
-  }
+    @Override
+    public String authority() {
+        return delegate.authority();
+    }
 
-  @Override
-  public ConnectivityState getState(boolean requestConnection) {
-    return delegate.getState(requestConnection);
-  }
+    @Override
+    public ConnectivityState getState(boolean requestConnection) {
+        return delegate.getState(requestConnection);
+    }
 
-  @Override
-  public void notifyWhenStateChanged(ConnectivityState source, Runnable callback) {
-    delegate.notifyWhenStateChanged(source, callback);
-  }
+    @Override
+    public void notifyWhenStateChanged(ConnectivityState source, Runnable callback) {
+        delegate.notifyWhenStateChanged(source, callback);
+    }
 
-  @Override
-  public void resetConnectBackoff() {
-    delegate.resetConnectBackoff();
-  }
+    @Override
+    public void resetConnectBackoff() {
+        delegate.resetConnectBackoff();
+    }
 
-  @Override
-  public void enterIdle() {
-    delegate.enterIdle();
-  }
+    @Override
+    public void enterIdle() {
+        delegate.enterIdle();
+    }
 
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this).add("delegate", delegate).toString();
-  }
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this).add("delegate", delegate).toString();
+    }
 }
