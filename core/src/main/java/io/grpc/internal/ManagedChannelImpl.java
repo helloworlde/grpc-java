@@ -75,10 +75,13 @@ import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
 import static io.grpc.internal.ServiceConfigInterceptor.HEDGING_POLICY_KEY;
 import static io.grpc.internal.ServiceConfigInterceptor.RETRY_POLICY_KEY;
 
-/** A communication channel for making outgoing RPCs. */
+/**
+ * A communication channel for making outgoing RPCs.
+ * 用于发送请求的 Channel
+ */
 @ThreadSafe
 final class ManagedChannelImpl extends ManagedChannel implements
-    InternalInstrumented<ChannelStats> {
+        InternalInstrumented<ChannelStats> {
   static final Logger logger = Logger.getLogger(ManagedChannelImpl.class.getName());
 
   // Matching this pattern means the target string is a URI target or at least intended to be one.
@@ -587,13 +590,13 @@ final class ManagedChannelImpl extends ManagedChannel implements
   /**
    * Channel 构造方法
    *
-   * @param builder
-   * @param clientTransportFactory
-   * @param backoffPolicyProvider
-   * @param balancerRpcExecutorPool
-   * @param stopwatchSupplier
-   * @param interceptors
-   * @param timeProvider
+   * @param builder                 构造器
+   * @param clientTransportFactory  Transport 工程
+   * @param backoffPolicyProvider   回退策略提供器
+   * @param balancerRpcExecutorPool 线程池
+   * @param stopwatchSupplier       计时器
+   * @param interceptors            统计和追踪拦截器
+   * @param timeProvider            时间提供器
    */
   ManagedChannelImpl(
           AbstractManagedChannelImplBuilder<?> builder,
@@ -634,6 +637,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
             loadBalancerFactory,
             channelLogger);
 
+    // 命名解析器参数
     this.nameResolverArgs = NameResolver.Args.newBuilder()
                                              .setDefaultPort(builder.getDefaultPort())
                                              .setProxyDetector(proxyDetector)
