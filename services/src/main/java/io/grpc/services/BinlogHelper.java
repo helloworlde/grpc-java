@@ -16,11 +16,6 @@
 
 package io.grpc.services;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static io.grpc.services.BinaryLogProvider.BYTEARRAY_MARSHALLER;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Charsets;
 import com.google.common.base.Preconditions;
@@ -54,6 +49,9 @@ import io.grpc.binarylog.v1.Address.Type;
 import io.grpc.binarylog.v1.GrpcLogEntry;
 import io.grpc.binarylog.v1.GrpcLogEntry.EventType;
 import io.grpc.binarylog.v1.Message;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.ThreadSafe;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -68,8 +66,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static io.grpc.services.BinaryLogProvider.BYTEARRAY_MARSHALLER;
 
 /**
  * A binary log class that is configured for a specific {@link MethodDescriptor}.
@@ -395,9 +396,10 @@ final class BinlogHelper {
   public ClientInterceptor getClientInterceptor(final long callId) {
     return new ClientInterceptor() {
       boolean trailersOnlyResponse = true;
+
       @Override
       public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(
-          final MethodDescriptor<ReqT, RespT> method, CallOptions callOptions, Channel next) {
+              final MethodDescriptor<ReqT, RespT> method, CallOptions callOptions, Channel next) {
         final AtomicLong seq = new AtomicLong(1);
         final String methodName = method.getFullMethodName();
         final String authority = next.authority();
@@ -409,86 +411,86 @@ final class BinlogHelper {
           @Override
           public void start(final ClientCall.Listener<RespT> responseListener, Metadata headers) {
             final Duration timeout = deadline == null ? null
-                : Durations.fromNanos(deadline.timeRemaining(TimeUnit.NANOSECONDS));
+                    : Durations.fromNanos(deadline.timeRemaining(TimeUnit.NANOSECONDS));
             writer.logClientHeader(
-                seq.getAndIncrement(),
-                methodName,
-                authority,
-                timeout,
-                headers,
-                GrpcLogEntry.Logger.LOGGER_CLIENT,
-                callId,
-                /*peerAddress=*/ null);
+                    seq.getAndIncrement(),
+                    methodName,
+                    authority,
+                    timeout,
+                    headers,
+                    GrpcLogEntry.Logger.LOGGER_CLIENT,
+                    callId,
+                    /*peerAddress=*/ null);
             ClientCall.Listener<RespT> wListener =
-                new SimpleForwardingClientCallListener<RespT>(responseListener) {
-                  @Override
-                  public void onMessage(RespT message) {
-                    writer.logRpcMessage(
-                        seq.getAndIncrement(),
-                        EventType.EVENT_TYPE_SERVER_MESSAGE,
-                        method.getResponseMarshaller(),
-                        message,
-                        GrpcLogEntry.Logger.LOGGER_CLIENT,
-                        callId);
-                    super.onMessage(message);
-                  }
+                    new SimpleForwardingClientCallListener<RespT>(responseListener) {
+                      @Override
+                      public void onMessage(RespT message) {
+                        writer.logRpcMessage(
+                                seq.getAndIncrement(),
+                                EventType.EVENT_TYPE_SERVER_MESSAGE,
+                                method.getResponseMarshaller(),
+                                message,
+                                GrpcLogEntry.Logger.LOGGER_CLIENT,
+                                callId);
+                        super.onMessage(message);
+                      }
 
-                  @Override
-                  public void onHeaders(Metadata headers) {
-                    trailersOnlyResponse = false;
-                    writer.logServerHeader(
-                        seq.getAndIncrement(),
-                        headers,
-                        GrpcLogEntry.Logger.LOGGER_CLIENT,
-                        callId,
-                        getPeerSocket(getAttributes()));
-                    super.onHeaders(headers);
-                  }
+                      @Override
+                      public void onHeaders(Metadata headers) {
+                        trailersOnlyResponse = false;
+                        writer.logServerHeader(
+                                seq.getAndIncrement(),
+                                headers,
+                                GrpcLogEntry.Logger.LOGGER_CLIENT,
+                                callId,
+                                getPeerSocket(getAttributes()));
+                        super.onHeaders(headers);
+                      }
 
-                  @Override
-                  public void onClose(Status status, Metadata trailers) {
-                    SocketAddress peer = trailersOnlyResponse
-                        ? getPeerSocket(getAttributes()) : null;
-                    writer.logTrailer(
-                        seq.getAndIncrement(),
-                        status,
-                        trailers,
-                        GrpcLogEntry.Logger.LOGGER_CLIENT,
-                        callId,
-                        peer);
-                    super.onClose(status, trailers);
-                  }
-                };
+                      @Override
+                      public void onClose(Status status, Metadata trailers) {
+                        SocketAddress peer = trailersOnlyResponse
+                                ? getPeerSocket(getAttributes()) : null;
+                        writer.logTrailer(
+                                seq.getAndIncrement(),
+                                status,
+                                trailers,
+                                GrpcLogEntry.Logger.LOGGER_CLIENT,
+                                callId,
+                                peer);
+                        super.onClose(status, trailers);
+                      }
+                    };
             super.start(wListener, headers);
           }
 
           @Override
           public void sendMessage(ReqT message) {
             writer.logRpcMessage(
-                seq.getAndIncrement(),
-                EventType.EVENT_TYPE_CLIENT_MESSAGE,
-                method.getRequestMarshaller(),
-                message,
-                GrpcLogEntry.Logger.LOGGER_CLIENT,
-                callId);
+                    seq.getAndIncrement(),
+                    EventType.EVENT_TYPE_CLIENT_MESSAGE,
+                    method.getRequestMarshaller(),
+                    message,
+                    GrpcLogEntry.Logger.LOGGER_CLIENT,
+                    callId);
             super.sendMessage(message);
           }
 
           @Override
           public void halfClose() {
             writer.logHalfClose(
-                seq.getAndIncrement(),
-                GrpcLogEntry.Logger.LOGGER_CLIENT,
-                callId);
+                    seq.getAndIncrement(),
+                    GrpcLogEntry.Logger.LOGGER_CLIENT,
+                    callId);
             super.halfClose();
           }
 
           @Override
           public void cancel(String message, Throwable cause) {
             writer.logCancel(
-                seq.getAndIncrement(),
-                GrpcLogEntry.Logger.LOGGER_CLIENT,
-                callId);
+                    seq.getAndIncrement(),
+                    GrpcLogEntry.Logger.LOGGER_CLIENT,
+                    callId);
             super.cancel(message, cause);
           }
         };
@@ -690,21 +692,27 @@ final class BinlogHelper {
 
     /**
      * Accepts a full method name and returns the log that should be used.
+     * 通过方法名获取二进制日志工具
      */
     @Override
     public BinlogHelper getLog(String fullMethodName) {
+      // 如果在黑名单中，则返回 null
       if (blacklistedMethods.contains(fullMethodName)) {
         return null;
       }
+
+      // 如果能通过方法名获取到，则返回
       BinlogHelper methodLog = perMethodLogs.get(fullMethodName);
       if (methodLog != null) {
         return methodLog;
       }
-      BinlogHelper serviceLog = perServiceLogs.get(
-          MethodDescriptor.extractFullServiceName(fullMethodName));
+
+      // 如果能通过服务名获取到，则返回
+      BinlogHelper serviceLog = perServiceLogs.get(MethodDescriptor.extractFullServiceName(fullMethodName));
       if (serviceLog != null) {
         return serviceLog;
       }
+      // 如果都获取不到，则使用全局的
       return globalLog;
     }
 

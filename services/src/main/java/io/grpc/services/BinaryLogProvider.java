@@ -33,12 +33,13 @@ import io.grpc.MethodDescriptor.Marshaller;
 import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
 import io.grpc.ServerMethodDefinition;
+
+import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import javax.annotation.Nullable;
 
 // TODO(zpencer): rename class to AbstractBinaryLog
 @Internal
@@ -50,6 +51,7 @@ public abstract class BinaryLogProvider extends BinaryLog {
 
   /**
    * Wraps a channel to provide binary logging on {@link ClientCall}s as needed.
+   * 封装 Channel，用于在 ClientCall 上提供二进制日志
    */
   @Override
   public final Channel wrapChannel(Channel channel) {
@@ -97,11 +99,12 @@ public abstract class BinaryLogProvider extends BinaryLog {
    * so the interceptor must be reusable across calls. At runtime, the request and response
    * marshallers are always {@code Marshaller<InputStream>}.
    * Returns {@code null} if this method is not binary logged.
+   * 返回一个 ClientInterceptor 用于二进制的日志，gRPC 可以自由缓存拦截器，因此拦截器必须
+   * 在调用之间可重用，在运行时，如果此方法不是二进制日志方法，请求和响应 marshallers 返回 null
    */
   // TODO(zpencer): ensure the interceptor properly handles retries and hedging
   @Nullable
-  protected abstract ClientInterceptor getClientInterceptor(
-      String fullMethodName, CallOptions callOptions);
+  protected abstract ClientInterceptor getClientInterceptor(String fullMethodName, CallOptions callOptions);
 
   @Override
   public void close() throws IOException {
@@ -139,24 +142,27 @@ public abstract class BinaryLogProvider extends BinaryLog {
    * This shim interceptor should always be installed as a placeholder. When a call starts,
    * this interceptor checks with the {@link BinaryLogProvider} to see if logging should happen
    * for this particular {@link ClientCall}'s method.
+   * <p>
+   * 创建 Channel 时，拦截器是硬编码的，这个垫片拦截器应该始终作为占位符使用，当一个调用开始时，这个拦截器
+   * 就会检查 BinaryLogProvider 是否要记录这个 ClientCall 的方法
    */
   private final class BinaryLogShim implements ClientInterceptor {
     @Override
     public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(
-        MethodDescriptor<ReqT, RespT> method,
-        CallOptions callOptions,
-        Channel next) {
-      ClientInterceptor binlogInterceptor = getClientInterceptor(
-          method.getFullMethodName(), callOptions);
+            MethodDescriptor<ReqT, RespT> method,
+            CallOptions callOptions,
+            Channel next) {
+
+      ClientInterceptor binlogInterceptor = getClientInterceptor(method.getFullMethodName(), callOptions);
       if (binlogInterceptor == null) {
         return next.newCall(method, callOptions);
       } else {
         return InternalClientInterceptors
-            .wrapClientInterceptor(
-                binlogInterceptor,
-                BYTEARRAY_MARSHALLER,
-                BYTEARRAY_MARSHALLER)
-            .interceptCall(method, callOptions, next);
+                .wrapClientInterceptor(
+                        binlogInterceptor,
+                        BYTEARRAY_MARSHALLER,
+                        BYTEARRAY_MARSHALLER)
+                .interceptCall(method, callOptions, next);
       }
     }
   }

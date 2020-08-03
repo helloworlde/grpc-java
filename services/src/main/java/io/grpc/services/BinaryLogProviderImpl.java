@@ -20,9 +20,10 @@ import com.google.common.base.Preconditions;
 import io.grpc.CallOptions;
 import io.grpc.ClientInterceptor;
 import io.grpc.ServerInterceptor;
+
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.annotation.Nullable;
 
 /**
  * The default implementation of a {@link BinaryLogProvider}.
@@ -74,14 +75,22 @@ class BinaryLogProviderImpl extends BinaryLogProvider {
     return helperForMethod.getServerInterceptor(counter.getAndIncrement());
   }
 
+  /**
+   * 获取二进制日志拦截器
+   *
+   * @param fullMethodName 方法名
+   * @param callOptions    调用选项
+   * @return 二进制日志拦截器
+   */
   @Nullable
   @Override
-  public ClientInterceptor getClientInterceptor(
-      String fullMethodName, CallOptions callOptions) {
+  public ClientInterceptor getClientInterceptor(String fullMethodName, CallOptions callOptions) {
+    // 根据方法名获取二进制日志工具
     BinlogHelper helperForMethod = factory.getLog(fullMethodName);
     if (helperForMethod == null) {
       return null;
     }
+    // 获取拦截器
     return helperForMethod.getClientInterceptor(counter.getAndIncrement());
   }
 
