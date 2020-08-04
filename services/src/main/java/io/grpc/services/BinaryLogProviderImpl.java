@@ -27,75 +27,85 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The default implementation of a {@link BinaryLogProvider}.
+ * BinaryLogProvider 的默认实现
  */
 class BinaryLogProviderImpl extends BinaryLogProvider {
-  // avoid using 0 because proto3 long fields default to 0 when unset
-  private static final AtomicLong counter = new AtomicLong(1);
+    // avoid using 0 because proto3 long fields default to 0 when unset
+    private static final AtomicLong counter = new AtomicLong(1);
 
-  private final BinlogHelper.Factory factory;
-  private final BinaryLogSink sink;
+    private final BinlogHelper.Factory factory;
+    private final BinaryLogSink sink;
 
-  public BinaryLogProviderImpl() throws IOException {
-    this(new TempFileSink(), System.getenv("GRPC_BINARY_LOG_CONFIG"));
-  }
-
-  /**
-   * Deprecated and will be removed in a future version of gRPC.
-   */
-  @Deprecated
-  public BinaryLogProviderImpl(BinaryLogSink sink) throws IOException {
-    this(sink, System.getenv("GRPC_BINARY_LOG_CONFIG"));
-  }
-
-  /**
-   * Creates an instance.
-   * @param sink ownership is transferred to this class.
-   * @param configStr config string to parse to determine logged methods and msg size limits.
-   * @throws IOException if initialization failed.
-   */
-  public BinaryLogProviderImpl(BinaryLogSink sink, String configStr) throws IOException {
-    this.sink = Preconditions.checkNotNull(sink);
-    try {
-      factory = new BinlogHelper.FactoryImpl(sink, configStr);
-    } catch (RuntimeException e) {
-      sink.close();
-      // parsing the conf string may throw if it is blank or contains errors
-      throw new IOException(
-          "Can not initialize. The env variable GRPC_BINARY_LOG_CONFIG must be valid.", e);
+    /**
+     * 构造提供器实现
+     *
+     * @throws IOException
+     */
+    public BinaryLogProviderImpl() throws IOException {
+        this(new TempFileSink(), System.getenv("GRPC_BINARY_LOG_CONFIG"));
     }
-  }
 
-  @Nullable
-  @Override
-  public ServerInterceptor getServerInterceptor(String fullMethodName) {
-    BinlogHelper helperForMethod = factory.getLog(fullMethodName);
-    if (helperForMethod == null) {
-      return null;
+    /**
+     * Deprecated and will be removed in a future version of gRPC.
+     */
+    @Deprecated
+    public BinaryLogProviderImpl(BinaryLogSink sink) throws IOException {
+        this(sink, System.getenv("GRPC_BINARY_LOG_CONFIG"));
     }
-    return helperForMethod.getServerInterceptor(counter.getAndIncrement());
-  }
 
-  /**
-   * 获取二进制日志拦截器
-   *
-   * @param fullMethodName 方法名
-   * @param callOptions    调用选项
-   * @return 二进制日志拦截器
-   */
-  @Nullable
-  @Override
-  public ClientInterceptor getClientInterceptor(String fullMethodName, CallOptions callOptions) {
-    // 根据方法名获取二进制日志工具
-    BinlogHelper helperForMethod = factory.getLog(fullMethodName);
-    if (helperForMethod == null) {
-      return null;
+    /**
+     * Creates an instance.
+     * 构造实例
+     *
+     * @param sink      ownership is transferred to this class.
+     *                  所有权被转移到这个类
+     * @param configStr config string to parse to determine logged methods and msg size limits.
+     *                  解析并决定记录日志的方法和日志大小限制的配置
+     * @throws IOException if initialization failed. 初始化失败时抛出
+     */
+    public BinaryLogProviderImpl(BinaryLogSink sink, String configStr) throws IOException {
+        this.sink = Preconditions.checkNotNull(sink);
+        try {
+            factory = new BinlogHelper.FactoryImpl(sink, configStr);
+        } catch (RuntimeException e) {
+            sink.close();
+            // parsing the conf string may throw if it is blank or contains errors
+            throw new IOException(
+                    "Can not initialize. The env variable GRPC_BINARY_LOG_CONFIG must be valid.", e);
+        }
     }
-    // 获取拦截器
-    return helperForMethod.getClientInterceptor(counter.getAndIncrement());
-  }
 
-  @Override
-  public void close() throws IOException {
-    sink.close();
-  }
+    @Nullable
+    @Override
+    public ServerInterceptor getServerInterceptor(String fullMethodName) {
+        BinlogHelper helperForMethod = factory.getLog(fullMethodName);
+        if (helperForMethod == null) {
+            return null;
+        }
+        return helperForMethod.getServerInterceptor(counter.getAndIncrement());
+    }
+
+    /**
+     * 获取二进制日志拦截器
+     *
+     * @param fullMethodName 方法名
+     * @param callOptions    调用选项
+     * @return 二进制日志拦截器
+     */
+    @Nullable
+    @Override
+    public ClientInterceptor getClientInterceptor(String fullMethodName, CallOptions callOptions) {
+        // 根据方法名获取二进制日志工具
+        BinlogHelper helperForMethod = factory.getLog(fullMethodName);
+        if (helperForMethod == null) {
+            return null;
+        }
+        // 获取拦截器
+        return helperForMethod.getClientInterceptor(counter.getAndIncrement());
+    }
+
+    @Override
+    public void close() throws IOException {
+        sink.close();
+    }
 }
