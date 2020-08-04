@@ -74,6 +74,7 @@ import static io.grpc.services.BinaryLogProvider.BYTEARRAY_MARSHALLER;
 
 /**
  * A binary log class that is configured for a specific {@link MethodDescriptor}.
+ * 为特定 MethodDescriptor 配置的二进制日志类
  */
 @ThreadSafe
 final class BinlogHelper {
@@ -83,9 +84,7 @@ final class BinlogHelper {
   // represents a com.google.rpc.Status and is given special first class treatment.
   // See StatusProto.java
   static final Metadata.Key<byte[]> STATUS_DETAILS_KEY =
-      Metadata.Key.of(
-          "grpc-status-details-bin",
-          Metadata.BINARY_BYTE_MARSHALLER);
+          Metadata.Key.of("grpc-status-details-bin", Metadata.BINARY_BYTE_MARSHALLER);
 
   @VisibleForTesting
   final SinkWriter writer;
@@ -102,11 +101,10 @@ final class BinlogHelper {
     private final int maxHeaderBytes;
     private final int maxMessageBytes;
 
-    SinkWriterImpl(
-        BinaryLogSink sink,
-        TimeProvider timeProvider,
-        int maxHeaderBytes,
-        int maxMessageBytes) {
+    SinkWriterImpl(BinaryLogSink sink,
+                   TimeProvider timeProvider,
+                   int maxHeaderBytes,
+                   int maxMessageBytes) {
       this.sink = sink;
       this.timeProvider = timeProvider;
       this.maxHeaderBytes = maxHeaderBytes;
@@ -607,6 +605,7 @@ final class BinlogHelper {
 
     /**
      * Accepts a string in the format specified by the binary log spec.
+     * 接受二进制日志规范指定的格式的字符串
      */
     @VisibleForTesting
     FactoryImpl(BinaryLogSink sink, String configurationString) {
@@ -615,6 +614,7 @@ final class BinlogHelper {
       Map<String, BinlogHelper> perServiceLogs = new HashMap<>();
       Map<String, BinlogHelper> perMethodLogs = new HashMap<>();
       Set<String> blacklistedMethods = new HashSet<>();
+
       if (configurationString != null && configurationString.length() > 0) {
         for (String configuration : Splitter.on(',').split(configurationString)) {
           int leftCurly = configuration.indexOf('{');
@@ -622,10 +622,12 @@ final class BinlogHelper {
           String methodOrSvc;
           // An expression originally wrapped in curly braces; like {m:256,h:256}, {m:256}, {h:256}
           String binlogOptionStr;
+          // 如果没有左括号，则使用整个字符串作为方法配置
           if (leftCurly == -1) {
             methodOrSvc = configuration;
             binlogOptionStr = null;
           } else {
+            // 从右括号处截断作为配置
             int rightCurly = configuration.indexOf('}', leftCurly);
             if (rightCurly != configuration.length() - 1) {
               throw new IllegalArgumentException("Illegal log config pattern: " + configuration);
@@ -637,50 +639,38 @@ final class BinlogHelper {
           if (methodOrSvc.isEmpty()) {
             throw new IllegalArgumentException("Illegal log config pattern: " + configuration);
           }
+
+          // 如果是 *，则对所有方法生效
           if (methodOrSvc.equals("*")) {
             // parse config for "*"
-            checkState(
-                globalLog == null,
-                "Duplicate entry, this is fatal: " + configuration);
+            checkState(globalLog == null, "Duplicate entry, this is fatal: " + configuration);
+            // 构建全局的日志配置
             globalLog = createBinaryLog(sink, binlogOptionStr);
             logger.log(Level.INFO, "Global binlog: {0}", binlogOptionStr);
           } else if (isServiceGlob(methodOrSvc)) {
+            // 如果是整个Service，则获取名称
             // parse config for a service, e.g. "service/*"
             String service = MethodDescriptor.extractFullServiceName(methodOrSvc);
-            checkState(
-                !perServiceLogs.containsKey(service),
-                "Duplicate entry, this is fatal: " + configuration);
+            checkState(!perServiceLogs.containsKey(service), "Duplicate entry, this is fatal: " + configuration);
             perServiceLogs.put(service, createBinaryLog(sink, binlogOptionStr));
-            logger.log(
-                Level.INFO,
-                "Service binlog: service={0} config={1}",
-                new Object[] {service, binlogOptionStr});
+            logger.log(Level.INFO, "Service binlog: service={0} config={1}", new Object[]{service, binlogOptionStr});
           } else if (methodOrSvc.startsWith("-")) {
+            // 如果有指定了黑名单方法
             // parse config for a method, e.g. "-service/method"
             String blacklistedMethod = methodOrSvc.substring(1);
             if (blacklistedMethod.length() == 0) {
               continue;
             }
-            checkState(
-                !blacklistedMethods.contains(blacklistedMethod),
-                "Duplicate entry, this is fatal: " + configuration);
-            checkState(
-                !perMethodLogs.containsKey(blacklistedMethod),
-                "Duplicate entry, this is fatal: " + configuration);
+            checkState(!blacklistedMethods.contains(blacklistedMethod), "Duplicate entry, this is fatal: " + configuration);
+            checkState(!perMethodLogs.containsKey(blacklistedMethod), "Duplicate entry, this is fatal: " + configuration);
             blacklistedMethods.add(blacklistedMethod);
           } else {
+            // 解析服务和方法
             // parse config for a fully qualified method, e.g "serice/method"
-            checkState(
-                !perMethodLogs.containsKey(methodOrSvc),
-                "Duplicate entry, this is fatal: " + configuration);
-            checkState(
-                !blacklistedMethods.contains(methodOrSvc),
-                "Duplicate entry, this method was blacklisted: " + configuration);
+            checkState(!perMethodLogs.containsKey(methodOrSvc), "Duplicate entry, this is fatal: " + configuration);
+            checkState(!blacklistedMethods.contains(methodOrSvc), "Duplicate entry, this method was blacklisted: " + configuration);
             perMethodLogs.put(methodOrSvc, createBinaryLog(sink, binlogOptionStr));
-            logger.log(
-                Level.INFO,
-                "Method binlog: method={0} config={1}",
-                new Object[] {methodOrSvc, binlogOptionStr});
+            logger.log(Level.INFO, "Method binlog: method={0} config={1}", new Object[]{methodOrSvc, binlogOptionStr});
           }
         }
       }
@@ -719,19 +709,22 @@ final class BinlogHelper {
     /**
      * Returns a binlog with the correct header and message limits or {@code null} if the input
      * is malformed. The input should be a string that is in one of these forms:
+     * 返回有正确 header 和信息限制的二进制日志，如果输入有错误，则返回 null，输入应当是以下几种格式之一:
      *
      * <p>{@code {h(:\d+)?}, {m(:\d+)?}, {h(:\d+)?,m(:\d+)?}}
      *
      * <p>If the {@code logConfig} is null, the returned binlog will have a limit of
      * Integer.MAX_VALUE.
+     * 如果输入的 logConfig 是 null，则返回的二进制日志限制为 Integer.MAX_VALUE
      */
     @VisibleForTesting
     @Nullable
     static BinlogHelper createBinaryLog(BinaryLogSink sink, @Nullable String logConfig) {
+      // 如果配置为空，则构造默认的实现
       if (logConfig == null) {
         return new BinlogHelper(
-            new SinkWriterImpl(
-                sink, TimeProvider.SYSTEM_TIME_PROVIDER, Integer.MAX_VALUE, Integer.MAX_VALUE));
+                new SinkWriterImpl(
+                        sink, TimeProvider.SYSTEM_TIME_PROVIDER, Integer.MAX_VALUE, Integer.MAX_VALUE));
       }
       try {
         final int maxHeaderBytes;
@@ -753,14 +746,16 @@ final class BinlogHelper {
           throw new IllegalArgumentException("Illegal log config pattern");
         }
         return new BinlogHelper(
-            new SinkWriterImpl(
-                sink, TimeProvider.SYSTEM_TIME_PROVIDER, maxHeaderBytes, maxMsgBytes));
+                new SinkWriterImpl(
+                        sink, TimeProvider.SYSTEM_TIME_PROVIDER, maxHeaderBytes, maxMsgBytes));
       } catch (NumberFormatException e) {
         throw new IllegalArgumentException("Illegal log config pattern");
       }
     }
 
-    /** Returns {@code s}, after verifying it contains only digits. */
+    /**
+     * Returns {@code s}, after verifying it contains only digits.
+     */
     static String checkDigits(String s) {
       for (int i = 0; i < s.length(); i++) {
         char c = s.charAt(i);
@@ -771,7 +766,9 @@ final class BinlogHelper {
       return s;
     }
 
-    /** Parses the optional int of the form "" (max int) or ":123" (123). */
+    /**
+     * Parses the optional int of the form "" (max int) or ":123" (123).
+     */
     static int optionalInt(String s) {
       if (s.isEmpty()) {
         return Integer.MAX_VALUE;
@@ -785,6 +782,7 @@ final class BinlogHelper {
 
     /**
      * Returns true if the input string is a glob of the form: {@code <package-service>/*}.
+     * 如果输入的配置是服务全局的配置则返回 true
      */
     static boolean isServiceGlob(String input) {
       return input.endsWith("/*");

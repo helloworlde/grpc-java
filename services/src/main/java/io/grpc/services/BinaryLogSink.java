@@ -18,15 +18,18 @@ package io.grpc.services;
 
 import com.google.protobuf.MessageLite;
 import io.grpc.ExperimentalApi;
+
 import java.io.Closeable;
 
 /**
  * A class that accepts binary log messages.
+ * 支持写入二进制日志信息的类
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/4017")
 public interface BinaryLogSink extends Closeable {
-  /**
-   * Writes the {@code message} to the destination.
-   */
-  void write(MessageLite message);
+    /**
+     * Writes the {@code message} to the destination.
+     * 将信息写入目标文件
+     */
+    void write(MessageLite message);
 }
