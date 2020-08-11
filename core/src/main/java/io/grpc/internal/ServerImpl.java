@@ -16,45 +16,19 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
-import static io.grpc.Contexts.statusFromCancelled;
-import static io.grpc.Status.DEADLINE_EXCEEDED;
-import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
-import static io.grpc.internal.GrpcUtil.TIMEOUT_KEY;
-import static java.util.concurrent.TimeUnit.NANOSECONDS;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
-import io.grpc.Attributes;
-import io.grpc.BinaryLog;
-import io.grpc.CompressorRegistry;
-import io.grpc.Context;
-import io.grpc.Deadline;
-import io.grpc.Decompressor;
-import io.grpc.DecompressorRegistry;
-import io.grpc.HandlerRegistry;
-import io.grpc.InternalChannelz;
+import io.grpc.*;
 import io.grpc.InternalChannelz.ServerStats;
 import io.grpc.InternalChannelz.SocketStats;
-import io.grpc.InternalInstrumented;
-import io.grpc.InternalLogId;
-import io.grpc.InternalServerInterceptors;
-import io.grpc.Metadata;
-import io.grpc.ServerCall;
-import io.grpc.ServerCallHandler;
-import io.grpc.ServerInterceptor;
-import io.grpc.ServerMethodDefinition;
-import io.grpc.ServerServiceDefinition;
-import io.grpc.ServerTransportFilter;
-import io.grpc.Status;
 import io.perfmark.Link;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
+
+import javax.annotation.concurrent.GuardedBy;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
@@ -71,7 +45,15 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.concurrent.GuardedBy;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
+import static io.grpc.Contexts.statusFromCancelled;
+import static io.grpc.Status.DEADLINE_EXCEEDED;
+import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
+import static io.grpc.internal.GrpcUtil.TIMEOUT_KEY;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 /**
  * Default implementation of {@link io.grpc.Server}, for creation by transports.
@@ -621,8 +603,10 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
         handler = InternalServerInterceptors.interceptCallHandler(interceptor, handler);
       }
       ServerMethodDefinition<ReqT, RespT> interceptedDef = methodDef.withServerCallHandler(handler);
-      ServerMethodDefinition<?, ?> wMethodDef = binlog == null
-          ? interceptedDef : binlog.wrapMethodDefinition(interceptedDef);
+
+      // 如果 binlog 不为空，即需要记录binlog，则添加请求监听器和方法处理器记录 binlog
+      ServerMethodDefinition<?, ?> wMethodDef = binlog == null ? interceptedDef : binlog.wrapMethodDefinition(interceptedDef);
+
       return startWrappedCall(fullMethodName, wMethodDef, stream, headers, context, tag);
     }
 

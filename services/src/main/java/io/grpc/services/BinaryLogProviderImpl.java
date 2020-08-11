@@ -24,12 +24,15 @@ import io.grpc.ServerInterceptor;
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.logging.Logger;
 
 /**
  * The default implementation of a {@link BinaryLogProvider}.
  * BinaryLogProvider 的默认实现
  */
 class BinaryLogProviderImpl extends BinaryLogProvider {
+    private static final Logger log = Logger.getLogger(BinaryLogProviderImpl.class.getName());
+
     // avoid using 0 because proto3 long fields default to 0 when unset
     private static final AtomicLong counter = new AtomicLong(1);
 
@@ -64,14 +67,15 @@ class BinaryLogProviderImpl extends BinaryLogProvider {
      * @throws IOException if initialization failed. 初始化失败时抛出
      */
     public BinaryLogProviderImpl(BinaryLogSink sink, String configStr) throws IOException {
+        System.out.println("二进制日志配置: " + configStr);
+
         this.sink = Preconditions.checkNotNull(sink);
         try {
             factory = new BinlogHelper.FactoryImpl(sink, configStr);
         } catch (RuntimeException e) {
             sink.close();
             // parsing the conf string may throw if it is blank or contains errors
-            throw new IOException(
-                    "Can not initialize. The env variable GRPC_BINARY_LOG_CONFIG must be valid.", e);
+            throw new IOException("Can not initialize. The env variable GRPC_BINARY_LOG_CONFIG must be valid.", e);
         }
     }
 

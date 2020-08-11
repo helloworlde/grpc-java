@@ -22,36 +22,38 @@ import com.google.common.base.MoreObjects;
  * A {@link ServerCall.Listener} which forwards all of its methods to another {@link
  * ServerCall.Listener} which may have a different parameterized type than the
  * onMessage() message type.
+ * <p>
+ * 支持转发的调用监听器，将所有的调用转发给另一个可能有不同参数的监听器
  */
-abstract class PartialForwardingServerCallListener<ReqT>
-    extends ServerCall.Listener<ReqT> {
-  /**
-   * Returns the delegated {@code ServerCall.Listener}.
-   */
-  protected abstract ServerCall.Listener<?> delegate();
+abstract class PartialForwardingServerCallListener<ReqT> extends ServerCall.Listener<ReqT> {
+    /**
+     * Returns the delegated {@code ServerCall.Listener}.
+     * 返回代理的 ServerCall.Listener
+     */
+    protected abstract ServerCall.Listener<?> delegate();
 
-  @Override
-  public void onHalfClose() {
-    delegate().onHalfClose();
-  }
+    @Override
+    public void onHalfClose() {
+        delegate().onHalfClose();
+    }
 
-  @Override
-  public void onCancel() {
-    delegate().onCancel();
-  }
+    @Override
+    public void onCancel() {
+        delegate().onCancel();
+    }
 
-  @Override
-  public void onComplete() {
-    delegate().onComplete();
-  }
+    @Override
+    public void onComplete() {
+        delegate().onComplete();
+    }
 
-  @Override
-  public void onReady() {
-    delegate().onReady();
-  }
+    @Override
+    public void onReady() {
+        delegate().onReady();
+    }
 
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
-  }
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
+    }
 }
