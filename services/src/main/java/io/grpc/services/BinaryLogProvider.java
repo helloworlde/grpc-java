@@ -58,29 +58,35 @@ public abstract class BinaryLogProvider extends BinaryLog {
     return ClientInterceptors.intercept(channel, binaryLogShim);
   }
 
-  private static MethodDescriptor<byte[], byte[]> toByteBufferMethod(
-      MethodDescriptor<?, ?> method) {
+  /**
+   * 将方法描述转为二进制的
+   *
+   * @param method 方法定义
+   * @return 二进制的方法定义
+   */
+  private static MethodDescriptor<byte[], byte[]> toByteBufferMethod(MethodDescriptor<?, ?> method) {
     return method.toBuilder(BYTEARRAY_MARSHALLER, BYTEARRAY_MARSHALLER).build();
   }
 
   /**
    * Wraps a {@link ServerMethodDefinition} such that it performs binary logging if needed.
+   * 包装 ServerMethodDefinition，会在需要时执行二进制日志记录
    */
   @Override
-  public final <ReqT, RespT> ServerMethodDefinition<?, ?> wrapMethodDefinition(
-      ServerMethodDefinition<ReqT, RespT> oMethodDef) {
-    ServerInterceptor binlogInterceptor =
-        getServerInterceptor(oMethodDef.getMethodDescriptor().getFullMethodName());
+  public final <ReqT, RespT> ServerMethodDefinition<?, ?> wrapMethodDefinition(ServerMethodDefinition<ReqT, RespT> oMethodDef) {
+    // 根据方法获取二进制日志拦截器，如果没有该方法则不拦截
+    ServerInterceptor binlogInterceptor = getServerInterceptor(oMethodDef.getMethodDescriptor().getFullMethodName());
     if (binlogInterceptor == null) {
       return oMethodDef;
     }
-    MethodDescriptor<byte[], byte[]> binMethod =
-        BinaryLogProvider.toByteBufferMethod(oMethodDef.getMethodDescriptor());
-    ServerMethodDefinition<byte[], byte[]> binDef =
-        InternalServerInterceptors.wrapMethod(oMethodDef, binMethod);
+
+    MethodDescriptor<byte[], byte[]> binMethod = BinaryLogProvider.toByteBufferMethod(oMethodDef.getMethodDescriptor());
+    // 包装方法，添加了处理器和监听器
+    ServerMethodDefinition<byte[], byte[]> binDef = InternalServerInterceptors.wrapMethod(oMethodDef, binMethod);
+    // 创建处理器
     ServerCallHandler<byte[], byte[]> binlogHandler =
-        InternalServerInterceptors.interceptCallHandlerCreate(
-            binlogInterceptor, binDef.getServerCallHandler());
+            InternalServerInterceptors.interceptCallHandlerCreate(binlogInterceptor, binDef.getServerCallHandler());
+    // 创建服务方法定义
     return ServerMethodDefinition.create(binMethod, binlogHandler);
   }
 
@@ -148,18 +154,16 @@ public abstract class BinaryLogProvider extends BinaryLog {
    */
   private final class BinaryLogShim implements ClientInterceptor {
     @Override
-    public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(
-            MethodDescriptor<ReqT, RespT> method,
-            CallOptions callOptions,
-            Channel next) {
+    public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(MethodDescriptor<ReqT, RespT> method,
+                                                               CallOptions callOptions,
+                                                               Channel next) {
 
       ClientInterceptor binlogInterceptor = getClientInterceptor(method.getFullMethodName(), callOptions);
       if (binlogInterceptor == null) {
         return next.newCall(method, callOptions);
       } else {
         return InternalClientInterceptors
-                .wrapClientInterceptor(
-                        binlogInterceptor,
+                .wrapClientInterceptor(binlogInterceptor,
                         BYTEARRAY_MARSHALLER,
                         BYTEARRAY_MARSHALLER)
                 .interceptCall(method, callOptions, next);

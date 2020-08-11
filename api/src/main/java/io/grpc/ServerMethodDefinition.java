@@ -18,50 +18,64 @@ package io.grpc;
 
 /**
  * Definition of a method exposed by a {@link Server}.
+ * Server 公开的方法定义
  *
  * @see ServerServiceDefinition
  */
 public final class ServerMethodDefinition<ReqT, RespT> {
-  private final MethodDescriptor<ReqT, RespT> method;
-  private final ServerCallHandler<ReqT, RespT> handler;
+    /**
+     * 方法
+     */
+    private final MethodDescriptor<ReqT, RespT> method;
+    /**
+     * 处理器
+     */
+    private final ServerCallHandler<ReqT, RespT> handler;
 
-  private ServerMethodDefinition(MethodDescriptor<ReqT, RespT> method,
-      ServerCallHandler<ReqT, RespT> handler) {
-    this.method = method;
-    this.handler = handler;
-  }
+    private ServerMethodDefinition(MethodDescriptor<ReqT, RespT> method,
+                                   ServerCallHandler<ReqT, RespT> handler) {
+        this.method = method;
+        this.handler = handler;
+    }
 
-  /**
-   * Create a new instance.
-   *
-   * @param method the {@link MethodDescriptor} for this method.
-   * @param handler to dispatch calls to.
-   * @return a new instance.
-   */
-  public static <ReqT, RespT> ServerMethodDefinition<ReqT, RespT> create(
-      MethodDescriptor<ReqT, RespT> method,
-      ServerCallHandler<ReqT, RespT> handler) {
-    return new ServerMethodDefinition<>(method, handler);
-  }
+    /**
+     * Create a new instance.
+     * 创建一个新的方法定义实例
+     *
+     * @param method  the {@link MethodDescriptor} for this method.
+     *                包装方法
+     * @param handler to dispatch calls to.
+     *                处理器
+     * @return a new instance 方法定义
+     */
+    public static <ReqT, RespT> ServerMethodDefinition<ReqT, RespT> create(MethodDescriptor<ReqT, RespT> method,
+                                                                           ServerCallHandler<ReqT, RespT> handler) {
+        return new ServerMethodDefinition<>(method, handler);
+    }
 
-  /** The {@code MethodDescriptor} for this method. */
-  public MethodDescriptor<ReqT, RespT> getMethodDescriptor() {
-    return method;
-  }
+    /**
+     * The {@code MethodDescriptor} for this method.
+     */
+    public MethodDescriptor<ReqT, RespT> getMethodDescriptor() {
+        return method;
+    }
 
-  /** Handler for incoming calls. */
-  public ServerCallHandler<ReqT, RespT> getServerCallHandler() {
-    return handler;
-  }
+    /**
+     * Handler for incoming calls.
+     */
+    public ServerCallHandler<ReqT, RespT> getServerCallHandler() {
+        return handler;
+    }
 
-  /**
-   * Create a new method definition with a different call handler.
-   *
-   * @param handler to bind to a cloned instance of this.
-   * @return a cloned instance of this with the new handler bound.
-   */
-  public ServerMethodDefinition<ReqT, RespT> withServerCallHandler(
-      ServerCallHandler<ReqT, RespT> handler) {
-    return new ServerMethodDefinition<>(method, handler);
-  }
+    /**
+     * Create a new method definition with a different call handler.
+     * 用不同的调用处理器创建新的方法定义
+     *
+     * @param handler to bind to a cloned instance of this.
+     *                要与方法定义克隆绑定的处理器
+     * @return a cloned instance of this with the new handler bound 绑定了处理器的方法的克隆实例
+     */
+    public ServerMethodDefinition<ReqT, RespT> withServerCallHandler(ServerCallHandler<ReqT, RespT> handler) {
+        return new ServerMethodDefinition<>(method, handler);
+    }
 }

@@ -17,6 +17,7 @@
 package io.grpc;
 
 import com.google.common.base.Preconditions;
+
 import java.io.BufferedInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -222,50 +223,85 @@ public final class ServerInterceptors {
     serviceDefBuilder.addMethod(method.withServerCallHandler(callHandler));
   }
 
+  /**
+   * 请求处理拦截器处理器
+   *
+   * @param <ReqT>
+   * @param <RespT>
+   */
   static final class InterceptCallHandler<ReqT, RespT> implements ServerCallHandler<ReqT, RespT> {
-    public static <ReqT, RespT> InterceptCallHandler<ReqT, RespT> create(
-        ServerInterceptor interceptor, ServerCallHandler<ReqT, RespT> callHandler) {
+    /**
+     * 创建拦截器处理器
+     *
+     * @param interceptor 拦截器
+     * @param callHandler 处理器
+     * @return 拦截器处理器
+     */
+    public static <ReqT, RespT> InterceptCallHandler<ReqT, RespT> create(ServerInterceptor interceptor,
+                                                                         ServerCallHandler<ReqT, RespT> callHandler) {
       return new InterceptCallHandler<>(interceptor, callHandler);
     }
 
     private final ServerInterceptor interceptor;
     private final ServerCallHandler<ReqT, RespT> callHandler;
 
-    private InterceptCallHandler(
-        ServerInterceptor interceptor, ServerCallHandler<ReqT, RespT> callHandler) {
+    private InterceptCallHandler(ServerInterceptor interceptor,
+                                 ServerCallHandler<ReqT, RespT> callHandler) {
       this.interceptor = Preconditions.checkNotNull(interceptor, "interceptor");
       this.callHandler = callHandler;
     }
 
+    /**
+     * 为即将发生的调用生成一个非空的监听器
+     * 通过拦截器调用
+     *
+     * @param call    object for responding to the remote client.
+     *                用于响应远程客户端的对象
+     * @param headers 请求的 Header
+     * @return 用于处理 ServerCall 接收的消息的监听器
+     */
     @Override
-    public ServerCall.Listener<ReqT> startCall(
-        ServerCall<ReqT, RespT> call,
-        Metadata headers) {
+    public ServerCall.Listener<ReqT> startCall(ServerCall<ReqT, RespT> call,
+                                               Metadata headers) {
       return interceptor.interceptCall(call, headers, callHandler);
     }
   }
 
+  /**
+   * 包装方法，添加了处理器和监听器
+   *
+   * @param definition    方法定义
+   * @param wrappedMethod 被绑定的方法
+   * @return 包装后的方法定义
+   */
   static <OReqT, ORespT, WReqT, WRespT> ServerMethodDefinition<WReqT, WRespT> wrapMethod(
-      final ServerMethodDefinition<OReqT, ORespT> definition,
-      final MethodDescriptor<WReqT, WRespT> wrappedMethod) {
-    final ServerCallHandler<WReqT, WRespT> wrappedHandler = wrapHandler(
-        definition.getServerCallHandler(),
-        definition.getMethodDescriptor(),
-        wrappedMethod);
+          final ServerMethodDefinition<OReqT, ORespT> definition,
+          final MethodDescriptor<WReqT, WRespT> wrappedMethod) {
+    // 创建处理器
+    final ServerCallHandler<WReqT, WRespT> wrappedHandler = wrapHandler(definition.getServerCallHandler(),
+            definition.getMethodDescriptor(),
+            wrappedMethod);
+    // 根据处理器和方法创建方法定义
     return ServerMethodDefinition.create(wrappedMethod, wrappedHandler);
   }
 
+  /**
+   * 包装请求监听器和响应处理器
+   *
+   * @param originalHandler 原有的处理器
+   * @param originalMethod  原有方法
+   * @param wrappedMethod   包装后的方法
+   * @return 包装后的请求监听器和响应处理器
+   */
   private static <OReqT, ORespT, WReqT, WRespT> ServerCallHandler<WReqT, WRespT> wrapHandler(
-      final ServerCallHandler<OReqT, ORespT> originalHandler,
-      final MethodDescriptor<OReqT, ORespT> originalMethod,
-      final MethodDescriptor<WReqT, WRespT> wrappedMethod) {
+          final ServerCallHandler<OReqT, ORespT> originalHandler,
+          final MethodDescriptor<OReqT, ORespT> originalMethod,
+          final MethodDescriptor<WReqT, WRespT> wrappedMethod) {
     return new ServerCallHandler<WReqT, WRespT>() {
       @Override
-      public ServerCall.Listener<WReqT> startCall(
-          final ServerCall<WReqT, WRespT> call,
-          final Metadata headers) {
-        final ServerCall<OReqT, ORespT> unwrappedCall =
-            new PartialForwardingServerCall<OReqT, ORespT>() {
+      public ServerCall.Listener<WReqT> startCall(final ServerCall<WReqT, WRespT> call, final Metadata headers) {
+        // 创建支持转发的 ServerCall
+        final ServerCall<OReqT, ORespT> unwrappedCall = new PartialForwardingServerCall<OReqT, ORespT>() {
           @Override
           protected ServerCall<WReqT, WRespT> delegate() {
             return call;
@@ -273,6 +309,7 @@ public final class ServerInterceptors {
 
           @Override
           public void sendMessage(ORespT message) {
+            // 解析响应并转发给代理的处理器
             final InputStream is = originalMethod.streamResponse(message);
             final WRespT wrappedMessage = wrappedMethod.parseResponse(is);
             delegate().sendMessage(wrappedMessage);
@@ -284,8 +321,8 @@ public final class ServerInterceptors {
           }
         };
 
-        final ServerCall.Listener<OReqT> originalListener = originalHandler
-            .startCall(unwrappedCall, headers);
+        // 调用并返回监听器
+        final ServerCall.Listener<OReqT> originalListener = originalHandler.startCall(unwrappedCall, headers);
 
         return new PartialForwardingServerCallListener<WReqT>() {
           @Override
@@ -295,6 +332,7 @@ public final class ServerInterceptors {
 
           @Override
           public void onMessage(WReqT message) {
+            // 解析请求并转发给代理的监听器
             final InputStream is = wrappedMethod.streamRequest(message);
             final OReqT originalMessage = originalMethod.parseRequest(is);
             delegate().onMessage(originalMessage);

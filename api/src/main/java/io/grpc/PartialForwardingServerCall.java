@@ -21,63 +21,65 @@ import com.google.common.base.MoreObjects;
 /**
  * A {@link ServerCall} which forwards all of it's methods to another {@link ServerCall} which
  * may have a different onMessage() message type.
+ * 转发所有的调用给其他的可能有不同处理消息逻辑的 ServerCall
  */
 abstract class PartialForwardingServerCall<ReqT, RespT> extends ServerCall<ReqT, RespT> {
-  /**
-   * Returns the delegated {@code ServerCall}.
-   */
-  protected abstract ServerCall<?, ?> delegate();
+    /**
+     * Returns the delegated {@code ServerCall}.
+     * 返回被代理的 ServerCall
+     */
+    protected abstract ServerCall<?, ?> delegate();
 
-  @Override
-  public void request(int numMessages) {
-    delegate().request(numMessages);
-  }
+    @Override
+    public void request(int numMessages) {
+        delegate().request(numMessages);
+    }
 
-  @Override
-  public void sendHeaders(Metadata headers) {
-    delegate().sendHeaders(headers);
-  }
+    @Override
+    public void sendHeaders(Metadata headers) {
+        delegate().sendHeaders(headers);
+    }
 
-  @Override
-  public boolean isReady() {
-    return delegate().isReady();
-  }
+    @Override
+    public boolean isReady() {
+        return delegate().isReady();
+    }
 
-  @Override
-  public void close(Status status, Metadata trailers) {
-    delegate().close(status, trailers);
-  }
+    @Override
+    public void close(Status status, Metadata trailers) {
+        delegate().close(status, trailers);
+    }
 
-  @Override
-  public boolean isCancelled() {
-    return delegate().isCancelled();
-  }
+    @Override
+    public boolean isCancelled() {
+        return delegate().isCancelled();
+    }
 
-  @Override
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1703")
-  public void setMessageCompression(boolean enabled) {
-    delegate().setMessageCompression(enabled);
-  }
+    @Override
+    @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1703")
+    public void setMessageCompression(boolean enabled) {
+        delegate().setMessageCompression(enabled);
+    }
 
-  @Override
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1704")
-  public void setCompression(String compressor) {
-    delegate().setCompression(compressor);
-  }
+    @Override
+    @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1704")
+    public void setCompression(String compressor) {
+        delegate().setCompression(compressor);
+    }
 
-  @Override
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1779")
-  public Attributes getAttributes() {
-    return delegate().getAttributes();
-  }
+    @Override
+    @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1779")
+    public Attributes getAttributes() {
+        return delegate().getAttributes();
+    }
 
-  @Override
-  public String getAuthority() {
-    return delegate().getAuthority();
-  }
+    @Override
+    public String getAuthority() {
+        return delegate().getAuthority();
+    }
 
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
-  }
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
+    }
 }
