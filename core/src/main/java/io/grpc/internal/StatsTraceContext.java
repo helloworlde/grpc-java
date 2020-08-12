@@ -16,8 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.Attributes;
 import io.grpc.CallOptions;
@@ -28,11 +26,14 @@ import io.grpc.ServerStreamTracer;
 import io.grpc.ServerStreamTracer.ServerCallInfo;
 import io.grpc.Status;
 import io.grpc.StreamTracer;
+
+import javax.annotation.concurrent.ThreadSafe;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * The stats and tracing information for a stream.
@@ -47,21 +48,27 @@ public final class StatsTraceContext {
   /**
    * Factory method for the client-side.
    */
-  public static StatsTraceContext newClientContext(
-      final CallOptions callOptions, final Attributes transportAttrs, Metadata headers) {
+  public static StatsTraceContext newClientContext(final CallOptions callOptions,
+                                                   final Attributes transportAttrs,
+                                                   Metadata headers) {
+
     List<ClientStreamTracer.Factory> factories = callOptions.getStreamTracerFactories();
     if (factories.isEmpty()) {
       return NOOP;
     }
-    ClientStreamTracer.StreamInfo info =
-        ClientStreamTracer.StreamInfo.newBuilder()
-            .setTransportAttrs(transportAttrs).setCallOptions(callOptions).build();
+
+    ClientStreamTracer.StreamInfo info = ClientStreamTracer.StreamInfo.newBuilder()
+                                                                      .setTransportAttrs(transportAttrs)
+                                                                      .setCallOptions(callOptions)
+                                                                      .build();
     // This array will be iterated multiple times per RPC. Use primitive array instead of Collection
     // so that for-each doesn't create an Iterator every time.
     StreamTracer[] tracers = new StreamTracer[factories.size()];
+
     for (int i = 0; i < tracers.length; i++) {
       tracers[i] = factories.get(i).newClientStreamTracer(info, headers);
     }
+
     return new StatsTraceContext(tracers);
   }
 
