@@ -405,29 +405,35 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     checkState(hedgingPolicy == null, "hedgingPolicy has been initialized unexpectedly");
     // TODO(zdapeng): if substream is a DelayedStream, do this when name resolution finishes
     hedgingPolicy = hedgingPolicyProvider.get();
+    // 如果有对冲策略
     if (!HedgingPolicy.DEFAULT.equals(hedgingPolicy)) {
+      // 如果对冲策略有效，则将重试策略置为 null
       isHedging = true;
       retryPolicy = RetryPolicy.DEFAULT;
 
       FutureCanceller scheduledHedgingRef = null;
 
       synchronized (lock) {
+        // 将这个流添加到对冲中
         state = state.addActiveHedge(substream);
-        if (hasPotentialHedging(state)
-                && (throttle == null || throttle.isAboveThreshold())) {
+        // 没有提交的流，且没有达到最大对冲次数，且没有终止，且没有节流或没有达到节流阈值
+        // 则创建对冲 Future
+        if (hasPotentialHedging(state) && (throttle == null || throttle.isAboveThreshold())) {
           scheduledHedging = scheduledHedgingRef = new FutureCanceller(lock);
         }
       }
 
+      // 如果对冲请求不为空，则提交延时任务
       if (scheduledHedgingRef != null) {
         scheduledHedgingRef.setFuture(
                 scheduledExecutorService.schedule(
                         new HedgingRunnable(scheduledHedgingRef),
                         hedgingPolicy.hedgingDelayNanos,
-                        TimeUnit.NANOSECONDS));
+                        TimeUnit.NANOSECONDS)
+        );
       }
     }
-
+    // 消耗缓冲的请求
     drain(substream);
   }
 
@@ -477,10 +483,15 @@ abstract class RetriableStream<ReqT> implements ClientStream {
     future.setFuture(scheduledExecutorService.schedule(new HedgingRunnable(future), delayMillis, TimeUnit.MILLISECONDS));
   }
 
+  /**
+   * 对冲请求的任务
+   */
   private final class HedgingRunnable implements Runnable {
 
     // Need to hold a ref to the FutureCanceller in case RetriableStrea.scheduledHedging is renewed
     // by a positive push-back just after newSubstream is instantiated, so that we can double check.
+    // 如果在实例化 newSubstream 之后通过正向推入来更新 RetriableStrea.scheduledHedging，则需要保留对
+    // FutureCanceller 的引用，以便可以再次检查
     final FutureCanceller scheduledHedgingRef;
 
     HedgingRunnable(FutureCanceller scheduledHedging) {
@@ -489,51 +500,60 @@ abstract class RetriableStream<ReqT> implements ClientStream {
 
     @Override
     public void run() {
-      callExecutor.execute(
-          new Runnable() {
-            @SuppressWarnings("GuardedBy")
-            @Override
-            public void run() {
-              // It's safe to read state.hedgingAttemptCount here.
-              // If this run is not cancelled, the value of state.hedgingAttemptCount won't change
-              // until state.addActiveHedge() is called subsequently, even the state could possibly
-              // change.
-              Substream newSubstream = createSubstream(state.hedgingAttemptCount);
-              boolean cancelled = false;
-              FutureCanceller future = null;
+      callExecutor.execute(new Runnable() {
+        @SuppressWarnings("GuardedBy")
+        @Override
+        public void run() {
+          // It's safe to read state.hedgingAttemptCount here.
+          // If this run is not cancelled, the value of state.hedgingAttemptCount won't change
+          // until state.addActiveHedge() is called subsequently, even the state could possibly
+          // change.
+          // 如果任务没有取消，在随后调用 state.addActiveHedge() 取消之前，state.hedgingAttemptCount 的状态
+          // 不会发生改变，即使状态可能会发生变化
+          // 创建对冲流
+          Substream newSubstream = createSubstream(state.hedgingAttemptCount);
+          boolean cancelled = false;
+          FutureCanceller future = null;
 
-              synchronized (lock) {
-                // TODO(b/145386688): This access should be guarded by
-                // 'HedgingRunnable.this.scheduledHedgingRef.lock'; instead found:
-                // 'RetriableStream.this.lock'
-                if (scheduledHedgingRef.isCancelled()) {
-                  cancelled = true;
-                } else {
-                  state = state.addActiveHedge(newSubstream);
-                  if (hasPotentialHedging(state)
-                      && (throttle == null || throttle.isAboveThreshold())) {
-                    scheduledHedging = future = new FutureCanceller(lock);
-                  } else {
-                    state = state.freezeHedging();
-                    scheduledHedging = null;
-                  }
-                }
+          synchronized (lock) {
+            // TODO(b/145386688): This access should be guarded by
+            // 'HedgingRunnable.this.scheduledHedgingRef.lock'; instead found:
+            // 'RetriableStream.this.lock'
+            // 如果请求被取消了，则取消流
+            if (scheduledHedgingRef.isCancelled()) {
+              cancelled = true;
+            } else {
+              // 将新创建的流添加到对冲流集合中
+              state = state.addActiveHedge(newSubstream);
+              // 没有提交的流，且没有达到最大对冲次数，且没有终止，且没有节流或者没有达到节流阈值，
+              // 则创建 Future
+              if (hasPotentialHedging(state) && (throttle == null || throttle.isAboveThreshold())) {
+                scheduledHedging = future = new FutureCanceller(lock);
+              } else {
+                // 否则冻结对冲
+                state = state.freezeHedging();
+                scheduledHedging = null;
               }
-
-              if (cancelled) {
-                newSubstream.stream.cancel(Status.CANCELLED.withDescription("Unneeded hedging"));
-                return;
-              }
-              if (future != null) {
-                future.setFuture(
-                    scheduledExecutorService.schedule(
-                        new HedgingRunnable(future),
-                        hedgingPolicy.hedgingDelayNanos,
-                        TimeUnit.NANOSECONDS));
-              }
-              drain(newSubstream);
             }
-          });
+          }
+
+          // 如果请求已经取消了，则取消流并返回
+          if (cancelled) {
+            newSubstream.stream.cancel(Status.CANCELLED.withDescription("Unneeded hedging"));
+            return;
+          }
+          // 如果对冲请求不为空，则提交延时任务
+          if (future != null) {
+            future.setFuture(
+                    scheduledExecutorService.schedule(
+                            new HedgingRunnable(future),
+                            hedgingPolicy.hedgingDelayNanos,
+                            TimeUnit.NANOSECONDS));
+          }
+          // 消耗缓冲的请求
+          drain(newSubstream);
+        }
+      });
     }
   }
 
@@ -1398,28 +1418,45 @@ abstract class RetriableStream<ReqT> implements ClientStream {
               hedgingAttemptCount);
     }
 
+    /**
+     * 这个方法只有在 RetriableStream.start() 和 HedgingRunnable.run() 中调用
+     * state.hedgingAttemptCount 只有在这里修改
+     *
+     * @param substream
+     * @return
+     */
     @CheckReturnValue
     // GuardedBy RetriableStream.lock
     // state.hedgingAttemptCount is modified only here.
     // The method is only called in RetriableStream.start() and HedgingRunnable.run()
     State addActiveHedge(Substream substream) {
       // hasPotentialHedging must be true
+      // 对冲没有冻结，且没有提交
       checkState(!hedgingFrozen, "hedging frozen");
       checkState(winningSubstream == null, "already committed");
 
       Collection<Substream> activeHedges;
+      // 如果当前活跃的对冲为空，则新建一个集合，保存当前对冲
       if (this.activeHedges == null) {
         activeHedges = Collections.singleton(substream);
       } else {
+        // 如果已经有活跃的对冲请求，则将新的请求添加到集合中
         activeHedges = new ArrayList<>(this.activeHedges);
         activeHedges.add(substream);
         activeHedges = Collections.unmodifiableCollection(activeHedges);
       }
 
+      // 对冲数量加一
       int hedgingAttemptCount = this.hedgingAttemptCount + 1;
-      return new State(
-          buffer, drainedSubstreams, activeHedges, winningSubstream, cancelled, passThrough,
-          hedgingFrozen, hedgingAttemptCount);
+      // 返回状态
+      return new State(buffer,
+              drainedSubstreams,
+              activeHedges,
+              winningSubstream,
+              cancelled,
+              passThrough,
+              hedgingFrozen,
+              hedgingAttemptCount);
     }
 
     /**
