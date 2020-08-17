@@ -202,6 +202,7 @@ public final class SynchronizationContext implements Executor {
 
     /**
      * Cancel the task if it's still {@link #isPending pending}.
+     * 如果再等待，则取消任务
      */
     public void cancel() {
       runnable.isCancelled = true;

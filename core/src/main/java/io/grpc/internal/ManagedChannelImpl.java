@@ -312,27 +312,39 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
     @Override
     public void run() {
+      // 退出空闲模式
       enterIdleMode();
     }
   }
 
   // Must be called from syncContext
+
+  /**
+   * 关闭服务发现和负载均衡
+   *
+   * @param channelIsActive Channel 是否活跃
+   */
   private void shutdownNameResolverAndLoadBalancer(boolean channelIsActive) {
     syncContext.throwIfNotInThisSynchronizationContext();
+    // 如果 Channel 活跃，则检查状态
     if (channelIsActive) {
       checkState(nameResolverStarted, "nameResolver is not started");
       checkState(lbHelper != null, "lbHelper is null");
     }
     if (nameResolver != null) {
+      // 取消任务
       cancelNameResolverBackoff();
+      // 关闭服务发现、监听器
       nameResolver.shutdown();
       nameResolverStarted = false;
+      // 如果 Channel 依然活跃，则获取其服务发现对象
       if (channelIsActive) {
         nameResolver = getNameResolver(target, nameResolverFactory, nameResolverArgs);
       } else {
         nameResolver = null;
       }
     }
+    // 如果负载均衡不为空，则关闭
     if (lbHelper != null) {
       lbHelper.lb.shutdown();
       lbHelper = null;
@@ -387,16 +399,23 @@ final class ManagedChannelImpl extends ManagedChannel implements
     nameResolverStarted = true;
   }
 
+  /**
+   * 退出空闲模式
+   */
   // Must be run from syncContext
   private void enterIdleMode() {
     // nameResolver and loadBalancer are guaranteed to be non-null.  If any of them were null,
     // either the idleModeTimer ran twice without exiting the idle mode, or the task in shutdown()
     // did not cancel idleModeTimer, or enterIdle() ran while shutdown or in idle, all of
     // which are bugs.
+    // 关闭服务发现和负载均衡
     shutdownNameResolverAndLoadBalancer(true);
+    // 设置选择器，重新创建 Transport，处理流
     delayedTransport.reprocess(null);
     channelLogger.log(ChannelLogLevel.INFO, "Entering IDLE state");
+    // Channel 状态变为空闲
     channelStateManager.gotoState(IDLE);
+    // 如果状态是使用中，则再次尝试退出
     if (inUseStateAggregator.isInUse()) {
       exitIdleMode();
     }
@@ -431,6 +450,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
   // scheduled. Must be used from syncContext
   @Nullable private BackoffPolicy nameResolverBackoffPolicy;
 
+  /**
+   * 取消服务发现任务
+   */
   // Must be run from syncContext
   private void cancelNameResolverBackoff() {
     syncContext.throwIfNotInThisSynchronizationContext();
