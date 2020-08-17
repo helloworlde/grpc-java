@@ -49,6 +49,11 @@ final class CallTracer {
         }
     }
 
+    /**
+     * 更新调用统计信息
+     *
+     * @param builder
+     */
     void updateBuilder(ChannelStats.Builder builder) {
         builder.setCallsStarted(callsStarted.value())
                .setCallsSucceeded(callsSucceeded.value())

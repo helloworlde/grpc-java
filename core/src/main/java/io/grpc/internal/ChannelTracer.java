@@ -16,13 +16,14 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import io.grpc.ChannelLogger;
 import io.grpc.InternalChannelz.ChannelStats;
 import io.grpc.InternalChannelz.ChannelTrace;
 import io.grpc.InternalChannelz.ChannelTrace.Event;
 import io.grpc.InternalLogId;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,8 +31,8 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Tracks a collections of channel tracing events for a channel/subchannel.
@@ -136,6 +137,11 @@ final class ChannelTracer {
     return logId;
   }
 
+  /**
+   * 更新 Channel 统计信息
+   *
+   * @param builder
+   */
   void updateBuilder(ChannelStats.Builder builder) {
     List<Event> eventsSnapshot;
     int eventsLoggedSnapshot;
@@ -147,9 +153,9 @@ final class ChannelTracer {
       eventsSnapshot = new ArrayList<>(events);
     }
     builder.setChannelTrace(new ChannelTrace.Builder()
-        .setNumEventsLogged(eventsLoggedSnapshot)
-        .setCreationTimeNanos(channelCreationTimeNanos)
-        .setEvents(eventsSnapshot)
-        .build());
+            .setNumEventsLogged(eventsLoggedSnapshot)
+            .setCreationTimeNanos(channelCreationTimeNanos)
+            .setEvents(eventsSnapshot)
+            .build());
   }
 }

@@ -106,6 +106,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   static final Status SUBCHANNEL_SHUTDOWN_STATUS =
       Status.UNAVAILABLE.withDescription("Subchannel shutdown invoked");
 
+  // 默认的空配置
   private static final ManagedChannelServiceConfig EMPTY_SERVICE_CONFIG = ManagedChannelServiceConfig.empty();
 
   private final InternalLogId logId;
@@ -269,15 +270,23 @@ final class ManagedChannelImpl extends ManagedChannel implements
   @VisibleForTesting
   final InUseStateAggregator<Object> inUseStateAggregator = new IdleModeStateAggregator();
 
+  /**
+   * 返回统计对象
+   *
+   * @return 统计数据
+   */
   @Override
   public ListenableFuture<ChannelStats> getStats() {
+    // 创建一个 Future
     final SettableFuture<ChannelStats> ret = SettableFuture.create();
     final class StatsFetcher implements Runnable {
       @Override
       public void run() {
+        // 创建并更新
         ChannelStats.Builder builder = new InternalChannelz.ChannelStats.Builder();
         channelCallTracer.updateBuilder(builder);
         channelTracer.updateBuilder(builder);
+        // 更新状态
         builder.setTarget(target).setState(channelStateManager.getState());
         List<InternalWithLogId> children = new ArrayList<>();
         children.addAll(subchannels);
@@ -288,6 +297,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
 
     // subchannels and oobchannels can only be accessed from syncContext
+    // 执行统计任务
     syncContext.execute(new StatsFetcher());
     return ret;
   }

@@ -16,14 +16,15 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import io.grpc.ConnectivityState;
 import io.grpc.ManagedChannel;
-import java.util.ArrayList;
-import java.util.concurrent.Executor;
+
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.NotThreadSafe;
+import java.util.ArrayList;
+import java.util.concurrent.Executor;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Manages connectivity states of the channel. Used for {@link ManagedChannel#getState} to read the
@@ -78,6 +79,7 @@ final class ConnectivityStateManager {
 
   /**
    * Gets the current connectivity state of the channel. This method is threadsafe.
+   * 返回当前 Channel 的连接状态，方法是线程安全的
    */
   ConnectivityState getState() {
     ConnectivityState stateCopy = state;
