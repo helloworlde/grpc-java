@@ -421,6 +421,10 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
+  /**
+   * 取消空闲计时器
+   * @param permanent
+   */
   // Must be run from syncContext
   private void cancelIdleTimer(boolean permanent) {
     idleTimer.cancel(permanent);
