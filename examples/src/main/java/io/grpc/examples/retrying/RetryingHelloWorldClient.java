@@ -16,8 +16,11 @@
 
 package io.grpc.examples.retrying;
 
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.gson.Gson;
 import com.google.gson.stream.JsonReader;
+import io.grpc.InternalChannelz;
+import io.grpc.InternalInstrumented;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
@@ -26,6 +29,7 @@ import io.grpc.examples.helloworld.HelloReply;
 import io.grpc.examples.helloworld.HelloRequest;
 
 import java.io.InputStreamReader;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ForkJoinPool;
@@ -163,10 +167,31 @@ public class RetryingHelloWorldClient {
             client.greet(userId);
             //     }
             // });
+
+            client.getStats();
         }
         // executor.awaitQuiescence(100, TimeUnit.SECONDS);
         executor.shutdown();
         client.printSummary();
         client.shutdown();
+    }
+
+
+    public void getStats() {
+        try {
+            Field field = channel.getClass().getSuperclass().getDeclaredField("delegate");
+            field.setAccessible(true);
+
+            Object channelResult = field.get(channel);
+            InternalInstrumented<InternalChannelz.ChannelStats> instrumented =  (InternalInstrumented<InternalChannelz.ChannelStats>)  channelResult;
+            ListenableFuture<InternalChannelz.ChannelStats> future = instrumented.getStats();
+            InternalChannelz.ChannelStats stats = future.get();
+            System.out.println(stats.callsFailed);
+            System.out.println(stats.callsSucceeded);
+            System.out.println(stats.callsStarted);
+            System.out.println(stats.target);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
