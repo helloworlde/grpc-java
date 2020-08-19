@@ -430,14 +430,22 @@ final class ManagedChannelImpl extends ManagedChannel implements
     idleTimer.cancel(permanent);
   }
 
+  /**
+   * 重新调度空闲计时器
+   */
   // Always run from syncContext
   private void rescheduleIdleTimer() {
+    // 如果不允许空闲超时，则直接返回
     if (idleTimeoutMillis == IDLE_TIMEOUT_MILLIS_DISABLE) {
       return;
     }
+    // 如果允许超时则重新调度
     idleTimer.reschedule(idleTimeoutMillis, TimeUnit.MILLISECONDS);
   }
 
+  /**
+   * 延迟执行服务发现
+   */
   // Run from syncContext
   @VisibleForTesting
   class DelayedNameResolverRefresh implements Runnable {
@@ -470,16 +478,23 @@ final class ManagedChannelImpl extends ManagedChannel implements
   /**
    * Force name resolution refresh to happen immediately and reset refresh back-off. Must be run
    * from syncContext.
+   * 强制更新服务发现，并重置刷新时间
    */
   private void refreshAndResetNameResolution() {
     syncContext.throwIfNotInThisSynchronizationContext();
+    // 取消当前任务
     cancelNameResolverBackoff();
+    // 重新调度服务发现
     refreshNameResolution();
   }
 
+  /**
+   * 更新服务发现
+   */
   private void refreshNameResolution() {
     syncContext.throwIfNotInThisSynchronizationContext();
     if (nameResolverStarted) {
+      // 调用服务发现进行更新
       nameResolver.refresh();
     }
   }
