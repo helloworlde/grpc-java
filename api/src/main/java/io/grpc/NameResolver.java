@@ -37,21 +37,27 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * A pluggable component that resolves a target {@link URI} and return addresses to the caller.
+ * 解析目标 URI 并返回地址给调用者的可插拔组件
  *
  * <p>A {@code NameResolver} uses the URI's scheme to determine whether it can resolve it, and uses
  * the components after the scheme for actual resolution.
+ * NameResolver 使用 URI 的协议决定是否可解析，并在之后实际解析
  *
  * <p>The addresses and attributes of a target may be changed over time, thus the caller registers a
  * {@link Listener} to receive continuous updates.
+ * 目标的地址和属性可能会随时改变，因此调用者注册一个监听器持续接收更新
  *
  * <p>A {@code NameResolver} does not need to automatically re-resolve on failure. Instead, the
  * {@link Listener} is responsible for eventually (after an appropriate backoff period) invoking
  * {@link #refresh()}.
+ * NameResolver 不需要在失败后自动重试，监听器会在一定延迟之后调用 refresh 方法
  *
  * <p>Implementations <strong>don't need to be thread-safe</strong>.  All methods are guaranteed to
  * be called sequentially.  Additionally, all methods that have side-effects, i.e.,
  * {@link #start(Listener2)}, {@link #shutdown} and {@link #refresh} are called from the same
  * {@link SynchronizationContext} as returned by {@link Helper#getSynchronizationContext}.
+ * 实现类不需要保证线程安全，所有的调用会依序进行，此外，方法具有副作用，如 start,shutdown,refresh
+ * 都是由 Helper#getSynchronizationContext 返回的 SynchronizationContext 调用
  *
  * @since 1.0.0
  */
@@ -61,10 +67,14 @@ public abstract class NameResolver {
    * Returns the authority used to authenticate connections to servers.  It <strong>must</strong> be
    * from a trusted source, because if the authority is tampered with, RPCs may be sent to the
    * attackers which may leak sensitive user data.
+   * 返回用于验证与服务器用于连接的权限，必须来源于可靠的源，因为如果被篡改，RPC 可能会被发送给攻击者，泄露敏感的用户
+   * 数据
    *
    * <p>An implementation must generate it without blocking, typically in line, and
    * <strong>must</strong> keep it unchanged. {@code NameResolver}s created from the same factory
    * with the same argument must return the same authority.
+   * 实现必须是非阻塞的，通常按行生成，并且保持不变，同样的 NameResolver 使用同样的参数用同样的工厂创建，必须
+   * 返回同样的 authority
    *
    * @since 1.0.0
    */
@@ -83,15 +93,15 @@ public abstract class NameResolver {
       start((Listener2) listener);
     } else {
       start(new Listener2() {
-          @Override
-          public void onError(Status error) {
-            listener.onError(error);
-          }
+        @Override
+        public void onError(Status error) {
+          listener.onError(error);
+        }
 
-          @Override
-          public void onResult(ResolutionResult resolutionResult) {
-            listener.onAddresses(resolutionResult.getAddresses(), resolutionResult.getAttributes());
-          }
+        @Override
+        public void onResult(ResolutionResult resolutionResult) {
+          listener.onAddresses(resolutionResult.getAddresses(), resolutionResult.getAttributes());
+        }
       });
     }
   }
@@ -109,6 +119,7 @@ public abstract class NameResolver {
 
   /**
    * Stops the resolution. Updates to the Listener will stop.
+   * 关闭命名解析，更新监听器状态为停止
    *
    * @since 1.0.0
    */
@@ -116,20 +127,25 @@ public abstract class NameResolver {
 
   /**
    * Re-resolve the name.
+   * 重新解析服务名称
    *
    * <p>Can only be called after {@link #start} has been called.
+   * 只有在调用 start 之后才可以调用
    *
    * <p>This is only a hint. Implementation takes it as a signal but may not start resolution
    * immediately. It should never throw.
+   * 实现可以将其作为信号，但是可以不用立即开始解析，不应该抛出异常
    *
    * <p>The default implementation is no-op.
    *
    * @since 1.0.0
    */
-  public void refresh() {}
+  public void refresh() {
+  }
 
   /**
    * Factory that creates {@link NameResolver} instances.
+   * 工厂用于创建 NameResolver 实例
    *
    * @since 1.0.0
    */
@@ -138,6 +154,7 @@ public abstract class NameResolver {
     /**
      * The port number used in case the target or the underlying naming system doesn't provide a
      * port number.
+     * 端口用于在没有提供端口号时使用
      *
      * @deprecated this will be deleted along with {@link #newNameResolver(URI, Attributes)} in
      *             a future release.
@@ -146,7 +163,7 @@ public abstract class NameResolver {
      */
     @Deprecated
     public static final Attributes.Key<Integer> PARAMS_DEFAULT_PORT =
-        Attributes.Key.create("params-default-port");
+            Attributes.Key.create("params-default-port");
 
     /**
      * If the NameResolver wants to support proxy, it should inquire this {@link ProxyDetector}.
