@@ -21,58 +21,84 @@ import com.google.common.base.Stopwatch;
 import io.grpc.InternalServiceProviders;
 import io.grpc.NameResolver;
 import io.grpc.NameResolverProvider;
+
 import java.net.URI;
 
 /**
  * A provider for {@link DnsNameResolver}.
+ * DNS 服务解析提供器
  *
  * <p>It resolves a target URI whose scheme is {@code "dns"}. The (optional) authority of the target
  * URI is reserved for the address of alternative DNS server (not implemented yet). The path of the
  * target URI, excluding the leading slash {@code '/'}, is treated as the host name and the optional
  * port to be resolved by DNS. Example target URIs:
+ * 用于解析 Schema 为 dns 的服务，目标 URI 的（可选）权限保留用于备用DNS服务器的地址（尚未实现），目标 URI，
+ * 不包含斜线, 被视为主机名和要由 DNS 解析的可选端口，目标URI示例：
  *
  * <ul>
- *   <li>{@code "dns:///foo.googleapis.com:8080"} (using default DNS)</li>
+ *   <li>{@code "dns:///foo.googleapis.com:8080"} (using default DNS)
+ *   默认的 DNS
+ *   </li>
  *   <li>{@code "dns://8.8.8.8/foo.googleapis.com:8080"} (using alternative DNS (not implemented
- *   yet))</li>
- *   <li>{@code "dns:///foo.googleapis.com"} (without port)</li>
+ *   yet))
+ *   可选的 DNS
+ *   </li>
+ *   <li>{@code "dns:///foo.googleapis.com"} (without port)
+ *   没有端口
+ *   </li>
  * </ul>
  */
 public final class DnsNameResolverProvider extends NameResolverProvider {
 
-  private static final String SCHEME = "dns";
+    private static final String SCHEME = "dns";
 
-  @Override
-  public DnsNameResolver newNameResolver(URI targetUri, NameResolver.Args args) {
-    if (SCHEME.equals(targetUri.getScheme())) {
-      String targetPath = Preconditions.checkNotNull(targetUri.getPath(), "targetPath");
-      Preconditions.checkArgument(targetPath.startsWith("/"),
-          "the path component (%s) of the target (%s) must start with '/'", targetPath, targetUri);
-      String name = targetPath.substring(1);
-      return new DnsNameResolver(
-          targetUri.getAuthority(),
-          name,
-          args,
-          GrpcUtil.SHARED_CHANNEL_EXECUTOR,
-          Stopwatch.createUnstarted(),
-          InternalServiceProviders.isAndroid(getClass().getClassLoader()));
-    } else {
-      return null;
+    @Override
+    public DnsNameResolver newNameResolver(URI targetUri, NameResolver.Args args) {
+        // 如果是 DNS 开头的 Schema
+        if (SCHEME.equals(targetUri.getScheme())) {
+            // 检查要解析的服务不为空，且以斜线开头
+            String targetPath = Preconditions.checkNotNull(targetUri.getPath(), "targetPath");
+            Preconditions.checkArgument(targetPath.startsWith("/"), "the path component (%s) of the target (%s) must start with '/'", targetPath, targetUri);
+
+            // 截取斜线之后的部分作为服务名
+            String name = targetPath.substring(1);
+            // 创建 DNS 服务解析器
+            return new DnsNameResolver(
+                    targetUri.getAuthority(),
+                    name,
+                    args,
+                    GrpcUtil.SHARED_CHANNEL_EXECUTOR,
+                    Stopwatch.createUnstarted(),
+                    InternalServiceProviders.isAndroid(getClass().getClassLoader()));
+        } else {
+            // 如果不是 DNS 开头的则返回 null
+            return null;
+        }
     }
-  }
 
-  @Override
-  public String getDefaultScheme() {
-    return SCHEME;
-  }
+    /**
+     * 获取默认的 Schema
+     *
+     * @return schema
+     */
+    @Override
+    public String getDefaultScheme() {
+        return SCHEME;
+    }
 
-  @Override
-  protected boolean isAvailable() {
-    return true;
-  }
+    /**
+     * 是否可用
+     */
+    @Override
+    protected boolean isAvailable() {
+        return true;
+    }
 
-  @Override
-  public int priority() {
-    return 5;
-  }
+    /**
+     * 优先级
+     */
+    @Override
+    public int priority() {
+        return 5;
+    }
 }
