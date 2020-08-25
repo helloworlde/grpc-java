@@ -65,7 +65,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * allows implementations to schedule tasks to be run in the same Synchronization Context, with or
  * without a delay, thus those tasks don't need to worry about synchronizing with the balancer
  * methods.
- * 
+ *
  * <p>However, the actual running thread may be the network thread, thus the following rules must be
  * followed to prevent blocking or even dead-locking in a network:
  *
@@ -157,17 +157,20 @@ public abstract class LoadBalancer {
    * Handles newly resolved server groups and metadata attributes from name resolution system.
    * {@code servers} contained in {@link EquivalentAddressGroup} should be considered equivalent
    * but may be flattened into a single list if needed.
+   * 处理服务名称解析获取的服务地址和数据，EquivalentAddressGroup 包含的 server 应该是等效的，但是如果需要
+   * 也可以平铺为一个列表
    *
    * <p>Implementations should not modify the given {@code servers}.
+   * 实现不应该修改给定的 server 地址
    *
    * @param resolvedAddresses the resolved server addresses, attributes, and config.
+   *                          解析的 server 的地址、属性和配置
    * @since 1.21.0
    */
   @SuppressWarnings("deprecation")
   public void handleResolvedAddresses(ResolvedAddresses resolvedAddresses) {
     if (recursionCount++ == 0) {
-      handleResolvedAddressGroups(
-          resolvedAddresses.getAddresses(), resolvedAddresses.getAttributes());
+      handleResolvedAddressGroups(resolvedAddresses.getAddresses(), resolvedAddresses.getAttributes());
     }
     recursionCount = 0;
   }
@@ -1208,7 +1211,7 @@ public abstract class LoadBalancer {
   }
 
   /**
-   * A logical connection to a server, or a group of equivalent servers represented by an {@link 
+   * A logical connection to a server, or a group of equivalent servers represented by an {@link
    * EquivalentAddressGroup}.
    *
    * <p>It maintains at most one physical connection (aka transport) for sending new RPCs, while

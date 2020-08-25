@@ -20,49 +20,57 @@ import io.grpc.Attributes;
 import io.grpc.EquivalentAddressGroup;
 import io.grpc.ExperimentalApi;
 import io.grpc.Metadata;
+
 import java.util.List;
 
 /**
  * Constants for the GRPCLB load-balancer.
+ * GRPCLB 负载均衡的常量
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1782")
 public final class GrpclbConstants {
 
-  /**
-   * The opaque token given by the remote balancer for each returned server address.  The client
-   * will send this token with any requests sent to the associated server.
-   */
-  public static final Metadata.Key<String> TOKEN_METADATA_KEY =
-      Metadata.Key.of("lb-token", Metadata.ASCII_STRING_MARSHALLER);
+    /**
+     * The opaque token given by the remote balancer for each returned server address.  The client
+     * will send this token with any requests sent to the associated server.
+     * 远程负载均衡器返回的 server 的不透明 token，客户端每个请求都会发送给相应的服务端
+     */
+    public static final Metadata.Key<String> TOKEN_METADATA_KEY =
+            Metadata.Key.of("lb-token", Metadata.ASCII_STRING_MARSHALLER);
 
-  /**
-   * For passing LB tokens via the EAG attributes.
-   */
-  @EquivalentAddressGroup.Attr
-  static final Attributes.Key<String> TOKEN_ATTRIBUTE_KEY =
-      Attributes.Key.create("lb-token");
+    /**
+     * For passing LB tokens via the EAG attributes.
+     * 用于通过 EAG 属性传递令牌
+     */
+    @EquivalentAddressGroup.Attr
+    static final Attributes.Key<String> TOKEN_ATTRIBUTE_KEY =
+            Attributes.Key.create("lb-token");
 
-  /**
-   * Attribute key for gRPC LB server addresses.
-   */
-  static final Attributes.Key<List<EquivalentAddressGroup>> ATTR_LB_ADDRS =
-      Attributes.Key.create("io.grpc.grpclb.lbAddrs");
+    /**
+     * Attribute key for gRPC LB server addresses.
+     * GRPCLB 的服务地址的属性
+     */
+    static final Attributes.Key<List<EquivalentAddressGroup>> ATTR_LB_ADDRS =
+            Attributes.Key.create("io.grpc.grpclb.lbAddrs");
 
-  /**
-   * The naming authority of a gRPC LB server address.  It is an address-group-level attribute,
-   * present when the address group is a LoadBalancer.
-   */
-  @EquivalentAddressGroup.Attr
-  public static final Attributes.Key<String> ATTR_LB_ADDR_AUTHORITY =
-      Attributes.Key.create("io.grpc.grpclb.lbAddrAuthority");
+    /**
+     * The naming authority of a gRPC LB server address.  It is an address-group-level attribute,
+     * present when the address group is a LoadBalancer.
+     * GRPCLB 服务端地址的名称，当地址组是一个负载均衡时代表一个地址组级别的属性
+     */
+    @EquivalentAddressGroup.Attr
+    public static final Attributes.Key<String> ATTR_LB_ADDR_AUTHORITY =
+            Attributes.Key.create("io.grpc.grpclb.lbAddrAuthority");
 
-  /**
-   * Whether this EquivalentAddressGroup was provided by a GRPCLB server. It would be rare for this
-   * value to be {@code false}; generally it would be better to not have the key present at all.
-   */
-  @EquivalentAddressGroup.Attr
-  public static final Attributes.Key<Boolean> ATTR_LB_PROVIDED_BACKEND =
-      Attributes.Key.create("io.grpc.grpclb.lbProvidedBackend");
+    /**
+     * Whether this EquivalentAddressGroup was provided by a GRPCLB server. It would be rare for this
+     * value to be {@code false}; generally it would be better to not have the key present at all.
+     * 无论是否是 GRPCLB 提供的 EquivalentAddressGroup，该值很少为 false， 通常不提供秘钥
+     */
+    @EquivalentAddressGroup.Attr
+    public static final Attributes.Key<Boolean> ATTR_LB_PROVIDED_BACKEND =
+            Attributes.Key.create("io.grpc.grpclb.lbProvidedBackend");
 
-  private GrpclbConstants() { }
+    private GrpclbConstants() {
+    }
 }

@@ -211,6 +211,7 @@ final class GrpclbState {
   /**
    * Handle new addresses of the balancer and backends from the resolver, and create connection if
    * not yet connected.
+   * 处理负载均衡器获取的地址，如果没有连接则创建连接
    */
   void handleAddresses(
       List<LbAddressGroup> newLbAddressGroups, List<EquivalentAddressGroup> newBackendServers) {
@@ -243,7 +244,11 @@ final class GrpclbState {
     maybeUpdatePicker();
   }
 
+  /**
+   * 创建连接
+   */
   void requestConnection() {
+    // 遍历列表，创建连接
     for (RoundRobinEntry entry : currentPicker.pickList) {
       if (entry instanceof IdleSubchannelEntry) {
         ((IdleSubchannelEntry) entry).subchannel.requestConnection();
@@ -368,11 +373,15 @@ final class GrpclbState {
     cancelLbRpcRetryTimer();
   }
 
+  /**
+   * 传播地址解析错误
+   *
+   * @param status 非 OK 的状态
+   */
   void propagateError(Status status) {
     logger.log(ChannelLogLevel.DEBUG, "Error: {0}", status);
     if (backendList.isEmpty()) {
-      maybeUpdatePicker(
-          TRANSIENT_FAILURE, new RoundRobinPicker(dropList, Arrays.asList(new ErrorEntry(status))));
+      maybeUpdatePicker(TRANSIENT_FAILURE, new RoundRobinPicker(dropList, Arrays.asList(new ErrorEntry(status))));
     }
   }
 
