@@ -105,9 +105,12 @@ public abstract class AbstractManagedChannelImplBuilder
   ObjectPool<? extends Executor> offloadExecutorPool = DEFAULT_EXECUTOR_POOL;
 
   private final List<ClientInterceptor> interceptors = new ArrayList<>();
+
+  // 命名解析注册器，使用默认的从 SPI 加载的 NameResolver 实现类
   final NameResolverRegistry nameResolverRegistry = NameResolverRegistry.getDefaultRegistry();
 
   // Access via getter, which may perform authority override as needed
+  // 获取命名解析工厂，该工厂使用优先级最高的实现类作为命名解析实现
   private NameResolver.Factory nameResolverFactory = nameResolverRegistry.asFactory();
 
   final String target;
@@ -248,8 +251,9 @@ public abstract class AbstractManagedChannelImplBuilder
   @Override
   public final T nameResolverFactory(NameResolver.Factory resolverFactory) {
     Preconditions.checkState(directServerAddress == null,
-        "directServerAddress is set (%s), which forbids the use of NameResolverFactory",
-        directServerAddress);
+            "directServerAddress is set (%s), which forbids the use of NameResolverFactory",
+            directServerAddress);
+    // 如果 Factory 不为空，则使用传入的 Factory，否则使用默认的 Factory
     if (resolverFactory != null) {
       this.nameResolverFactory = resolverFactory;
     } else {

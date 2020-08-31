@@ -17,11 +17,12 @@
 package io.grpc;
 
 import com.google.common.base.Preconditions;
+
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.Nullable;
 
 /**
  * A builder for {@link ManagedChannel} instances.
@@ -211,18 +212,24 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
    * Provides a custom {@link NameResolver.Factory} for the channel. If this method is not called,
    * the builder will try the providers registered in the default {@link NameResolverRegistry} for
    * the given target.
+   * 为 Channel 提供自定义的 NameResolver.Factory，如果这个方法没有调用，如果 Builder 中没有提供，则尝试
+   * 使用 NameResolverRegistry 中提供的默认的
    *
    * <p>This method should rarely be used, as name resolvers should provide a {@code
    * NameResolverProvider} and users rely on service loading to find implementations in the class
    * path. That allows application's configuration to easily choose the name resolver via the
    * 'target' string passed to {@link ManagedChannelBuilder#forTarget(String)}.
+   * 这个方法应当尽可能少的使用，服务命名解析应当通过 NameResolverProvider 提供，并且用户依赖于 class 路径下的
+   * 实现类加载，这样可以容易的选择命名解析的实现
    *
    * @return this
    * @since 1.0.0
    * @deprecated Most usages should use a globally-registered {@link NameResolverProvider} instead,
-   *     with either the SPI mechanism or {@link NameResolverRegistry#register}. Replacements for
-   *     all use-cases are not necessarily available yet. See
-   *     <a href="https://github.com/grpc/grpc-java/issues/7133">#7133</a>.
+   * with either the SPI mechanism or {@link NameResolverRegistry#register}. Replacements for
+   * all use-cases are not necessarily available yet. See
+   * <a href="https://github.com/grpc/grpc-java/issues/7133">#7133</a>.
+   * 应当更多的使用全局的 NameResolverProvider 注册的提供，或者通过 NameResolverRegistry#register 的 SPI 实现，
+   * 所有用例的替换都不一定可用
    */
   @Deprecated
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1770")
