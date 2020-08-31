@@ -16,9 +16,6 @@
 
 package io.grpc.xds;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
@@ -38,6 +35,8 @@ import io.grpc.xds.EnvoyProtoData.Route;
 import io.grpc.xds.EnvoyServerProtoData.Listener;
 import io.grpc.xds.EnvoyServerProtoData.UpstreamTlsContext;
 import io.grpc.xds.XdsLogger.XdsLogLevel;
+
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -46,7 +45,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * An {@link XdsClient} instance encapsulates all of the logic for communicating with the xDS
@@ -435,6 +436,7 @@ abstract class XdsClient {
 
     /**
      * Called when receiving an update on virtual host configurations.
+     * 当接收到虚拟主机名更新时调用
      */
     void onConfigChanged(ConfigUpdate update);
   }
