@@ -81,7 +81,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * <p>However, the actual running thread may be the network thread, thus the following rules must be
  * followed to prevent blocking or even dead-locking in a network:
  * 然而，真正执行的可能是访问网络的线程，所以下列规则必须遵守，防止线程因为网络阻塞或者死锁
-* <ol>
+ * <ol>
  *
  *   <li><strong>Never block in the Synchronization Context</strong>.  The callback methods must
  *   return quickly.  Examples or work that must be avoided: CPU-intensive calculation, waiting on
@@ -95,28 +95,44 @@ import static com.google.common.base.Preconditions.checkNotNull;
  *   pattern below.</li>
  *
  * </ol>
+ * <p>
+ * 不要阻塞 Synchronization Context，回调方法必须快速返回，必须避免以下操作：CPU 敏感的计算，等待同步原语，
+ * 阻塞 IO，阻塞调用等
+ * 避免调用其他锁持有的组件，Synchronization Context 可能被锁住，如 OkHttp 的传输锁，如果 LoadBalancer
+ * 在回调方法中持有锁，当调用一个持有锁的方法时，可能会造成死锁，如果规范实现 LoadBalancer 通常不会造成阻塞
  *
  * <h3>The canonical implementation pattern</h3>
+ * 规范的实现
  *
  * <p>A {@link LoadBalancer} keeps states like the latest addresses from NameResolver, the
  * Subchannel(s) and their latest connectivity states.  These states are mutated within the
  * Synchronization Context,
+ * LoadBalancer 保持 NameResolver 传递的最后的状态信息，Subchannel 和最后的连接状态，这些状态在同步
+ * 上下文中发生了变化
  *
  * <p>A typical {@link SubchannelPicker SubchannelPicker} holds a snapshot of these states.  It may
  * have its own states, e.g., a picker from a round-robin load-balancer may keep a pointer to the
  * next Subchannel, which are typically mutated by multiple threads.  The picker should only mutate
  * its own state, and should not mutate or re-acquire the states of the LoadBalancer.  This way the
  * picker only needs to synchronize its own states, which is typically trivial to implement.
+ * SubchannelPicker 通常持有这些状态的快照信息，可能有自己的状态；如轮询的负载均衡保持有指向下一个 Subchannel
+ * 的指针，通常在多个线程中会发生变化，picker 应当仅保留自己的状态，而不应该变化或者重新获取 LoadBalancer 的状态，
+ * picker 仅需要同步自己的状态，这通常很容易实现
  *
  * <p>When the LoadBalancer states changes, e.g., Subchannels has become or stopped being READY, and
  * we want subsequent RPCs to use the latest list of READY Subchannels, LoadBalancer would create a
  * new picker, which holds a snapshot of the latest Subchannel list.  Refer to the javadoc of {@link
  * io.grpc.LoadBalancer.SubchannelStateListener#onSubchannelState onSubchannelState()} how to do
  * this properly.
+ * 当 LoadBalancer 状态变化时，如 Subchannel 变成停止或 READY，我们希望后续的请求使用最新的 READY 状态的
+ * Subchannel 列表，LoadBalancer 会创建一个新的 picker，持有最新的 Subchannel 列表的快照，可以参考
+ * io.grpc.LoadBalancer.SubchannelStateListener#onSubchannelState 如何适当的实现
  *
  * <p>No synchronization should be necessary between LoadBalancer and its pickers if you follow
  * the pattern above.  It may be possible to implement in a different way, but that would usually
  * result in more complicated threading.
+ * 如果遵循上面的规范，不需要在 LoadBalancer 和它的 picker 之间保存同步，可以通过其他的方式实现，但这通常会
+ * 导致更复杂的线程实现
  *
  * @since 1.2.0
  */
@@ -125,42 +141,57 @@ import static com.google.common.base.Preconditions.checkNotNull;
 public abstract class LoadBalancer {
   /**
    * The load-balancing config converted from an JSON object injected by the GRPC library.
+   * gRPC 库注入的 JSON 对象转换的负载均衡配置
    *
    * <p>{@link NameResolver}s should not produce this attribute.
+   * NameResolver 不应该产生此属性
    *
    * <p>Deprecated: LB implementations should use parsed object from {@link
    * LoadBalancerProvider#parseLoadBalancingPolicyConfig(Map)} instead of raw config.
+   * 应当使用  LoadBalancerProvider#parseLoadBalancingPolicyConfig(Map) 代替原始配置
    */
   @Deprecated
   @NameResolver.ResolutionResultAttr
   public static final Attributes.Key<Map<String, ?>> ATTR_LOAD_BALANCING_CONFIG =
-      Attributes.Key.create("io.grpc.LoadBalancer.loadBalancingConfig");
+          Attributes.Key.create("io.grpc.LoadBalancer.loadBalancingConfig");
 
   @Internal
   @NameResolver.ResolutionResultAttr
   public static final Attributes.Key<Map<String, ?>> ATTR_HEALTH_CHECKING_CONFIG =
       Attributes.Key.create("health-checking-config");
+
+  /**
+   * 递归计数
+   */
   private int recursionCount;
 
   /**
    * Handles newly resolved server groups and metadata attributes from name resolution system.
    * {@code servers} contained in {@link EquivalentAddressGroup} should be considered equivalent
    * but may be flattened into a single list if needed.
+   * 处理新解析的服务地址组和元数据属性
+   * servers 中的 EquivalentAddressGroup 应当认为是等效的，如果需要可以平铺为一个列表
    *
    * <p>Implementations should not modify the given {@code servers}.
+   * 实现不应该修改所给的 severs
    *
-   * @param servers the resolved server addresses, never empty.
+   * @param servers    the resolved server addresses, never empty.
+   *                   解析的 server 地址，不应该为空
    * @param attributes extra information from naming system.
-   * @deprecated override {@link #handleResolvedAddresses(ResolvedAddresses) instead}
+   *                   命名服务获取的额外信息
    * @since 1.2.0
+   * @deprecated override {@link #handleResolvedAddresses(ResolvedAddresses) instead}
+   * 使用 handleResolvedAddresses(ResolvedAddresses) 代替
    */
   @Deprecated
-  public void handleResolvedAddressGroups(
-      List<EquivalentAddressGroup> servers,
-      @NameResolver.ResolutionResultAttr Attributes attributes) {
+  public void handleResolvedAddressGroups(List<EquivalentAddressGroup> servers,
+                                          @NameResolver.ResolutionResultAttr Attributes attributes) {
+    // 如果递归计数等于 0，则更新地址
     if (recursionCount++ == 0) {
-      handleResolvedAddresses(
-          ResolvedAddresses.newBuilder().setAddresses(servers).setAttributes(attributes).build());
+      handleResolvedAddresses(ResolvedAddresses.newBuilder()
+                                               .setAddresses(servers)
+                                               .setAttributes(attributes)
+                                               .build());
     }
     recursionCount = 0;
   }
@@ -181,6 +212,7 @@ public abstract class LoadBalancer {
    */
   @SuppressWarnings("deprecation")
   public void handleResolvedAddresses(ResolvedAddresses resolvedAddresses) {
+    // 如果递归计数等于 0，则更新地址
     if (recursionCount++ == 0) {
       handleResolvedAddressGroups(resolvedAddresses.getAddresses(), resolvedAddresses.getAttributes());
     }
@@ -191,30 +223,35 @@ public abstract class LoadBalancer {
    * Represents a combination of the resolved server address, associated attributes and a load
    * balancing policy config.  The config is from the {@link
    * LoadBalancerProvider#parseLoadBalancingPolicyConfig(Map)}.
+   * <p>
+   * 代表合并的解析的 server 地址，连带属性和负载均衡策略配置，配置来自于
+   * LoadBalancerProvider#parseLoadBalancingPolicyConfig(Map)
    *
    * @since 1.21.0
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1771")
   public static final class ResolvedAddresses {
+
     private final List<EquivalentAddressGroup> addresses;
+
     @NameResolver.ResolutionResultAttr
     private final Attributes attributes;
+
     @Nullable
     private final Object loadBalancingPolicyConfig;
     // Make sure to update toBuilder() below!
 
-    private ResolvedAddresses(
-        List<EquivalentAddressGroup> addresses,
-        @NameResolver.ResolutionResultAttr Attributes attributes,
-        Object loadBalancingPolicyConfig) {
-      this.addresses =
-          Collections.unmodifiableList(new ArrayList<>(checkNotNull(addresses, "addresses")));
+    private ResolvedAddresses(List<EquivalentAddressGroup> addresses,
+                              @NameResolver.ResolutionResultAttr Attributes attributes,
+                              Object loadBalancingPolicyConfig) {
+      this.addresses = Collections.unmodifiableList(new ArrayList<>(checkNotNull(addresses, "addresses")));
       this.attributes = checkNotNull(attributes, "attributes");
       this.loadBalancingPolicyConfig = loadBalancingPolicyConfig;
     }
 
     /**
      * Factory for constructing a new Builder.
+     * 构建一个新的 Builder
      *
      * @since 1.21.0
      */
@@ -224,18 +261,19 @@ public abstract class LoadBalancer {
 
     /**
      * Converts this back to a builder.
+     * 转为 builder
      *
      * @since 1.21.0
      */
     public Builder toBuilder() {
-      return newBuilder()
-          .setAddresses(addresses)
-          .setAttributes(attributes)
-          .setLoadBalancingPolicyConfig(loadBalancingPolicyConfig);
+      return newBuilder().setAddresses(addresses)
+                         .setAttributes(attributes)
+                         .setLoadBalancingPolicyConfig(loadBalancingPolicyConfig);
     }
 
     /**
      * Gets the server addresses.
+     * 获取 Server 地址
      *
      * @since 1.21.0
      */
@@ -246,6 +284,7 @@ public abstract class LoadBalancer {
     /**
      * Gets the attributes associated with these addresses.  If this was not previously set,
      * {@link Attributes#EMPTY} will be returned.
+     * 获取地址关联的属性，如果之前没有设置，那么会返回 Attributes#EMPTY
      *
      * @since 1.21.0
      */
@@ -257,6 +296,7 @@ public abstract class LoadBalancer {
     /**
      * Gets the domain specific load balancing policy.  This is the config produced by
      * {@link LoadBalancerProvider#parseLoadBalancingPolicyConfig(Map)}.
+     * 返回负载均衡配置，这个配置从 LoadBalancerProvider#parseLoadBalancingPolicyConfig(Map) 获取
      *
      * @since 1.21.0
      */
@@ -267,16 +307,21 @@ public abstract class LoadBalancer {
 
     /**
      * Builder for {@link ResolvedAddresses}.
+     * ResolvedAddress 的构建器
      */
     @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1771")
     public static final class Builder {
+
       private List<EquivalentAddressGroup> addresses;
+
       @NameResolver.ResolutionResultAttr
       private Attributes attributes = Attributes.EMPTY;
+
       @Nullable
       private Object loadBalancingPolicyConfig;
 
-      Builder() {}
+      Builder() {
+      }
 
       /**
        * Sets the addresses.  This field is required.
@@ -320,10 +365,10 @@ public abstract class LoadBalancer {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("addresses", addresses)
-          .add("attributes", attributes)
-          .add("loadBalancingPolicyConfig", loadBalancingPolicyConfig)
-          .toString();
+                        .add("addresses", addresses)
+                        .add("attributes", attributes)
+                        .add("loadBalancingPolicyConfig", loadBalancingPolicyConfig)
+                        .toString();
     }
 
     @Override
@@ -338,13 +383,14 @@ public abstract class LoadBalancer {
       }
       ResolvedAddresses that = (ResolvedAddresses) obj;
       return Objects.equal(this.addresses, that.addresses)
-          && Objects.equal(this.attributes, that.attributes)
-          && Objects.equal(this.loadBalancingPolicyConfig, that.loadBalancingPolicyConfig);
+              && Objects.equal(this.attributes, that.attributes)
+              && Objects.equal(this.loadBalancingPolicyConfig, that.loadBalancingPolicyConfig);
     }
   }
 
   /**
    * Handles an error from the name resolution system.
+   * 处理命名解析错误
    *
    * @param error a non-OK status
    * @since 1.2.0
@@ -353,31 +399,41 @@ public abstract class LoadBalancer {
 
   /**
    * Handles a state change on a Subchannel.
+   * 处理 Subchannel 状态变化
    *
    * <p>The initial state of a Subchannel is IDLE. You won't get a notification for the initial IDLE
    * state.
+   * Subchannel 初始的状态是 IDLE，不能从初始的 IDLE 状态获取信息
    *
    * <p>If the new state is not SHUTDOWN, this method should create a new picker and call {@link
    * Helper#updateBalancingState Helper.updateBalancingState()}.  Failing to do so may result in
    * unnecessary delays of RPCs. Please refer to {@link PickResult#withSubchannel
    * PickResult.withSubchannel()}'s javadoc for more information.
+   * 如果新的状态是 SHUTDOWN，这个方法应该创建一个新的 picker，并调用 Helper.updateBalancingState() 方法，
+   * 如果操作失败可能会造成请求延时，参考 PickResult.withSubchannel()
    *
    * <p>SHUTDOWN can only happen in two cases.  One is that LoadBalancer called {@link
    * Subchannel#shutdown} earlier, thus it should have already discarded this Subchannel.  The other
    * is that Channel is doing a {@link ManagedChannel#shutdownNow forced shutdown} or has already
    * terminated, thus there won't be further requests to LoadBalancer.  Therefore, the LoadBalancer
    * usually don't need to react to a SHUTDOWN state.
+   * SHUTDOWN 只有两种状态下会发生，一种是 LoadBalancer 调用 Subchannel#shutdown，因此应当已经丢弃这个 Subchannel，
+   * 另一种是 Channel 调用 ManagedChannel#shutdownNow 强制关闭或者已经停止，所以 LoadBalancer 不会有新的请求，
+   * 除此之外，LoadBalancer 通常不需要响应 SHUTDOWN 状态
    *
    * @param subchannel the involved Subchannel
-   * @param stateInfo the new state
+   *                   涉及的 Subchannel
+   * @param stateInfo  the new state
+   *                   新的状态
    * @since 1.2.0
    * @deprecated This method will be removed.  Stop overriding it.  Instead, pass {@link
-   *             SubchannelStateListener} to {@link Subchannel#start} to receive Subchannel state
-   *             updates
+   * SubchannelStateListener} to {@link Subchannel#start} to receive Subchannel state
+   * updates
+   * 这个方法将被移除，使用 通过向 Subchannel#start 传入 SubchannelStateListener 接收状态更新
    */
   @Deprecated
-  public void handleSubchannelState(
-      Subchannel subchannel, ConnectivityStateInfo stateInfo) {
+  public void handleSubchannelState(Subchannel subchannel,
+                                    ConnectivityStateInfo stateInfo) {
     // Do nothing.  If the implementation doesn't implement this, it will get subchannel states from
     // the new API.  We don't throw because there may be forwarding LoadBalancers still plumb this.
   }
