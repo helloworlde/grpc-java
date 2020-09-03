@@ -38,6 +38,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 /**
  * A pluggable component that receives resolved addresses from {@link NameResolver} and provides the
  * channel a usable subchannel when asked.
+ * 一个可插拔的组件，用于接收 NameResolver 解析的地址，并给 Channel 提供可用的 Subchannel
  *
  * <h3>Overview</h3>
  *
@@ -52,10 +53,18 @@ import static com.google.common.base.Preconditions.checkNotNull;
  *       a {@link Subchannel Subchannel} for each new RPC.</li>
  *   <li>{@link Factory Factory} creates a new {@link LoadBalancer} instance.
  * </ol>
+ * LoadBalancer 通常实现三个接口：
+ * - LoadBalancer 是主要接口，所有的方法都通过 io.grpc.LoadBalancer.Helper#getSynchronizationContext 返回
+ * 的 synchronization context 顺序调用，接收 NameResolver 提供的结果，更新 Subchannel 的连接状态，处理 Channel
+ * 要求关闭的请求
+ * - 由 SubchannelPicker 真正实现负载均衡工作，为每个请求选择 Subchannel
+ * - Factory 创建 LoadBalancer 实例
+ *
  *
  * <p>{@link Helper Helper} is implemented by gRPC library and provided to {@link Factory
  * Factory}. It provides functionalities that a {@code LoadBalancer} implementation would typically
  * need.
+ * Helper 由 gRPC 库实现，并提供 Factory，实现了 LoadBalancer 通常需要实现的功能
  *
  * <h3>The Synchronization Context</h3>
  *
@@ -65,11 +74,14 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * allows implementations to schedule tasks to be run in the same Synchronization Context, with or
  * without a delay, thus those tasks don't need to worry about synchronizing with the balancer
  * methods.
+ * LoadBalancer 中所有的方法都由 LoadBalancer 调用，所以实现类不需要关心同步问题，
+ * io.grpc.LoadBalancer.Helper#getSynchronizationContext 允许实现类通过相同的 Synchronization Context
+ * 执行任务，支持延时和非延时，所以这些方法不需要关心同步的问题
  *
  * <p>However, the actual running thread may be the network thread, thus the following rules must be
  * followed to prevent blocking or even dead-locking in a network:
- *
- * <ol>
+ * 然而，真正执行的可能是访问网络的线程，所以下列规则必须遵守，防止线程因为网络阻塞或者死锁
+* <ol>
  *
  *   <li><strong>Never block in the Synchronization Context</strong>.  The callback methods must
  *   return quickly.  Examples or work that must be avoided: CPU-intensive calculation, waiting on
