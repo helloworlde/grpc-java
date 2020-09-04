@@ -1281,17 +1281,22 @@ public abstract class LoadBalancer {
   /**
    * A logical connection to a server, or a group of equivalent servers represented by an {@link
    * EquivalentAddressGroup}.
+   * Server 的逻辑连接，或者一组等效的代表 server 的 EquivalentAddressGroup
    *
    * <p>It maintains at most one physical connection (aka transport) for sending new RPCs, while
    * also keeps track of previous transports that has been shut down but not terminated yet.
+   * 最多维护一个物理连接发送 RPC，还跟踪已经关闭但是尚未终止的传输
    *
    * <p>If there isn't an active transport yet, and an RPC is assigned to the Subchannel, it will
    * create a new transport.  It won't actively create transports otherwise.  {@link
    * #requestConnection requestConnection()} can be used to ask Subchannel to create a transport if
    * there isn't any.
+   * 如果没有活跃的 Transport，并且请求已经分配给 Subchannel，则会创建一个新的 Transport，除此之外不会创建活跃的
+   * Transport，创建 Transport 通过 requestConnection() 方法
    *
    * <p>{@link #start} must be called prior to calling any other methods, with the exception of
    * {@link #shutdown}, which can be called at any time.
+   * start 方法要先于其他所有方法调用，shutdown 可以在任何时候调用
    *
    * @since 1.2.0
    */
@@ -1299,15 +1304,19 @@ public abstract class LoadBalancer {
   public abstract static class Subchannel {
     /**
      * Starts the Subchannel.  Can only be called once.
+     * 开始 Subchannel，只能调用一次
      *
      * <p>Must be called prior to any other method on this class, except for {@link #shutdown} which
      * may be called at any time.
+     * 必须早于这个类中的其他方法调用，shutdown 可以被随时调用
      *
      * <p>Must be called from the {@link Helper#getSynchronizationContext Synchronization Context},
      * otherwise it may throw.  See <a href="https://github.com/grpc/grpc-java/issues/5015">
      * #5015</a> for more discussions.
+     * 必须通过 Helper#getSynchronizationContext 返回的 Synchronization Context 调用，否则可能会抛出异常
      *
      * @param listener receives state updates for this Subchannel.
+     *                 用于接收 Subchannel 的状态更新
      */
     public void start(SubchannelStateListener listener) {
       throw new UnsupportedOperationException("Not implemented");
@@ -1316,12 +1325,16 @@ public abstract class LoadBalancer {
     /**
      * Shuts down the Subchannel.  After this method is called, this Subchannel should no longer
      * be returned by the latest {@link SubchannelPicker picker}, and can be safely discarded.
+     * 关闭 Subchannel，当这个方法调用后，最新的 SubchannelPicker 不会再返回这个 Subchannel，可以被安全的丢弃
      *
      * <p>Calling it on an already shut-down Subchannel has no effect.
+     * 调用已经关闭的 Subchannel 的 shutdown 方法没有任何效果
      *
      * <p>It should be called from the Synchronization Context.  Currently will log a warning if
      * violated.  It will become an exception eventually.  See <a
      * href="https://github.com/grpc/grpc-java/issues/5015">#5015</a> for the background.
+     * 必须通过 Helper#getSynchronizationContext 返回的 Synchronization Context 调用，当前如果是同步只会
+     * 输出警告日志，最终会抛出异常
      *
      * @since 1.2.0
      */
