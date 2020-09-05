@@ -18,15 +18,18 @@ package io.grpc.internal;
 
 /**
  * Determines how long to wait before doing some action (typically a retry, or a reconnect).
+ * 决定执行动作之前需要等待多长时间(通常是重试或者重连)
  */
 public interface BackoffPolicy {
-  public interface Provider {
-    BackoffPolicy get();
-  }
 
-  /**
-   * @return The number of nanoseconds to wait.
-   */
-  long nextBackoffNanos();
+    public interface Provider {
+        BackoffPolicy get();
+    }
+
+    /**
+     * @return The number of nanoseconds to wait.
+     * 需要等待的纳秒数量
+     */
+    long nextBackoffNanos();
 }
 

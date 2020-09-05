@@ -74,13 +74,14 @@ public final class ServiceConfigUtil {
   /**
    * Fetches the health-checked service name from health-checked service config. {@code null} if
    * can't find one.
+   * 从健康检查配置中获取服务名称，如果没有则返回 null
    */
   @Nullable
-  public static String getHealthCheckedServiceName(
-      @Nullable Map<String, ?> healthCheckedServiceConfig) {
+  public static String getHealthCheckedServiceName(@Nullable Map<String, ?> healthCheckedServiceConfig) {
     if (healthCheckedServiceConfig == null) {
       return null;
     }
+
     return JsonUtil.getString(healthCheckedServiceConfig, "serviceName");
   }
 

@@ -1463,28 +1463,37 @@ public abstract class LoadBalancer {
   /**
    * Receives state changes for one {@link Subchannel}. All methods are run under {@link
    * Helper#getSynchronizationContext}.
+   * 接收 Subchannel 状态变化，所有的方法由  Helper#getSynchronizationContext 调用
    *
    * @since 1.22.0
    */
   public interface SubchannelStateListener {
     /**
      * Handles a state change on a Subchannel.
+     * 处理 Subchannel 状态更新
      *
      * <p>The initial state of a Subchannel is IDLE. You won't get a notification for the initial
      * IDLE state.
+     * Subchannel 初始状态是 IDLE，初始的 IDLE 状态没有通知
      *
      * <p>If the new state is not SHUTDOWN, this method should create a new picker and call {@link
      * Helper#updateBalancingState Helper.updateBalancingState()}.  Failing to do so may result in
      * unnecessary delays of RPCs. Please refer to {@link PickResult#withSubchannel
      * PickResult.withSubchannel()}'s javadoc for more information.
+     * <p>
+     * 如果新的状态不是 SHUTDOWN，这个方法应该创建一个新的 picker，并且调用 Helper.updateBalancingState()，
+     * 如果操作失败可能会导致不必要的延迟，可以参考 PickResult.withSubchannel()
      *
      * <p>SHUTDOWN can only happen in two cases.  One is that LoadBalancer called {@link
      * Subchannel#shutdown} earlier, thus it should have already discarded this Subchannel.  The
      * other is that Channel is doing a {@link ManagedChannel#shutdownNow forced shutdown} or has
      * already terminated, thus there won't be further requests to LoadBalancer.  Therefore, the
      * LoadBalancer usually don't need to react to a SHUTDOWN state.
-     * @param newState the new state
+     * SHUTDOWN 只有两种情况下会发生，一种是 LoadBalancer 较早调用 Subchannel#shutdown，因此应当已经取消了
+     * Subchannel；另一种是 Channel 在调用 ManagedChannel#shutdownNow 强制关闭或者已经停止，因此不会有更多
+     * 的请求，LoadBalancer 通常不需要响应 SHUTDOWN 状态
      *
+     * @param newState the new state 新的状态
      * @since 1.22.0
      */
     void onSubchannelState(ConnectivityStateInfo newState);
@@ -1492,6 +1501,7 @@ public abstract class LoadBalancer {
 
   /**
    * Factory to create {@link LoadBalancer} instance.
+   * 创建 LoadBalancer 实例的工厂
    *
    * @since 1.2.0
    */
@@ -1500,6 +1510,7 @@ public abstract class LoadBalancer {
   public abstract static class Factory {
     /**
      * Creates a {@link LoadBalancer} that will be used inside a channel.
+     * 创建 Channel 中会使用的 LoadBalancer
      *
      * @since 1.2.0
      */
