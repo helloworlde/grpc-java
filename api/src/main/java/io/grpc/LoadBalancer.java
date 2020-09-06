@@ -325,6 +325,7 @@ public abstract class LoadBalancer {
 
       /**
        * Sets the addresses.  This field is required.
+       * 设置地址
        *
        * @return this.
        */
@@ -336,6 +337,7 @@ public abstract class LoadBalancer {
       /**
        * Sets the attributes.  This field is optional; if not called, {@link Attributes#EMPTY}
        * will be used.
+       * 设置属性，该属性是可选的，如果没有调用则会使用 Attributes#EMPTY
        *
        * @return this.
        */
@@ -346,6 +348,7 @@ public abstract class LoadBalancer {
 
       /**
        * Sets the load balancing policy config. This field is optional.
+       * 设置负载均衡配置
        *
        * @return this.
        */
@@ -356,6 +359,7 @@ public abstract class LoadBalancer {
 
       /**
        * Constructs the {@link ResolvedAddresses}.
+       * 构造 ResolvedAddresss
        */
       public ResolvedAddresses build() {
         return new ResolvedAddresses(addresses, attributes, loadBalancingPolicyConfig);
@@ -443,6 +447,9 @@ public abstract class LoadBalancer {
    * after this method.  The implementation should shutdown all Subchannels and OOB channels, and do
    * any other cleanup as necessary.
    *
+   * Channel 要求关闭 LoadBalancer，当调用这个方法后，不会再调用其他的方法，实现类应当关闭所有的 Subchannel 和 OOB Channel，
+   * 并且做其他必要的清除操作
+   *
    * @since 1.2.0
    */
   public abstract void shutdown();
@@ -453,9 +460,13 @@ public abstract class LoadBalancer {
    * {@code false}, meaning that if the NameResolver returns an empty list, the Channel will turn
    * that into an error and call {@link #handleNameResolutionError}.  LoadBalancers that want to
    * accept empty lists should override this method and return {@code true}.
+   * 这个 LoadBalancer 是否能够处理 handleResolvedAddresses 传递的空地址组，默认的实现返回 false，意味着
+   * 如果这个 NameResolver 返回了空列表，Channel 将会进入处理错误兵器调用 handleNameResolutionError
+   * 如果 LoadBalancers 想接受空列表可以重写这个方法，返回 true
    *
    * <p>This method should always return a constant value.  It's not specified when this will be
    * called.
+   * 这个方法应当返回一个常量值，将在何时调用未指定
    */
   public boolean canHandleEmptyAddressListFromNameResolution() {
     return false;
@@ -465,18 +476,24 @@ public abstract class LoadBalancer {
    * The channel asks the LoadBalancer to establish connections now (if applicable) so that the
    * upcoming RPC may then just pick a ready connection without waiting for connections.  This
    * is triggered by {@link ManagedChannel#getState ManagedChannel.getState(true)}.
+   * Channel 要求 LoadBalancer 立即建立连接，以便后续的请求只需要选择 ready 的连接而不需要等待，是由
+   * ManagedChannel#getState(true) 触发的
    *
    * <p>If LoadBalancer doesn't override it, this is no-op.  If it infeasible to create connections
    * given the current state, e.g. no Subchannel has been created yet, LoadBalancer can ignore this
    * request.
+   * 如果 LoadBalancer 没有覆盖这个方法，则不会操作，如果当前的状态不允许创建连接，如没有 Subchannel 创建，则
+   * LoadBalancer 可以忽略请求
    *
    * @since 1.22.0
    */
-  public void requestConnection() {}
+  public void requestConnection() {
+  }
 
   /**
    * The main balancing logic.  It <strong>must be thread-safe</strong>. Typically it should only
    * synchronize on its own state, and avoid synchronizing with the LoadBalancer's state.
+   * 实现负载均衡的主要逻辑，必须是线程安全的；通常只需要同步自己的状态，避免同步 LoadBalancer 的状态
    *
    * @since 1.2.0
    */
@@ -495,19 +512,26 @@ public abstract class LoadBalancer {
     /**
      * Tries to establish connections now so that the upcoming RPC may then just pick a ready
      * connection without having to connect first.
+     * <p>
+     * 尝试立即建立连接，以便请求只需要选择一个已经ready的连接，而不需要先建立连接
      *
      * <p>No-op if unsupported.
+     * 如果不支持则不会操作
      *
-     * @deprecated override {@link LoadBalancer#requestConnection} instead.
      * @since 1.11.0
+     * @deprecated override {@link LoadBalancer#requestConnection} instead.
+     * 使用 LoadBalancer#requestConnection 代替
      */
     @Deprecated
-    public void requestConnection() {}
+    public void requestConnection() {
+    }
   }
 
   /**
    * Provides arguments for a {@link SubchannelPicker#pickSubchannel(
-   * LoadBalancer.PickSubchannelArgs)}.
+   *LoadBalancer.PickSubchannelArgs)}.
+   * <p>
+   * 为 SubchannelPicker#pickSubchannel 提供参数
    *
    * @since 1.2.0
    */
@@ -516,6 +540,7 @@ public abstract class LoadBalancer {
 
     /**
      * Call options.
+     * 调用的选项
      *
      * @since 1.2.0
      */
@@ -524,6 +549,7 @@ public abstract class LoadBalancer {
     /**
      * Headers of the call. {@link SubchannelPicker#pickSubchannel} may mutate it before before
      * returning.
+     * 调用的 Header，SubchannelPicker#pickSubchannel 在返回之前可能会改变 header
      *
      * @since 1.2.0
      */
@@ -531,6 +557,7 @@ public abstract class LoadBalancer {
 
     /**
      * Call method.
+     * 调用方法
      *
      * @since 1.2.0
      */
@@ -539,6 +566,7 @@ public abstract class LoadBalancer {
 
   /**
    * A balancing decision made by {@link SubchannelPicker SubchannelPicker} for an RPC.
+   * SubchannelPicker 的选择结果
    *
    * <p>The outcome of the decision will be one of the following:
    * <ul>
@@ -552,26 +580,40 @@ public abstract class LoadBalancer {
    *       picker is provided via {@link Helper#updateBalancingState Helper.updateBalancingState()},
    *       when the RPC will go through the same picking process again.</li>
    * </ul>
+   * 决定的结果将是以下之一：
+   * Proceed: 如果 Subchannel 是通过 withSubchannel 提供，并且当请求开始时已经是 READY 状态，则请求会继续由这个 Subchannel 处理
+   * Error: 如果是通过 withError 返回，并且不是 wait-for-ready，请求会根据所给的错误立即失败
+   * Buffer: 其他的情况，请求会在 Channel 中缓冲，直到 Helper.updateBalancingState() 提供下一个 picker，会再次执行选择流程
    *
    * @since 1.2.0
    */
   @Immutable
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1771")
   public static final class PickResult {
+
     private static final PickResult NO_RESULT = new PickResult(null, null, Status.OK, false);
 
-    @Nullable private final Subchannel subchannel;
-    @Nullable private final ClientStreamTracer.Factory streamTracerFactory;
+    @Nullable
+    private final Subchannel subchannel;
+
+    @Nullable
+    private final ClientStreamTracer.Factory streamTracerFactory;
+
     // An error to be propagated to the application if subchannel == null
     // Or OK if there is no error.
     // subchannel being null and error being OK means RPC needs to wait
+    // 如果 subchannel 是 null 则会传播错误给应用；或者没有错误，状态是 OK
     private final Status status;
+
     // True if the result is created by withDrop()
+    // 如果通过 withDrop 创建，则是 true
     private final boolean drop;
 
-    private PickResult(
-        @Nullable Subchannel subchannel, @Nullable ClientStreamTracer.Factory streamTracerFactory,
-        Status status, boolean drop) {
+    private PickResult(@Nullable Subchannel subchannel,
+                       @Nullable ClientStreamTracer.Factory streamTracerFactory,
+                       Status status,
+                       boolean drop) {
+
       this.subchannel = subchannel;
       this.streamTracerFactory = streamTracerFactory;
       this.status = checkNotNull(status, "status");
@@ -580,25 +622,35 @@ public abstract class LoadBalancer {
 
     /**
      * A decision to proceed the RPC on a Subchannel.
+     * 决定由哪个 Subchannel 继续处理请求
      *
      * <p>The Subchannel should either be an original Subchannel returned by {@link
      * Helper#createSubchannel Helper.createSubchannel()}, or a wrapper of it preferably based on
      * {@code ForwardingSubchannel}.  At the very least its {@link Subchannel#getInternalSubchannel
      * getInternalSubchannel()} must return the same object as the one returned by the original.
      * Otherwise the Channel cannot use it for the RPC.
+     * <p>
+     * Subchannel 应当是 Helper.createSubchannel 创建的原始的 Subchannel，或者基于 ForwardingSubchannel
+     * 的封装后的，必须返回与原始对象返回的对象相同的对象，否则 Channel 不能使用这个 Subchannel
+     * 用于请求
      *
      * <p>When the RPC tries to use the return Subchannel, which is briefly after this method
      * returns, the state of the Subchannel will decide where the RPC would go:
+     * 当请求准备使用返回的 Subchannel，在此方法返回的短暂时间内，Subchannel 的状态决定请求如何进行：
      *
      * <ul>
      *   <li>READY: the RPC will proceed on this Subchannel.</li>
      *   <li>IDLE: the RPC will be buffered.  Subchannel will attempt to create connection.</li>
      *   <li>All other states: the RPC will be buffered.</li>
      * </ul>
+     * READY: 请求继续由这个 Subchannel 处理
+     * IDLE: 请求会被缓冲，Subchannel 会尝试建立连接
+     * 其他状态: 请求会被缓冲
      *
      * <p><strong>All buffered RPCs will stay buffered</strong> until the next call of {@link
      * Helper#updateBalancingState Helper.updateBalancingState()}, which will trigger a new picking
      * process.
+     * 所有缓冲的请求会等待直到 Helper.updateBalancingState() 调用，会触发一个新的选择流程
      *
      * <p>Note that Subchannel's state may change at the same time the picker is making the
      * decision, which means the decision may be made with (to-be) outdated information.  For
@@ -606,6 +658,10 @@ public abstract class LoadBalancer {
      * about to be used by the RPC, which makes the RPC to be buffered.  The LoadBalancer will soon
      * learn about the Subchannels' transition from READY to IDLE, create a new picker and allow the
      * RPC to use another READY transport if there is any.
+     * 需要注意 Subchannel 的状态可能在 picker 选择时会发生改变，意味着可能会根据已经过时的信息做选择；
+     * 如 picker 可能会返回一个已经是 READY 状态的 Subchannel，但是当使用时可能变成了 IDLE 状态，
+     * 可能会导致请求被缓冲，LoadBalancer 后续会了解 READY 变成 IDLE 的过渡，创建一个新的 Picker 并且
+     * 允许请求使用另一个存在的 READY 状态的 Transport
      *
      * <p>You will want to avoid running into a situation where there are READY Subchannels out
      * there but some RPCs are still buffered for longer than a brief time.
@@ -621,6 +677,13 @@ public abstract class LoadBalancer {
      *       in response to the CONNECTING state to exclude that Subchannel, 50% of RPCs will hit it
      *       and be buffered even though the other Subchannel is READY.</li>
      * </ul>
+     * 可能想要避免 Subchannel 是 READY，但是仍然有可能导致部分请求短暂缓冲的情况：
+     * 可能发生在返回的 Subchannel 不是 READY 和 IDLE 状态的情况下，如 round_robin 策略选择两个 Subchannel，
+     * 分别是 READY 和 CONNECTING 状态，如果忽略状态并且平等的选择，50% 的请求会被卡在缓冲中直到所有的 Subchannel
+     * 都是 READY
+     * 也可能发生在 Subchannel 状态发生变化时没有创建新的 Picker；如 round_robin 策略，如果只选择 READY 和 IDLE
+     * 状态的 Subchannel，初始状态都是 READY，现在其中一个变成了 IDLE，并且长时间保持在 CONNECTING 状态，如果不重新
+     * 创建一个 picker 来排除 CONNECTING 状态的 Subchannel，50% 的请求会被缓冲直到其他的 Subchannel 是 READY
      *
      * <p>In order to prevent unnecessary delay of RPCs, the rules of thumb are:
      * <ol>
@@ -641,22 +704,33 @@ public abstract class LoadBalancer {
      *       handleSubchannelState()} is called, unless the new state is SHUTDOWN. See
      *       {@code handleSubchannelState}'s javadoc for more details.</li>
      * </ol>
+     * 为了避免不必要的请求延迟，经验法则是：
+     * - picker 仅应当选择已知是 READY 或 IDLE 状态的 Subchannel，是否选择 IDLE 状态的 Subchannel 取决于是否
+     *   连接或者主动连接：
+     *    - 如果想要按需连接，则 Subchannel 包含 IDLE 状态，因为当请求尝试使用 IDLE 状态的 Subchannel，会尝试连接
+     *    - 如果想要一直保持连接，即使没有请求，应当调用 Subchannel#requestConnection 方法，无论 Subchannel 何时
+     *    过渡为 IDLE 状态，则返回的结果不包含 IDEL 状态的 Subchannel 即可
      *
-     * @param subchannel the picked Subchannel.  It must have been {@link Subchannel#start started}
+     * @param subchannel          the picked Subchannel.  It must have been {@link Subchannel#start started}
+     *                            被选择的 Subchannel，必须已经是启动的
      * @param streamTracerFactory if not null, will be used to trace the activities of the stream
      *                            created as a result of this pick. Note it's possible that no
      *                            stream is created at all in some cases.
+     *                            如果不是 null，作为选择的结果创建，会被用于追踪流的连接情况，需要注意有些情况下可能
+     *                            根本没有创建流
      * @since 1.3.0
      */
-    public static PickResult withSubchannel(
-        Subchannel subchannel, @Nullable ClientStreamTracer.Factory streamTracerFactory) {
-      return new PickResult(
-          checkNotNull(subchannel, "subchannel"), streamTracerFactory, Status.OK,
-          false);
+    public static PickResult withSubchannel(Subchannel subchannel,
+                                            @Nullable ClientStreamTracer.Factory streamTracerFactory) {
+      return new PickResult(checkNotNull(subchannel, "subchannel"),
+              streamTracerFactory,
+              Status.OK,
+              false);
     }
 
     /**
      * Equivalent to {@code withSubchannel(subchannel, null)}.
+     * 等同于 withSubchannel(subchannel, null)
      *
      * @since 1.2.0
      */
@@ -668,8 +742,10 @@ public abstract class LoadBalancer {
      * A decision to report a connectivity error to the RPC.  If the RPC is {@link
      * CallOptions#withWaitForReady wait-for-ready}, it will stay buffered.  Otherwise, it will fail
      * with the given error.
+     * 将连接的错误描述返回给请求，如果请求是 wait-for-ready 的，则继续缓冲，否则会根据给定的错误失败
      *
      * @param error the error status.  Must not be OK.
+     *              错误状态，不能是 OK
      * @since 1.2.0
      */
     public static PickResult withError(Status error) {
@@ -680,8 +756,10 @@ public abstract class LoadBalancer {
     /**
      * A decision to fail an RPC immediately.  This is a final decision and will ignore retry
      * policy.
+     * 立即失败请求，是最终的决定，并且会忽视重试策略
      *
      * @param status the status with which the RPC will fail.  Must not be OK.
+     *               失败的状态，必须不能是 OK
      * @since 1.8.0
      */
     public static PickResult withDrop(Status status) {
@@ -691,6 +769,7 @@ public abstract class LoadBalancer {
 
     /**
      * No decision could be made.  The RPC will stay buffered.
+     * 没有可用的结果，请求继续缓冲
      *
      * @since 1.2.0
      */
@@ -701,6 +780,7 @@ public abstract class LoadBalancer {
     /**
      * The Subchannel if this result was created by {@link #withSubchannel withSubchannel()}, or
      * null otherwise.
+     * 如果结果是通过 withSubchannel 创建则返回 Subchannel，否则返回 null
      *
      * @since 1.2.0
      */
@@ -711,6 +791,7 @@ public abstract class LoadBalancer {
 
     /**
      * The stream tracer factory this result was created with.
+     * 创建此结果的流跟踪器
      *
      * @since 1.3.0
      */
@@ -722,6 +803,7 @@ public abstract class LoadBalancer {
     /**
      * The status associated with this result.  Non-{@code OK} if created with {@link #withError
      * withError}, or {@code OK} otherwise.
+     * 结果关联的状态，如果是通过  withError 创建的，则是非 OK 的，否则就是 OK 的
      *
      * @since 1.2.0
      */
@@ -731,6 +813,7 @@ public abstract class LoadBalancer {
 
     /**
      * Returns {@code true} if this result was created by {@link #withDrop withDrop()}.
+     * 如果是通过 withDrop 创建的，则返回true
      *
      * @since 1.8.0
      */
@@ -741,11 +824,11 @@ public abstract class LoadBalancer {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("subchannel", subchannel)
-          .add("streamTracerFactory", streamTracerFactory)
-          .add("status", status)
-          .add("drop", drop)
-          .toString();
+                        .add("subchannel", subchannel)
+                        .add("streamTracerFactory", streamTracerFactory)
+                        .add("status", status)
+                        .add("drop", drop)
+                        .toString();
     }
 
     @Override
@@ -764,8 +847,8 @@ public abstract class LoadBalancer {
       }
       PickResult that = (PickResult) other;
       return Objects.equal(subchannel, that.subchannel) && Objects.equal(status, that.status)
-          && Objects.equal(streamTracerFactory, that.streamTracerFactory)
-          && drop == that.drop;
+              && Objects.equal(streamTracerFactory, that.streamTracerFactory)
+              && drop == that.drop;
     }
   }
 
