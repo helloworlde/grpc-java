@@ -854,17 +854,20 @@ public abstract class LoadBalancer {
 
   /**
    * Arguments for creating a {@link Subchannel}.
+   * 创建 Subchannel 的参数
    *
    * @since 1.22.0
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1771")
   public static final class CreateSubchannelArgs {
+
     private final List<EquivalentAddressGroup> addrs;
     private final Attributes attrs;
     private final Object[][] customOptions;
 
-    private CreateSubchannelArgs(
-        List<EquivalentAddressGroup> addrs, Attributes attrs, Object[][] customOptions) {
+    private CreateSubchannelArgs(List<EquivalentAddressGroup> addrs,
+                                 Attributes attrs,
+                                 Object[][] customOptions) {
       this.addrs = checkNotNull(addrs, "addresses are not set");
       this.attrs = checkNotNull(attrs, "attrs");
       this.customOptions = checkNotNull(customOptions, "customOptions");
@@ -872,6 +875,7 @@ public abstract class LoadBalancer {
 
     /**
      * Returns the addresses, which is an unmodifiable list.
+     * 返回不可变的地址集合
      */
     public List<EquivalentAddressGroup> getAddresses() {
       return addrs;
@@ -886,6 +890,7 @@ public abstract class LoadBalancer {
 
     /**
      * Get the value for a custom option or its inherent default.
+     * 获取自定义的 key 对应的值，如果没有则使用默认的
      *
      * @param key Key identifying option
      */
@@ -902,13 +907,17 @@ public abstract class LoadBalancer {
 
     /**
      * Returns a builder with the same initial values as this object.
+     * 将对象转为 Builder
      */
     public Builder toBuilder() {
-      return newBuilder().setAddresses(addrs).setAttributes(attrs).copyCustomOptions(customOptions);
+      return newBuilder().setAddresses(addrs)
+                         .setAttributes(attrs)
+                         .copyCustomOptions(customOptions);
     }
 
     /**
      * Creates a new builder.
+     * 创建 Builder
      */
     public static Builder newBuilder() {
       return new Builder();
@@ -917,10 +926,10 @@ public abstract class LoadBalancer {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("addrs", addrs)
-          .add("attrs", attrs)
-          .add("customOptions", Arrays.deepToString(customOptions))
-          .toString();
+                        .add("addrs", addrs)
+                        .add("attrs", attrs)
+                        .add("customOptions", Arrays.deepToString(customOptions))
+                        .toString();
     }
 
     @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1771")
@@ -941,10 +950,11 @@ public abstract class LoadBalancer {
 
       /**
        * Add a custom option. Any existing value for the key is overwritten.
+       * 添加自定义属性，如果 key 已经存在，则覆盖
        *
        * <p>This is an <strong>optional</strong> property.
        *
-       * @param key the option key
+       * @param key   the option key
        * @param value the option value
        */
       public <T> Builder addOption(Key<T> key, T value) {
@@ -1012,6 +1022,7 @@ public abstract class LoadBalancer {
 
     /**
      * Key for a key-value pair. Uses reference equality.
+     * 键值对的 key
      */
     @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1771")
     public static final class Key<T> {
@@ -1027,10 +1038,12 @@ public abstract class LoadBalancer {
       /**
        * Factory method for creating instances of {@link Key}. The default value of the key is
        * {@code null}.
+       * 创建 Key 实例的工厂方法，value 的默认值是 null
        *
        * @param debugString a debug string that describes this key.
-       * @param <T> Key type
-       * @return Key object
+       *                    描述 key 的字符串
+       * @param <T>         Key type key 的类型
+       * @return Key object key 对象
        */
       public static <T> Key<T> create(String debugString) {
         Preconditions.checkNotNull(debugString, "debugString");
@@ -1039,11 +1052,14 @@ public abstract class LoadBalancer {
 
       /**
        * Factory method for creating instances of {@link Key}.
+       * 创建 key 实例的默认方法
        *
-       * @param debugString a debug string that describes this key.
+       * @param debugString  a debug string that describes this key.
+       *                     描述 key 的字符串
        * @param defaultValue default value to return when value for key not set
-       * @param <T> Key type
-       * @return Key object
+       *                     当没有设置值时返回的默认值
+       * @param <T>          Key type key 类型
+       * @return Key object key 对象
        */
       public static <T> Key<T> createWithDefault(String debugString, T defaultValue) {
         Preconditions.checkNotNull(debugString, "debugString");
@@ -1076,11 +1092,13 @@ public abstract class LoadBalancer {
     /**
      * Equivalent to {@link #createSubchannel(List, Attributes)} with the given single {@code
      * EquivalentAddressGroup}.
+     * 等同于 createSubchannel(List, Attributes)，使用 EquivalentAddressGroup 构造
      *
      * @since 1.2.0
      * @deprecated Use {@link #createSubchannel(io.grpc.LoadBalancer.CreateSubchannelArgs)}
-     *             instead. Note the new API must be called from {@link #getSynchronizationContext
-     *             the Synchronization Context}.
+     * instead. Note the new API must be called from {@link #getSynchronizationContext
+     * the Synchronization Context}.
+     *  使用 createSubchannel(CreateSubchannelArgs) 代替，注意新的 API 必须通过 Synchronization Context 调用
      */
     @Deprecated
     public final Subchannel createSubchannel(EquivalentAddressGroup addrs, Attributes attrs) {
@@ -1093,19 +1111,25 @@ public abstract class LoadBalancer {
      * considered equivalent.  The {@code attrs} are custom attributes associated with this
      * Subchannel, and can be accessed later through {@link Subchannel#getAttributes
      * Subchannel.getAttributes()}.
+     * 创建 Subchannel，等同于给定的地址的集合的逻辑连接，attrs 是与 Subchannel 关联的自定义的属性，
+     * 可以在 Subchannel#getAttributes() 方法后调用
      *
      * <p>It is recommended you call this method from the Synchronization Context, otherwise your
      * logic around the creation may race with {@link #handleSubchannelState}.  See
      * <a href="https://github.com/grpc/grpc-java/issues/5015">#5015</a> for more discussions.
+     * 推荐使用 Synchronization Context 调用这个方法，除非创建逻辑可能和 handleSubchannelState 竞争
      *
      * <p>The LoadBalancer is responsible for closing unused Subchannels, and closing all
      * Subchannels within {@link #shutdown}.
+     * LoadBalancer 负责关闭未使用的 Subchannel，当 shutdown 时关闭全部
      *
      * @throws IllegalArgumentException if {@code addrs} is empty
      * @since 1.14.0
      * @deprecated Use {@link #createSubchannel(io.grpc.LoadBalancer.CreateSubchannelArgs)}
-     *             instead. Note the new API must be called from {@link #getSynchronizationContext
-     *             the Synchronization Context}.
+     * instead. Note the new API must be called from {@link #getSynchronizationContext
+     * the Synchronization Context}.
+     * 使用 createSubchannel(CreateSubchannelArgs) 代替，注意新的 API 必须通过 Synchronization Context
+     * 调用
      */
     @Deprecated
     public Subchannel createSubchannel(List<EquivalentAddressGroup> addrs, Attributes attrs) {
@@ -1117,11 +1141,16 @@ public abstract class LoadBalancer {
      * considered equivalent.  The {@code attrs} are custom attributes associated with this
      * Subchannel, and can be accessed later through {@link Subchannel#getAttributes
      * Subchannel.getAttributes()}.
+     * <p>
+     * 创建一个 Subchannel，等同于给定的地址的集合的逻辑连接，attrs 是与 Subchannel 关联的自定义的属性，
+     * 可以在 Subchannel#getAttributes() 方法后调用
      *
      * <p>The LoadBalancer is responsible for closing unused Subchannels, and closing all
      * Subchannels within {@link #shutdown}.
+     * LoadBalancer 负责关闭未使用的 Subchannel，当 shutdown 时关闭全部
      *
      * <p>It must be called from {@link #getSynchronizationContext the Synchronization Context}
+     * 必须通过 Synchronization Context 调用
      *
      * @since 1.22.0
      */
@@ -1132,17 +1161,20 @@ public abstract class LoadBalancer {
     /**
      * Equivalent to {@link #updateSubchannelAddresses(io.grpc.LoadBalancer.Subchannel, List)} with
      * the given single {@code EquivalentAddressGroup}.
+     * 等同于使用给定的 EquivalentAddressGroup 调用 updateSubchannelAddresses(Subchannel, List)
      *
      * <p>It should be called from the Synchronization Context.  Currently will log a warning if
      * violated.  It will become an exception eventually.  See <a
      * href="https://github.com/grpc/grpc-java/issues/5015">#5015</a> for the background.
+     * 应当通过 Synchronization Context 调用
      *
      * @since 1.4.0
      * @deprecated use {@link Subchannel#updateAddresses} instead
+     * 使用 Subchannel#updateAddress 代替
      */
     @Deprecated
-    public final void updateSubchannelAddresses(
-        Subchannel subchannel, EquivalentAddressGroup addrs) {
+    public final void updateSubchannelAddresses(Subchannel subchannel,
+                                                EquivalentAddressGroup addrs) {
       checkNotNull(addrs, "addrs");
       updateSubchannelAddresses(subchannel, Collections.singletonList(addrs));
     }
@@ -1151,28 +1183,35 @@ public abstract class LoadBalancer {
      * Replaces the existing addresses used with {@code subchannel}. This method is superior to
      * {@link #createSubchannel} when the new and old addresses overlap, since the subchannel can
      * continue using an existing connection.
+     * 代替给定的 Subchannel 中的地址,当替换旧的地址时这个方法优于 createSubchannel，因为 Subchannel 依然
+     * 可以使用已经存在的连接
      *
      * <p>It should be called from the Synchronization Context.  Currently will log a warning if
      * violated.  It will become an exception eventually.  See <a
      * href="https://github.com/grpc/grpc-java/issues/5015">#5015</a> for the background.
+     * 应当通过 Synchronization Context 调用
      *
      * @throws IllegalArgumentException if {@code subchannel} was not returned from {@link
-     *     #createSubchannel} or {@code addrs} is empty
+     *                                  #createSubchannel} or {@code addrs} is empty
+     *                                  如果 Subchannel 不是通过 createSubchannel 调用或者 addrs 是空的
      * @since 1.14.0
      * @deprecated use {@link Subchannel#updateAddresses} instead
+     * 使用 Subchannel#updateAddresses 代替
      */
     @Deprecated
-    public void updateSubchannelAddresses(
-        Subchannel subchannel, List<EquivalentAddressGroup> addrs) {
+    public void updateSubchannelAddresses(Subchannel subchannel,
+                                          List<EquivalentAddressGroup> addrs) {
       throw new UnsupportedOperationException();
     }
 
     /**
      * Out-of-band channel for LoadBalancer’s own RPC needs, e.g., talking to an external
      * load-balancer service.
+     * 满足 LoadBalancer 自身请求的其他 Channel，如与外部的负载均衡器通信
      *
      * <p>The LoadBalancer is responsible for closing unused OOB channels, and closing all OOB
      * channels within {@link #shutdown}.
+     * LoadBalancer 负责关闭未使用的 OOB Channel，当 shutdown 时关闭所有的 OOB Channel
      *
      * @since 1.4.0
      */
@@ -1186,9 +1225,12 @@ public abstract class LoadBalancer {
      * #createOobChannel(EquivalentAddressGroup, String)}. This is superior to {@link
      * #createOobChannel(EquivalentAddressGroup, String)} when the old and new addresses overlap,
      * since the channel can continue using an existing connection.
+     * 更新 Channel 中使用的 createOobChannel 创建的连接的地址，当替代原有地址时要优于 createOobChannel，
+     * 因为新旧地址相同时， Channel 依然可以使用存在的连接
      *
      * @throws IllegalArgumentException if {@code channel} was not returned from {@link
-     *     #createOobChannel}
+     *                                  #createOobChannel}
+     *                                  当不是 createOobChannel 创建的 Channel 时抛出异常
      * @since 1.4.0
      */
     public void updateOobChannelAddresses(ManagedChannel channel, EquivalentAddressGroup eag) {
@@ -1199,12 +1241,15 @@ public abstract class LoadBalancer {
      * Creates an out-of-band channel for LoadBalancer's own RPC needs, e.g., talking to an external
      * load-balancer service, that is specified by a target string.  See the documentation on
      * {@link ManagedChannelBuilder#forTarget} for the format of a target string.
+     * 创建用于 LoadBalancer 自己的请求的额外 Channel，如与外部负载均衡器通信，通过特定的地址指定
      *
      * <p>The target string will be resolved by a {@link NameResolver} created according to the
      * target string.
+     * 目标地址可以通过 NameResolver 解析
      *
      * <p>The LoadBalancer is responsible for closing unused OOB channels, and closing all OOB
      * channels within {@link #shutdown}.
+     * LoadBalancer 负责关闭没有使用的 OOB Channel，当 shutdown 时关闭所有的 Channel
      *
      * @since 1.20.0
      */
@@ -1217,11 +1262,15 @@ public abstract class LoadBalancer {
      * external load-balancer service, that is specified by a target string.  See the documentation
      * on {@link ManagedChannelBuilder#forTarget} for the format of a target string.
      *
+     * 创建用于 LoadBalancer 自己的请求的额外 Channel 的 builder，如用于与外部负载均衡器通信，通过特定的字符串指定，
+     *
      * <p>The target string will be resolved by a {@link NameResolver} created according to the
      * target string.
+     * 目标地址通过 NameResolver 解析
      *
      * <p>The LoadBalancer is responsible for closing unused OOB channels, and closing all OOB
      * channels within {@link #shutdown}.
+     *  LoadBalancer 负责关闭没有使用的 OOB Channel，当 shutdown 时关闭所有的 Channel
      *
      * @since 1.31.0
      */
@@ -1236,6 +1285,7 @@ public abstract class LoadBalancer {
      * <p>When a new picker is provided via {@code updateBalancingState()}, the channel will apply
      * the picker on all buffered RPCs, by calling {@link SubchannelPicker#pickSubchannel(
      *LoadBalancer.PickSubchannelArgs)}.
+     *
      * 如果提供了新的 picker 或调用 updateBalancingState 方法，channel 会通过调用 SubchannelPicker#pickSubchannel
      * 将 picker 用于所有缓冲的 buffer
      *
@@ -1261,6 +1311,7 @@ public abstract class LoadBalancer {
 
     /**
      * Call {@link NameResolver#refresh} on the channel's resolver.
+     * 通过 Channel 的解析器调用 NameResolver#refresh 更新服务
      *
      * <p>It should be called from the Synchronization Context.  Currently will log a warning if
      * violated.  It will become an exception eventually.  See <a
@@ -1275,6 +1326,7 @@ public abstract class LoadBalancer {
     /**
      * Schedule a task to be run in the Synchronization Context, which serializes the task with the
      * callback methods on the {@link LoadBalancer} interface.
+     * 调度一个 Synchronization Context 调度的任务，在 LoadBalancer 使用回调方法序列化任务
      *
      * @since 1.2.0
      * @deprecated use/implement {@code getSynchronizationContext()} instead
@@ -1287,10 +1339,13 @@ public abstract class LoadBalancer {
     /**
      * Returns a {@link SynchronizationContext} that runs tasks in the same Synchronization Context
      * as that the callback methods on the {@link LoadBalancer} interface are run in.
+     * 返回 SynchronizationContext 用于在同步上下文中执行任务，在 LoadBalancer 使用回调方法序列化任务
      *
      * <p>Pro-tip: in order to call {@link SynchronizationContext#schedule}, you need to provide a
      * {@link ScheduledExecutorService}.  {@link #getScheduledExecutorService} is provided for your
      * convenience.
+     * 为了顺序调用 SynchronizationContext#schedule，需要提供 ScheduledExecutorService，
+     * getScheduledExecutorService 方法用于方便提供
      *
      * @since 1.17.0
      */
@@ -1301,12 +1356,15 @@ public abstract class LoadBalancer {
 
     /**
      * Returns a {@link ScheduledExecutorService} for scheduling delayed tasks.
+     * 返回 ScheduledExecutorService 用于调度延时任务
      *
      * <p>This service is a shared resource and is only meant for quick tasks.  DO NOT block or run
      * time-consuming tasks.
+     * 这个服务是共享的资源，仅用于快速执行的任务，不能用于阻塞或者长时间执行的任务
      *
      * <p>The returned service doesn't support {@link ScheduledExecutorService#shutdown shutdown()}
      * and {@link ScheduledExecutorService#shutdownNow shutdownNow()}.  They will throw if called.
+     * 返回的服务不支持使用 shutdown 和 shutdownNow 方法，如果调用会抛出异常
      *
      * @since 1.17.0
      */
@@ -1316,17 +1374,18 @@ public abstract class LoadBalancer {
 
     /**
      * Returns the NameResolver of the channel.
+     * 返回 Channel 的 NameResolver
      *
      * @since 1.2.0
-     *
      * @deprecated this method will be deleted in a future release.  If you think it shouldn't be
-     *     deleted, please file an issue on <a href="https://github.com/grpc/grpc-java">github</a>.
+     * deleted, please file an issue on <a href="https://github.com/grpc/grpc-java">github</a>.
      */
     @Deprecated
     public abstract NameResolver.Factory getNameResolverFactory();
 
     /**
      * Returns the authority string of the channel, which is derived from the DNS-style target name.
+     * 返回 Channel 的目标名称
      *
      * @since 1.2.0
      */
@@ -1334,6 +1393,7 @@ public abstract class LoadBalancer {
 
     /**
      * Returns the {@link ChannelLogger} for the Channel served by this LoadBalancer.
+     * 返回用于 LoadBalancer 的 ChannelLogger
      *
      * @since 1.17.0
      */
@@ -1343,6 +1403,7 @@ public abstract class LoadBalancer {
 
     /**
      * Returns the {@link NameResolver.Args} that the Channel uses to create {@link NameResolver}s.
+     * 返回用于 Channel 创建 NameResolver 的 NameResolver.Args
      *
      * @since 1.22.0
      */
@@ -1353,6 +1414,7 @@ public abstract class LoadBalancer {
     /**
      * Returns the {@link NameResolverRegistry} that the Channel uses to look for {@link
      * NameResolver}s.
+     * 返回用于 Channel 查找 NameResolver 的 NameResolverRegistry
      *
      * @since 1.22.0
      */
@@ -1439,13 +1501,16 @@ public abstract class LoadBalancer {
      * Returns the addresses that this Subchannel is bound to.  This can be called only if
      * the Subchannel has only one {@link EquivalentAddressGroup}.  Under the hood it calls
      * {@link #getAllAddresses}.
+     * 返回 Subchannel 绑定的地址，只有当 Subchannel 拥有一个 EquivalentAddressGroup 时调用，有多个时
+     * 通过 getAllAddresses 获取
      *
      * <p>It should be called from the Synchronization Context.  Currently will log a warning if
      * violated.  It will become an exception eventually.  See <a
      * href="https://github.com/grpc/grpc-java/issues/5015">#5015</a> for the background.
      *
      * @throws IllegalStateException if this subchannel has more than one EquivalentAddressGroup.
-     *         Use {@link #getAllAddresses} instead
+     *                               Use {@link #getAllAddresses} instead
+     *                               如果有多个 EquivalentAddressGroup 会抛出异常，使用 getAllAddresses 代替
      * @since 1.2.0
      */
     public final EquivalentAddressGroup getAddresses() {
@@ -1456,6 +1521,7 @@ public abstract class LoadBalancer {
 
     /**
      * Returns the addresses that this Subchannel is bound to. The returned list will not be empty.
+     * 返回 Subchannel 绑定的地址，返回的集合不会是空的
      *
      * <p>It should be called from the Synchronization Context.  Currently will log a warning if
      * violated.  It will become an exception eventually.  See <a
@@ -1472,6 +1538,8 @@ public abstract class LoadBalancer {
      * LoadBalancer can use it to attach additional information here, e.g., the shard this
      * Subchannel belongs to.
      *
+     * 返回 Helper.createSubchannel() 时传递的属性，LoadBalancer 使用这个对象附加更多信息
+     *
      * @since 1.2.0
      */
     public abstract Attributes getAttributes();
@@ -1480,6 +1548,8 @@ public abstract class LoadBalancer {
      * (Internal use only) returns a {@link Channel} that is backed by this Subchannel.  This allows
      * a LoadBalancer to issue its own RPCs for auxiliary purposes, such as health-checking, on
      * already-established connections.  This channel has certain restrictions:
+     * 返回 Subchannel 的 Channel，仅用于内部，用于 LoadBalancer 发出辅助请求，如在已经建立的连接上发出健康检查，
+     * 这个 Channel 有一定的限制：
      * <ol>
      *   <li>It can issue RPCs only if the Subchannel is {@code READY}. If {@link
      *   Channel#newCall} is called when the Subchannel is not {@code READY}, the RPC will fail
@@ -1487,15 +1557,22 @@ public abstract class LoadBalancer {
      *   <li>It doesn't support {@link CallOptions#withWaitForReady wait-for-ready} RPCs. Such RPCs
      *   will fail immediately.</li>
      * </ol>
+     * 仅当 Subchannel 是 READY 时可以发出请求，如果 Channel#newCall 调用时 Subchannel 没有 READY，则请求会
+     * 立即失败
+     * 不支持 wait-for-ready 的请求，这样的请求会立即失败
      *
      * <p>RPCs made on this Channel is not counted when determining ManagedChannel's {@link
      * ManagedChannelBuilder#idleTimeout idle mode}.  In other words, they won't prevent
      * ManagedChannel from entering idle mode.
+     * 这些请求不会计算在 ManagedChannel 的 IDLE 模式的请求数量内，换句话说，这些请求不会阻止 ManagedChannel
+     * 进入空闲模式
      *
      * <p>Warning: RPCs made on this channel will prevent a shut-down transport from terminating. If
      * you make long-running RPCs, you need to make sure they will finish in time after the
      * Subchannel has transitioned away from {@code READY} state
      * (notified through {@link #handleSubchannelState}).
+     * 在此 Channel 上进行的 RPC 将防止关闭 Transport 终止，如果有长时间执行的请求，需要确定在 Subchannel 状态变化
+     * 后的过渡阶段可以完成
      *
      * <p>Warning: this is INTERNAL API, is not supposed to be used by external users, and may
      * change without notice. If you think you must use it, please file an issue.
@@ -1507,6 +1584,7 @@ public abstract class LoadBalancer {
 
     /**
      * Returns a {@link ChannelLogger} for this Subchannel.
+     * 返回 Subchannel 的 ChannelLogger
      *
      * @since 1.17.0
      */
@@ -1517,6 +1595,8 @@ public abstract class LoadBalancer {
     /**
      * Replaces the existing addresses used with this {@code Subchannel}. If the new and old
      * addresses overlap, the Subchannel can continue using an existing connection.
+     * <p>
+     * 代替 Subchannel 使用的地址，如果有新旧地址相同，Subchannel 还可以继续使用存在的连接
      *
      * <p>It must be called from the Synchronization Context or will throw.
      *
@@ -1532,6 +1612,8 @@ public abstract class LoadBalancer {
      * by the Channel for sending RPCs when this {@link Subchannel} is picked.  This is an opaque
      * object that is both provided and consumed by the Channel.  Its type <strong>is not</strong>
      * {@code Subchannel}.
+     * 返回一个对象，该对象表示选择此 Subchannel 时该通道用于发送 RPC 的基础 Subchannel，这是一个对提供者和消费者都
+     * 不透明的对象，类型不是 Subchannel
      *
      * <p>Warning: this is INTERNAL API, is not supposed to be used by external users, and may
      * change without notice. If you think you must use it, please file an issue and we can consider
