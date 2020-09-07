@@ -17,6 +17,7 @@
 package io.grpc;
 
 import com.google.common.annotations.VisibleForTesting;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -139,11 +140,13 @@ final class ServiceProviders {
 
   /**
    * An interface that allows us to get priority information about a provider.
+   * 允许获取有关提供器优先级的接口
    */
   public interface PriorityAccessor<T> {
     /**
      * Checks this provider is available for use, taking the current environment into consideration.
      * If {@code false}, no other methods are safe to be called.
+     * 检查提供器是否可用，考虑当前环境，如果为 false，没有其他的方法可以安全的调用
      */
     boolean isAvailable(T provider);
 
@@ -152,6 +155,8 @@ final class ServiceProviders {
      * into consideration. 5 should be considered the default, and then tweaked based on environment
      * detection. A priority of 0 does not imply that the provider wouldn't work; just that it
      * should be last in line.
+     * 提供器的优先级，从 0 到 10，考虑当前环境，默认值是 5，然后根据环境检测调整，优先级为 0 不代表不工作，仅代表
+     * 优先级最低
      */
     int getPriority(T provider);
   }
