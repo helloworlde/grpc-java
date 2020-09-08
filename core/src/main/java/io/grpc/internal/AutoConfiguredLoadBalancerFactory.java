@@ -45,6 +45,9 @@ import java.util.Map;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static io.grpc.LoadBalancer.ATTR_LOAD_BALANCING_CONFIG;
 
+/**
+ * 自动配置 LoadBalancer 的工厂
+ */
 // TODO(creamsoup) fully deprecate LoadBalancer.ATTR_LOAD_BALANCING_CONFIG
 @SuppressWarnings("deprecation")
 public final class AutoConfiguredLoadBalancerFactory {
@@ -52,10 +55,20 @@ public final class AutoConfiguredLoadBalancerFactory {
   private final LoadBalancerRegistry registry;
   private final String defaultPolicy;
 
+  /**
+   * 通过策略名初始化
+   * @param defaultPolicy 策略名称
+   */
   public AutoConfiguredLoadBalancerFactory(String defaultPolicy) {
     this(LoadBalancerRegistry.getDefaultRegistry(), defaultPolicy);
   }
 
+  /**
+   * 通过注册器和策略名初始化
+   *
+   * @param registry      注册器
+   * @param defaultPolicy 策略名
+   */
   @VisibleForTesting
   AutoConfiguredLoadBalancerFactory(LoadBalancerRegistry registry, String defaultPolicy) {
     this.registry = checkNotNull(registry, "registry");
@@ -72,20 +85,27 @@ public final class AutoConfiguredLoadBalancerFactory {
     return new AutoConfiguredLoadBalancer(helper);
   }
 
+  /**
+   * 不执行负载均衡
+   */
   private static final class NoopLoadBalancer extends LoadBalancer {
 
     @Override
     @Deprecated
-    public void handleResolvedAddressGroups(List<EquivalentAddressGroup> s, Attributes a) {}
+    public void handleResolvedAddressGroups(List<EquivalentAddressGroup> s, Attributes a) {
+    }
 
     @Override
-    public void handleResolvedAddresses(ResolvedAddresses resolvedAddresses) {}
+    public void handleResolvedAddresses(ResolvedAddresses resolvedAddresses) {
+    }
 
     @Override
-    public void handleNameResolutionError(Status error) {}
+    public void handleNameResolutionError(Status error) {
+    }
 
     @Override
-    public void shutdown() {}
+    public void shutdown() {
+    }
   }
 
   /**
@@ -94,7 +114,9 @@ public final class AutoConfiguredLoadBalancerFactory {
   @VisibleForTesting
   public final class AutoConfiguredLoadBalancer {
     private final Helper helper;
+
     private LoadBalancer delegate;
+
     private LoadBalancerProvider delegateProvider;
 
     AutoConfiguredLoadBalancer(Helper helper) {
@@ -154,8 +176,8 @@ public final class AutoConfiguredLoadBalancerFactory {
       }
 
       // 如果负载均衡提供器为空，或者负载均衡算法发生变化
-      if (delegateProvider == null
-              || !policySelection.provider.getPolicyName().equals(delegateProvider.getPolicyName())) {
+      if (delegateProvider == null ||
+              !policySelection.provider.getPolicyName().equals(delegateProvider.getPolicyName())) {
         // 更新负载均衡状态和选择器，处理待处理的流
         helper.updateBalancingState(ConnectivityState.CONNECTING, new EmptyPicker());
         // 关闭旧的负载均衡
