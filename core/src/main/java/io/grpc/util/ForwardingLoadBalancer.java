@@ -24,57 +24,59 @@ import io.grpc.ExperimentalApi;
 import io.grpc.LoadBalancer;
 import io.grpc.NameResolver;
 import io.grpc.Status;
+
 import java.util.List;
 
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1771")
 public abstract class ForwardingLoadBalancer extends LoadBalancer {
-  /**
-   * Returns the underlying balancer.
-   */
-  protected abstract LoadBalancer delegate();
+    /**
+     * Returns the underlying balancer.
+     * <p>
+     * 返回被代理的 LoadBalancer
+     */
+    protected abstract LoadBalancer delegate();
 
-  @Override
-  @Deprecated
-  public void handleResolvedAddressGroups(
-        List<EquivalentAddressGroup> servers,
-        @NameResolver.ResolutionResultAttr Attributes attributes) {
-    delegate().handleResolvedAddressGroups(servers, attributes);
-  }
+    @Override
+    @Deprecated
+    public void handleResolvedAddressGroups(List<EquivalentAddressGroup> servers,
+                                            @NameResolver.ResolutionResultAttr Attributes attributes) {
+        delegate().handleResolvedAddressGroups(servers, attributes);
+    }
 
-  @Override
-  public void handleResolvedAddresses(ResolvedAddresses resolvedAddresses) {
-    delegate().handleResolvedAddresses(resolvedAddresses);
-  }
+    @Override
+    public void handleResolvedAddresses(ResolvedAddresses resolvedAddresses) {
+        delegate().handleResolvedAddresses(resolvedAddresses);
+    }
 
-  @Override
-  public void handleNameResolutionError(Status error) {
-    delegate().handleNameResolutionError(error);
-  }
+    @Override
+    public void handleNameResolutionError(Status error) {
+        delegate().handleNameResolutionError(error);
+    }
 
-  @Deprecated
-  @Override
-  public void handleSubchannelState(
-      Subchannel subchannel, ConnectivityStateInfo stateInfo) {
-    delegate().handleSubchannelState(subchannel, stateInfo);
-  }
+    @Deprecated
+    @Override
+    public void handleSubchannelState(Subchannel subchannel,
+                                      ConnectivityStateInfo stateInfo) {
+        delegate().handleSubchannelState(subchannel, stateInfo);
+    }
 
-  @Override
-  public void shutdown() {
-    delegate().shutdown();
-  }
+    @Override
+    public void shutdown() {
+        delegate().shutdown();
+    }
 
-  @Override
-  public boolean canHandleEmptyAddressListFromNameResolution() {
-    return delegate().canHandleEmptyAddressListFromNameResolution();
-  }
+    @Override
+    public boolean canHandleEmptyAddressListFromNameResolution() {
+        return delegate().canHandleEmptyAddressListFromNameResolution();
+    }
 
-  @Override
-  public void requestConnection() {
-    delegate().requestConnection();
-  }
+    @Override
+    public void requestConnection() {
+        delegate().requestConnection();
+    }
 
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
-  }
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
+    }
 }
