@@ -22,41 +22,49 @@ import javax.annotation.concurrent.ThreadSafe;
  * A Channel-specific logger provided by GRPC library to {@link LoadBalancer} implementations.
  * Information logged here goes to <strong>Channelz</strong>, and to the Java logger of this class
  * as well.
+ * gRPC 提供给 LoadBalancer 的特定的日志提供器
+ * 记录的日志会流向 Channelz，以及此类的 Java 日志
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/5029")
 @ThreadSafe
 public abstract class ChannelLogger {
-  /**
-   * Log levels.  See the table below for the mapping from the ChannelLogger levels to Channelz
-   * severity level (see {@code ChannelTraceEvent} from <a
-   * href="https://github.com/grpc/grpc-java/blob/master/services/src/main/proto/grpc/channelz/v1/channelz.proto">channelz.proto</a>)
-   * and Java logger levels.  Note that {@code DEBUG} level is not recorded on Channelz.
-   * <pre>
-   * +---------------------+-------------------+-------------------+
-   * | ChannelLogger Level | Channelz Severity | Java Logger Level |
-   * +---------------------+-------------------+-------------------+
-   * | DEBUG               | N/A               | FINEST            |
-   * | INFO                | CT_INFO           | FINEST            |
-   * | WARNING             | CT_WARNING        | FINER             |
-   * | ERROR               | CT_ERROR          | FINE              |
-   * +---------------------+-------------------+-------------------+
-   * </pre>
-   */
-  public enum ChannelLogLevel {
-    DEBUG,
-    INFO,
-    WARNING,
-    ERROR
-  }
+    /**
+     * Log levels.  See the table below for the mapping from the ChannelLogger levels to Channelz
+     * severity level (see {@code ChannelTraceEvent} from <a
+     * href="https://github.com/grpc/grpc-java/blob/master/services/src/main/proto/grpc/channelz/v1/channelz.proto">channelz.proto</a>)
+     * and Java logger levels.  Note that {@code DEBUG} level is not recorded on Channelz.
+     * <p>
+     * 日志级别，以下是日志级别的映射关系，Channelz 没有记录 DEBUG 级别的日志
+     *
+     * <pre>
+     * +---------------------+-------------------+-------------------+
+     * | ChannelLogger Level | Channelz Severity | Java Logger Level |
+     * +---------------------+-------------------+-------------------+
+     * | DEBUG               | N/A               | FINEST            |
+     * | INFO                | CT_INFO           | FINEST            |
+     * | WARNING             | CT_WARNING        | FINER             |
+     * | ERROR               | CT_ERROR          | FINE              |
+     * +---------------------+-------------------+-------------------+
+     * </pre>
+     */
+    public enum ChannelLogLevel {
+        DEBUG,
+        INFO,
+        WARNING,
+        ERROR
+    }
 
-  /**
-   * Logs a message.
-   */
-  public abstract void log(ChannelLogLevel level, String message);
+    /**
+     * Logs a message.
+     * 记录日志
+     */
+    public abstract void log(ChannelLogLevel level, String message);
 
-  /**
-   * Logs a message, using a message format and a list of arguments used to generate the log
-   * message with {@link java.text.MessageFormat}.
-   */
-  public abstract void log(ChannelLogLevel level, String messageFormat, Object... args);
+    /**
+     * Logs a message, using a message format and a list of arguments used to generate the log
+     * message with {@link java.text.MessageFormat}.
+     * <p>
+     * 记录日志，使用 MessageFormat 和参数列表记录
+     */
+    public abstract void log(ChannelLogLevel level, String messageFormat, Object... args);
 }
