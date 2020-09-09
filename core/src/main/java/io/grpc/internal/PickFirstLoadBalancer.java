@@ -36,6 +36,14 @@ import static io.grpc.ConnectivityState.TRANSIENT_FAILURE;
  * io.grpc.NameResolver}.  The channel's default behavior is used, which is walking down the address
  * list and sticking to the first that works.
  * 不对来自 NameResolver 的地址负载均衡，channel 使用 channel 默认的行为，即查找地址，并使用第一个
+ * <p>
+ * 在 RoundRobinLoadBalancer 中，一个 EquivalentAddressGroup 对应一个 Subchannel，这个 EquivalentAddressGroup
+ * 中可能有多个 IP:PORT，取决于如何构建 EquivalentAddressGroup
+ * <p>
+ * 在 PickFirstLoadBalancer 中，所有的 EquivalentAddressGroup 只有一个 Subchannel
+ * <p>
+ * 底层的 Transport 都可以有多个 IP:PORT 地址，使用轮询的方式访问不同 EquivalentAddressGroup 下的 SocketAddress 地址，
+ * 实现方法在 io.grpc.internal.InternalSubchannel.Index#getCurrentAddress()
  */
 final class PickFirstLoadBalancer extends LoadBalancer {
 
