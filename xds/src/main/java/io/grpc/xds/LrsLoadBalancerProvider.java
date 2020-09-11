@@ -16,69 +16,81 @@
 
 package io.grpc.xds;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import io.grpc.Internal;
 import io.grpc.LoadBalancer;
 import io.grpc.LoadBalancerProvider;
 import io.grpc.NameResolver.ConfigOrError;
 import io.grpc.internal.ServiceConfigUtil.PolicySelection;
 import io.grpc.xds.EnvoyProtoData.Locality;
-import java.util.Map;
+
 import javax.annotation.Nullable;
+import java.util.Map;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Provider for lrs load balancing policy.
+ * LRS 策略负载均衡提供器
  */
 @Internal
 public final class LrsLoadBalancerProvider extends LoadBalancerProvider {
 
-  private static final String LRS_POLICY_NAME = "lrs_experimental";
+    private static final String LRS_POLICY_NAME = "lrs_experimental";
 
-  @Override
-  public LoadBalancer newLoadBalancer(LoadBalancer.Helper helper) {
-    return new LrsLoadBalancer(helper);
-  }
-
-  @Override
-  public boolean isAvailable() {
-    return true;
-  }
-
-  @Override
-  public int getPriority() {
-    return 5;
-  }
-
-  @Override
-  public String getPolicyName() {
-    return LRS_POLICY_NAME;
-  }
-
-  @Override
-  public ConfigOrError parseLoadBalancingPolicyConfig(Map<String, ?> rawConfig) {
-    throw new UnsupportedOperationException();
-  }
-
-  static final class LrsConfig {
-    final String clusterName;
-    @Nullable
-    final String edsServiceName;
-    final String lrsServerName;
-    final Locality locality;
-    final PolicySelection childPolicy;
-
-    LrsConfig(
-        String clusterName,
-        @Nullable String edsServiceName,
-        String lrsServerName,
-        Locality locality,
-        PolicySelection childPolicy) {
-      this.clusterName = checkNotNull(clusterName, "clusterName");
-      this.edsServiceName = edsServiceName;
-      this.lrsServerName = checkNotNull(lrsServerName, "lrsServerName");
-      this.locality = checkNotNull(locality, "locality");
-      this.childPolicy = checkNotNull(childPolicy, "childPolicy");
+    /**
+     * 创建新的 LB 实例
+     */
+    @Override
+    public LoadBalancer newLoadBalancer(LoadBalancer.Helper helper) {
+        return new LrsLoadBalancer(helper);
     }
-  }
+
+    @Override
+    public boolean isAvailable() {
+        return true;
+    }
+
+    @Override
+    public int getPriority() {
+        return 5;
+    }
+
+    @Override
+    public String getPolicyName() {
+        return LRS_POLICY_NAME;
+    }
+
+    @Override
+    public ConfigOrError parseLoadBalancingPolicyConfig(Map<String, ?> rawConfig) {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * 配置
+     */
+    static final class LrsConfig {
+
+        final String clusterName;
+
+        @Nullable
+        final String edsServiceName;
+
+        final String lrsServerName;
+
+        final Locality locality;
+
+        final PolicySelection childPolicy;
+
+        LrsConfig(String clusterName,
+                  @Nullable String edsServiceName,
+                  String lrsServerName,
+                  Locality locality,
+                  PolicySelection childPolicy) {
+            this.clusterName = checkNotNull(clusterName, "clusterName");
+            this.edsServiceName = edsServiceName;
+            this.lrsServerName = checkNotNull(lrsServerName, "lrsServerName");
+            this.locality = checkNotNull(locality, "locality");
+            this.childPolicy = checkNotNull(childPolicy, "childPolicy");
+        }
+    }
 }

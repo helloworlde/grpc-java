@@ -16,9 +16,6 @@
 
 package io.grpc.xds;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import io.grpc.ConnectivityState;
 import io.grpc.LoadBalancer;
 import io.grpc.Status;
@@ -28,96 +25,130 @@ import io.grpc.xds.ClientLoadCounter.LoadRecordingSubchannelPicker;
 import io.grpc.xds.EnvoyProtoData.Locality;
 import io.grpc.xds.LrsLoadBalancerProvider.LrsConfig;
 import io.grpc.xds.XdsSubchannelPickers.ErrorPicker;
-import java.util.Objects;
+
 import javax.annotation.CheckForNull;
+import java.util.Objects;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Load balancer for lrs policy.
+ * LRS 策略的负载均衡算法
  */
 final class LrsLoadBalancer extends LoadBalancer {
-  private final LoadBalancer.Helper helper;
-  @CheckForNull
-  private GracefulSwitchLoadBalancer switchingLoadBalancer;
-  private LoadStatsStore loadStatsStore;
-  private String clusterName;
-  private String edsServiceName;
-  private Locality locality;
-  private String childPolicyName;
+    private final LoadBalancer.Helper helper;
 
-  LrsLoadBalancer(LoadBalancer.Helper helper) {
-    this.helper = checkNotNull(helper, "helper");
-  }
+    /**
+     * 可切换策略的 LB
+     */
+    @CheckForNull
+    private GracefulSwitchLoadBalancer switchingLoadBalancer;
 
-  @Override
-  public void handleResolvedAddresses(ResolvedAddresses resolvedAddresses) {
-    LrsConfig config = (LrsConfig) resolvedAddresses.getLoadBalancingPolicyConfig();
-    LoadStatsStore store =
-        resolvedAddresses.getAttributes().get(XdsAttributes.ATTR_CLUSTER_SERVICE_LOAD_STATS_STORE);
-    checkNotNull(config, "missing LRS lb config");
-    checkNotNull(store, "missing cluster service stats object");
-    checkAndSetUp(config, store);
+    /**
+     * 配置存储器
+     */
+    private LoadStatsStore loadStatsStore;
 
-    if (switchingLoadBalancer == null) {
-      loadStatsStore.addLocality(config.locality);
-      final ClientLoadCounter counter = loadStatsStore.getLocalityCounter(config.locality);
-      LoadBalancer.Helper loadRecordingHelper = new ForwardingLoadBalancerHelper() {
-        @Override
-        protected Helper delegate() {
-          return helper;
+    private String clusterName;
+
+    private String edsServiceName;
+
+    private Locality locality;
+
+    private String childPolicyName;
+
+    /**
+     * 使用 Helper 构建
+     */
+    LrsLoadBalancer(LoadBalancer.Helper helper) {
+        this.helper = checkNotNull(helper, "helper");
+    }
+
+    @Override
+    public void handleResolvedAddresses(ResolvedAddresses resolvedAddresses) {
+        // 获取配置
+        LrsConfig config = (LrsConfig) resolvedAddresses.getLoadBalancingPolicyConfig();
+
+        // 存储器
+        LoadStatsStore store = resolvedAddresses.getAttributes()
+                                                .get(XdsAttributes.ATTR_CLUSTER_SERVICE_LOAD_STATS_STORE);
+
+        checkNotNull(config, "missing LRS lb config");
+        checkNotNull(store, "missing cluster service stats object");
+
+        // 检查配置，为属性赋值
+        checkAndSetUp(config, store);
+
+        // 如果可切换的 LB 是 null
+        if (switchingLoadBalancer == null) {
+            loadStatsStore.addLocality(config.locality);
+
+            final ClientLoadCounter counter = loadStatsStore.getLocalityCounter(config.locality);
+
+            // 创建代理的 Helper
+            LoadBalancer.Helper loadRecordingHelper = new ForwardingLoadBalancerHelper() {
+                @Override
+                protected Helper delegate() {
+                    return helper;
+                }
+
+                @Override
+                public void updateBalancingState(ConnectivityState newState, SubchannelPicker newPicker) {
+                    SubchannelPicker loadRecordingPicker = new LoadRecordingSubchannelPicker(counter, newPicker);
+                    super.updateBalancingState(newState, loadRecordingPicker);
+                }
+            };
+
+            switchingLoadBalancer = new GracefulSwitchLoadBalancer(loadRecordingHelper);
+        }
+        // 获取策略，如果发生变化则更新
+        String updatedChildPolicyName = config.childPolicy.getProvider().getPolicyName();
+
+        if (!Objects.equals(childPolicyName, updatedChildPolicyName)) {
+            switchingLoadBalancer.switchTo(config.childPolicy.getProvider());
+            childPolicyName = updatedChildPolicyName;
         }
 
-        @Override
-        public void updateBalancingState(ConnectivityState newState, SubchannelPicker newPicker) {
-          SubchannelPicker loadRecordingPicker =
-              new LoadRecordingSubchannelPicker(counter, newPicker);
-          super.updateBalancingState(newState, loadRecordingPicker);
+        ResolvedAddresses downStreamResult = resolvedAddresses.toBuilder()
+                                                              .setLoadBalancingPolicyConfig(config.childPolicy.getConfig())
+                                                              .build();
+        // 更新地址
+        switchingLoadBalancer.handleResolvedAddresses(downStreamResult);
+    }
+
+    @Override
+    public void handleNameResolutionError(Status error) {
+        if (switchingLoadBalancer != null) {
+            switchingLoadBalancer.handleNameResolutionError(error);
+        } else {
+            helper.updateBalancingState(ConnectivityState.TRANSIENT_FAILURE, new ErrorPicker(error));
         }
-      };
-      switchingLoadBalancer = new GracefulSwitchLoadBalancer(loadRecordingHelper);
     }
-    String updatedChildPolicyName = config.childPolicy.getProvider().getPolicyName();
-    if (!Objects.equals(childPolicyName, updatedChildPolicyName)) {
-      switchingLoadBalancer.switchTo(config.childPolicy.getProvider());
-      childPolicyName = updatedChildPolicyName;
-    }
-    ResolvedAddresses downStreamResult =
-        resolvedAddresses.toBuilder()
-            .setLoadBalancingPolicyConfig(config.childPolicy.getConfig())
-            .build();
-    switchingLoadBalancer.handleResolvedAddresses(downStreamResult);
-  }
 
-  @Override
-  public void handleNameResolutionError(Status error) {
-    if (switchingLoadBalancer != null) {
-      switchingLoadBalancer.handleNameResolutionError(error);
-    } else {
-      helper.updateBalancingState(ConnectivityState.TRANSIENT_FAILURE, new ErrorPicker(error));
+    @Override
+    public void shutdown() {
+        if (switchingLoadBalancer != null) {
+            loadStatsStore.removeLocality(locality);
+            switchingLoadBalancer.shutdown();
+        }
     }
-  }
 
-  @Override
-  public void shutdown() {
-    if (switchingLoadBalancer != null) {
-      loadStatsStore.removeLocality(locality);
-      switchingLoadBalancer.shutdown();
+    /**
+     * 检查配置并存储
+     *
+     * @param config 配置
+     * @param store  存储器
+     */
+    private void checkAndSetUp(LrsConfig config, LoadStatsStore store) {
+        checkState(clusterName == null || clusterName.equals(config.clusterName), "cluster name should not change");
+        checkState(edsServiceName == null || edsServiceName.equals(config.edsServiceName), "edsServiceName should not change");
+        checkState(locality == null || locality.equals(config.locality), "locality should not change");
+        checkState(loadStatsStore == null || loadStatsStore.equals(store), "loadStatsStore should not change");
+
+        clusterName = config.clusterName;
+        edsServiceName = config.edsServiceName;
+        locality = config.locality;
+        loadStatsStore = store;
     }
-  }
-
-  private void checkAndSetUp(LrsConfig config, LoadStatsStore store) {
-    checkState(
-        clusterName == null || clusterName.equals(config.clusterName),
-        "cluster name should not change");
-    checkState(
-        edsServiceName == null || edsServiceName.equals(config.edsServiceName),
-        "edsServiceName should not change");
-    checkState(locality == null || locality.equals(config.locality), "locality should not change");
-    checkState(
-        loadStatsStore == null || loadStatsStore.equals(store),
-        "loadStatsStore should not change");
-    clusterName = config.clusterName;
-    edsServiceName = config.edsServiceName;
-    locality = config.locality;
-    loadStatsStore = store;
-  }
 }
