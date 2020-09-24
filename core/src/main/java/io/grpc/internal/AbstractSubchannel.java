@@ -24,13 +24,16 @@ import io.grpc.LoadBalancer;
 /**
  * The base interface of the Subchannels returned by {@link
  * io.grpc.LoadBalancer.Helper#createSubchannel}.
+ * <p>
+ * Subchannel 抽象类
  */
 abstract class AbstractSubchannel extends LoadBalancer.Subchannel {
 
-  /**
-   * Returns the InternalSubchannel as an {@code Instrumented<T>} for the sole purpose of channelz
-   * unit tests.
-   */
-  @VisibleForTesting
-  abstract InternalInstrumented<ChannelStats> getInstrumentedInternalSubchannel();
+    /**
+     * Returns the InternalSubchannel as an {@code Instrumented<T>} for the sole purpose of channelz
+     * unit tests.
+     * 返回 Instrumented 包装的 InternalSubchannel，仅用于 Channelz 单元测试
+     */
+    @VisibleForTesting
+    abstract InternalInstrumented<ChannelStats> getInstrumentedInternalSubchannel();
 }

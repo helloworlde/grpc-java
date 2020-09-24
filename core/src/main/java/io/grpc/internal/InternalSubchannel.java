@@ -638,33 +638,42 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
   }
 
   // All methods are called in syncContext
+  // Subchannel 操作回调
   abstract static class Callback {
     /**
      * Called when the subchannel is terminated, which means it's shut down and all transports
      * have been terminated.
+     * 当 Subchannel 关闭时调用，意味着 Subchannel 关闭，所有的 Transport 被终止
      */
     @ForOverride
-    void onTerminated(InternalSubchannel is) { }
+    void onTerminated(InternalSubchannel is) {
+    }
 
     /**
      * Called when the subchannel's connectivity state has changed.
+     * 当 Subchannel 连接状态变化时调用
      */
     @ForOverride
-    void onStateChange(InternalSubchannel is, ConnectivityStateInfo newState) { }
+    void onStateChange(InternalSubchannel is, ConnectivityStateInfo newState) {
+    }
 
     /**
      * Called when the subchannel's in-use state has changed to true, which means at least one
      * transport is in use.
+     * 当 Subchannel in-use 状态变为 true 时调用，意味着至少有一个 Transport 被使用
      */
     @ForOverride
-    void onInUse(InternalSubchannel is) { }
+    void onInUse(InternalSubchannel is) {
+    }
 
     /**
      * Called when the subchannel's in-use state has changed to false, which means no transport is
      * in use.
+     * 当 Subchannel in-use 状态变为 false 时调用，意味着 Transport 不再使用
      */
     @ForOverride
-    void onNotInUse(InternalSubchannel is) { }
+    void onNotInUse(InternalSubchannel is) {
+    }
   }
 
   @VisibleForTesting

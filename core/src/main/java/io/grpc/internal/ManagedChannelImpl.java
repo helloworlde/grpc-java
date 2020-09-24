@@ -1050,12 +1050,16 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   /**
    * Terminate the channel if termination conditions are met.
+   * 当终止条件满足时终止 Subchannel
    */
   // Must be run from syncContext
   private void maybeTerminateChannel() {
+    // 如果已经终止了，则直接返回
     if (terminated) {
       return;
     }
+
+    // 如果已经 Shutdown，则移除 Channel，返回连接池，释放 LB，关闭 Transport
     if (shutdown.get() && subchannels.isEmpty() && oobChannels.isEmpty()) {
       channelLogger.log(ChannelLogLevel.INFO, "Terminated");
       channelz.removeRootChannel(this);
@@ -1071,8 +1075,16 @@ final class ManagedChannelImpl extends ManagedChannel implements
   }
 
   // Must be called from syncContext
+
+  /**
+   * 处理 Subchannel 状态变化
+   *
+   * @param newState 新的状态
+   */
   private void handleInternalSubchannelState(ConnectivityStateInfo newState) {
+    // 如果状态是 TRANSIENT_FAILURE 或者 IDLE
     if (newState.getState() == TRANSIENT_FAILURE || newState.getState() == IDLE) {
+      // 强制刷新 NameResolver
       refreshAndResetNameResolution();
     }
   }
@@ -1246,29 +1258,29 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
     @Deprecated
     @Override
-    public AbstractSubchannel createSubchannel(
-        List<EquivalentAddressGroup> addressGroups, Attributes attrs) {
+    public AbstractSubchannel createSubchannel(List<EquivalentAddressGroup> addressGroups, Attributes attrs) {
       logWarningIfNotInSyncContext("createSubchannel()");
       // TODO(ejona): can we be even stricter? Like loadBalancer == null?
       checkNotNull(addressGroups, "addressGroups");
       checkNotNull(attrs, "attrs");
-      final SubchannelImpl subchannel = createSubchannelInternal(
-          CreateSubchannelArgs.newBuilder()
-              .setAddresses(addressGroups)
-              .setAttributes(attrs)
-              .build());
 
-      final SubchannelStateListener listener =
-          new LoadBalancer.SubchannelStateListener() {
-            @Override
-            public void onSubchannelState(ConnectivityStateInfo newState) {
-              // Call LB only if it's not shutdown.  If LB is shutdown, lbHelper won't match.
-              if (LbHelperImpl.this != ManagedChannelImpl.this.lbHelper) {
-                return;
-              }
-              lb.handleSubchannelState(subchannel, newState);
-            }
-          };
+      // 创建 Subchannel
+      final SubchannelImpl subchannel = createSubchannelInternal(CreateSubchannelArgs.newBuilder()
+                                                                                     .setAddresses(addressGroups)
+                                                                                     .setAttributes(attrs)
+                                                                                     .build());
+
+      // 创建 Subchannel 状态监听器
+      final SubchannelStateListener listener = new LoadBalancer.SubchannelStateListener() {
+        @Override
+        public void onSubchannelState(ConnectivityStateInfo newState) {
+          // Call LB only if it's not shutdown.  If LB is shutdown, lbHelper won't match.
+          if (LbHelperImpl.this != ManagedChannelImpl.this.lbHelper) {
+            return;
+          }
+          lb.handleSubchannelState(subchannel, newState);
+        }
+      };
 
       subchannel.internalStart(listener);
       return subchannel;
@@ -1280,6 +1292,11 @@ final class ManagedChannelImpl extends ManagedChannel implements
       return createSubchannelInternal(args);
     }
 
+    /**
+     * 创建 Subchannel
+     * @param args 参数
+     * @return Subchannel
+     */
     private SubchannelImpl createSubchannelInternal(CreateSubchannelArgs args) {
       // TODO(ejona): can we be even stricter? Like loadBalancer == null?
       checkState(!terminated, "Channel is terminated");
@@ -1337,9 +1354,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
     @Deprecated
     @Override
     public void updateSubchannelAddresses(
-        LoadBalancer.Subchannel subchannel, List<EquivalentAddressGroup> addrs) {
+            LoadBalancer.Subchannel subchannel, List<EquivalentAddressGroup> addrs) {
       checkArgument(subchannel instanceof SubchannelImpl,
-          "subchannel must have been returned from createSubchannel");
+              "subchannel must have been returned from createSubchannel");
       logWarningIfNotInSyncContext("updateSubchannelAddresses()");
       ((InternalSubchannel) subchannel.getInternalSubchannel()).updateAddresses(addrs);
     }
@@ -1351,23 +1368,23 @@ final class ManagedChannelImpl extends ManagedChannel implements
       long oobChannelCreationTime = timeProvider.currentTimeNanos();
       InternalLogId oobLogId = InternalLogId.allocate("OobChannel", /*details=*/ null);
       InternalLogId subchannelLogId =
-          InternalLogId.allocate("Subchannel-OOB", /*details=*/ authority);
+              InternalLogId.allocate("Subchannel-OOB", /*details=*/ authority);
       ChannelTracer oobChannelTracer =
-          new ChannelTracer(
-              oobLogId, maxTraceEvents, oobChannelCreationTime,
-              "OobChannel for " + addressGroup);
+              new ChannelTracer(
+                      oobLogId, maxTraceEvents, oobChannelCreationTime,
+                      "OobChannel for " + addressGroup);
       final OobChannel oobChannel = new OobChannel(
-          authority, balancerRpcExecutorPool, transportFactory.getScheduledExecutorService(),
-          syncContext, callTracerFactory.create(), oobChannelTracer, channelz, timeProvider);
+              authority, balancerRpcExecutorPool, transportFactory.getScheduledExecutorService(),
+              syncContext, callTracerFactory.create(), oobChannelTracer, channelz, timeProvider);
       channelTracer.reportEvent(new ChannelTrace.Event.Builder()
-          .setDescription("Child OobChannel created")
-          .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
-          .setTimestampNanos(oobChannelCreationTime)
-          .setChannelRef(oobChannel)
-          .build());
+              .setDescription("Child OobChannel created")
+              .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
+              .setTimestampNanos(oobChannelCreationTime)
+              .setChannelRef(oobChannel)
+              .build());
       ChannelTracer subchannelTracer =
-          new ChannelTracer(subchannelLogId, maxTraceEvents, oobChannelCreationTime,
-              "Subchannel for " + addressGroup);
+              new ChannelTracer(subchannelLogId, maxTraceEvents, oobChannelCreationTime,
+                      "Subchannel for " + addressGroup);
       ChannelLogger subchannelLogger = new ChannelLoggerImpl(subchannelTracer, timeProvider);
       final class ManagedOobChannelCallback extends InternalSubchannel.Callback {
         @Override
@@ -1386,22 +1403,22 @@ final class ManagedChannelImpl extends ManagedChannel implements
       }
 
       final InternalSubchannel internalSubchannel = new InternalSubchannel(
-          Collections.singletonList(addressGroup),
-          authority, userAgent, backoffPolicyProvider, transportFactory,
-          transportFactory.getScheduledExecutorService(), stopwatchSupplier, syncContext,
-          // All callback methods are run from syncContext
-          new ManagedOobChannelCallback(),
-          channelz,
-          callTracerFactory.create(),
-          subchannelTracer,
-          subchannelLogId,
-          subchannelLogger);
+              Collections.singletonList(addressGroup),
+              authority, userAgent, backoffPolicyProvider, transportFactory,
+              transportFactory.getScheduledExecutorService(), stopwatchSupplier, syncContext,
+              // All callback methods are run from syncContext
+              new ManagedOobChannelCallback(),
+              channelz,
+              callTracerFactory.create(),
+              subchannelTracer,
+              subchannelLogId,
+              subchannelLogger);
       oobChannelTracer.reportEvent(new ChannelTrace.Event.Builder()
-          .setDescription("Child Subchannel created")
-          .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
-          .setTimestampNanos(oobChannelCreationTime)
-          .setSubchannelRef(internalSubchannel)
-          .build());
+              .setDescription("Child Subchannel created")
+              .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
+              .setTimestampNanos(oobChannelCreationTime)
+              .setSubchannelRef(internalSubchannel)
+              .build());
       channelz.addSubchannel(oobChannel);
       channelz.addSubchannel(internalSubchannel);
       oobChannel.setSubchannel(internalSubchannel);
@@ -1426,7 +1443,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     @Override
     public ManagedChannelBuilder<?> createResolvingOobChannelBuilder(String target) {
       final class ResolvingOobChannelBuilder
-          extends AbstractManagedChannelImplBuilder<ResolvingOobChannelBuilder> {
+              extends AbstractManagedChannelImplBuilder<ResolvingOobChannelBuilder> {
         int defaultPort = -1;
 
         ResolvingOobChannelBuilder(String target) {
@@ -1475,7 +1492,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     @Override
     public void updateOobChannelAddresses(ManagedChannel channel, EquivalentAddressGroup eag) {
       checkArgument(channel instanceof OobChannel,
-          "channel must have been returned from createOobChannel");
+              "channel must have been returned from createOobChannel");
       ((OobChannel) channel).updateAddresses(eag);
     }
 
@@ -1711,25 +1728,40 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
+  /**
+   * Subchannel 的实现
+   */
   private final class SubchannelImpl extends AbstractSubchannel {
     final CreateSubchannelArgs args;
     final LbHelperImpl helper;
+
     final InternalLogId subchannelLogId;
     final ChannelLoggerImpl subchannelLogger;
     final ChannelTracer subchannelTracer;
+
     SubchannelStateListener listener;
     InternalSubchannel subchannel;
+
     boolean started;
     boolean shutdown;
+
     ScheduledHandle delayedShutdownTask;
 
+    /**
+     * 创建 Subchannel
+     */
     SubchannelImpl(CreateSubchannelArgs args, LbHelperImpl helper) {
       this.args = checkNotNull(args, "args");
       this.helper = checkNotNull(helper, "helper");
       subchannelLogId = InternalLogId.allocate("Subchannel", /*details=*/ authority());
-      subchannelTracer = new ChannelTracer(
-          subchannelLogId, maxTraceEvents, timeProvider.currentTimeNanos(),
-          "Subchannel for " + args.getAddresses());
+
+      // 创建 Tracer 跟踪器
+      subchannelTracer = new ChannelTracer(subchannelLogId,
+              maxTraceEvents,
+              timeProvider.currentTimeNanos(),
+              "Subchannel for " + args.getAddresses());
+
+      // 创建日志
       subchannelLogger = new ChannelLoggerImpl(subchannelTracer, timeProvider);
     }
 
@@ -1738,32 +1770,42 @@ final class ManagedChannelImpl extends ManagedChannel implements
     private void internalStart(final SubchannelStateListener listener) {
       checkState(!started, "already started");
       checkState(!shutdown, "already shutdown");
+
+      // 将 started 状态改为 true
       started = true;
       this.listener = listener;
+
       // TODO(zhangkun): possibly remove the volatile of terminating when this whole method is
       // required to be called from syncContext
+      // 如果是在关闭中，则通知关闭
       if (terminating) {
         syncContext.execute(new Runnable() {
-            @Override
-            public void run() {
-              listener.onSubchannelState(ConnectivityStateInfo.forNonError(SHUTDOWN));
-            }
-          });
+          @Override
+          public void run() {
+            listener.onSubchannelState(ConnectivityStateInfo.forNonError(SHUTDOWN));
+          }
+        });
         return;
       }
+
+      // 操作回调
       final class ManagedInternalSubchannelCallback extends InternalSubchannel.Callback {
         // All callbacks are run in syncContext
         @Override
         void onTerminated(InternalSubchannel is) {
+          // 终止时从集合中移除当前的 Subchannel
           subchannels.remove(is);
           channelz.removeSubchannel(is);
+          // 执行终止操作
           maybeTerminateChannel();
         }
 
         @Override
         void onStateChange(InternalSubchannel is, ConnectivityStateInfo newState) {
+          // 如果状态是 TRANSIENT_FAILURE 或者 IDLE，则强制刷新 NameResolver
           handleInternalSubchannelState(newState);
           checkState(listener != null, "listener is null");
+          // 通知监听器状态变化
           listener.onSubchannelState(newState);
         }
 
@@ -1778,47 +1820,58 @@ final class ManagedChannelImpl extends ManagedChannel implements
         }
       }
 
-      final InternalSubchannel internalSubchannel = new InternalSubchannel(
-          args.getAddresses(),
-          authority(),
-          userAgent,
-          backoffPolicyProvider,
-          transportFactory,
-          transportFactory.getScheduledExecutorService(),
-          stopwatchSupplier,
-          syncContext,
-          new ManagedInternalSubchannelCallback(),
-          channelz,
-          callTracerFactory.create(),
-          subchannelTracer,
-          subchannelLogId,
-          subchannelLogger);
+      // 创建 InternalSubchannel
+      final InternalSubchannel internalSubchannel = new InternalSubchannel(args.getAddresses(),
+              authority(),
+              userAgent,
+              backoffPolicyProvider,
+              transportFactory,
+              transportFactory.getScheduledExecutorService(),
+              stopwatchSupplier,
+              syncContext,
+              new ManagedInternalSubchannelCallback(),
+              channelz,
+              callTracerFactory.create(),
+              subchannelTracer,
+              subchannelLogId,
+              subchannelLogger);
 
+      // 记录创建事件
       channelTracer.reportEvent(new ChannelTrace.Event.Builder()
-          .setDescription("Child Subchannel started")
-          .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
-          .setTimestampNanos(timeProvider.currentTimeNanos())
-          .setSubchannelRef(internalSubchannel)
-          .build());
+              .setDescription("Child Subchannel started")
+              .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
+              .setTimestampNanos(timeProvider.currentTimeNanos())
+              .setSubchannelRef(internalSubchannel)
+              .build());
 
       this.subchannel = internalSubchannel;
       // TODO(zhangkun83): no need to schedule on syncContext when this whole method is required
       // to be called from syncContext
+      // 将 Subchannel 添加到集合中
       syncContext.execute(new Runnable() {
-          @Override
-          public void run() {
-            channelz.addSubchannel(internalSubchannel);
-            subchannels.add(internalSubchannel);
-          }
-        });
+        @Override
+        public void run() {
+          channelz.addSubchannel(internalSubchannel);
+          subchannels.add(internalSubchannel);
+        }
+      });
     }
 
+    /**
+     * 启动 Subchannel
+     *
+     * @param listener receives state updates for this Subchannel.
+     *                 用于接收 Subchannel 状态更新的监听器
+     */
     @Override
     public void start(SubchannelStateListener listener) {
       syncContext.throwIfNotInThisSynchronizationContext();
       internalStart(listener);
     }
 
+    /**
+     * 获取 InternalInstrumented 封装的 Subchannel
+     */
     @Override
     InternalInstrumented<ChannelStats> getInstrumentedInternalSubchannel() {
       checkState(started, "not started");
@@ -1831,20 +1884,26 @@ final class ManagedChannelImpl extends ManagedChannel implements
       // exception.
       logWarningIfNotInSyncContext("Subchannel.shutdown()");
       syncContext.execute(new Runnable() {
-          @Override
-          public void run() {
-            internalShutdown();
-          }
-        });
+        @Override
+        public void run() {
+          internalShutdown();
+        }
+      });
     }
 
+    /**
+     * 关闭 Subchannel
+     */
     private void internalShutdown() {
       syncContext.throwIfNotInThisSynchronizationContext();
+      // 如果 Subchannel 是空的，则直接返回
       if (subchannel == null) {
         // start() was not successful
         shutdown = true;
         return;
       }
+
+      // 如果状态是 shutdown，则取消延时 shutdown 任务
       if (shutdown) {
         if (terminating && delayedShutdownTask != null) {
           // shutdown() was previously called when terminating == false, thus a delayed shutdown()
@@ -1866,6 +1925,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
       //
       // TODO(zhangkun83): consider a better approach
       // (https://github.com/grpc/grpc-java/issues/2562).
+      // 如果不是终止中，则创建延时任务终止
       if (!terminating) {
         final class ShutdownSubchannel implements Runnable {
           @Override
@@ -1874,10 +1934,10 @@ final class ManagedChannelImpl extends ManagedChannel implements
           }
         }
 
-        delayedShutdownTask = syncContext.schedule(
-            new LogExceptionRunnable(new ShutdownSubchannel()),
-            SUBCHANNEL_SHUTDOWN_DELAY_SECONDS, TimeUnit.SECONDS,
-            transportFactory.getScheduledExecutorService());
+        delayedShutdownTask = syncContext.schedule(new LogExceptionRunnable(new ShutdownSubchannel()),
+                SUBCHANNEL_SHUTDOWN_DELAY_SECONDS,
+                TimeUnit.SECONDS,
+                transportFactory.getScheduledExecutorService());
         return;
       }
       // When terminating == true, no more real streams will be created. It's safe and also
@@ -1913,13 +1973,18 @@ final class ManagedChannelImpl extends ManagedChannel implements
       return subchannelLogId.toString();
     }
 
+    /**
+     * 将 Subchannel 作为 Channel
+     *
+     * @return Channel
+     */
     @Override
     public Channel asChannel() {
       checkState(started, "not started");
-      return new SubchannelChannel(
-          subchannel, balancerRpcExecutorHolder.getExecutor(),
-          transportFactory.getScheduledExecutorService(),
-          callTracerFactory.create());
+      return new SubchannelChannel(subchannel,
+              balancerRpcExecutorHolder.getExecutor(),
+              transportFactory.getScheduledExecutorService(),
+              callTracerFactory.create());
     }
 
     @Override
@@ -1933,6 +1998,10 @@ final class ManagedChannelImpl extends ManagedChannel implements
       return subchannelLogger;
     }
 
+    /**
+     * 更新 Subchannel 地址
+     * @param addrs 地址集合
+     */
     @Override
     public void updateAddresses(List<EquivalentAddressGroup> addrs) {
       syncContext.throwIfNotInThisSynchronizationContext();
