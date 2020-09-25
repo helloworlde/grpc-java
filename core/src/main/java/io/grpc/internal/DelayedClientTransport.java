@@ -280,7 +280,7 @@ final class DelayedClientTransport implements ManagedClientTransport {
    * Use the picker to try picking a transport for every pending stream, proceed the stream if the
    * pick is successful, otherwise keep it pending.
    * <p>
-   * 使用选择器尝试为每个等待的流选择 Transport，如果选择成功则处理刘，如果失败则继续等待
+   * 使用选择器尝试为每个等待的流选择 Transport，如果选择成功则处理流，如果失败则继续等待
    *
    * <p>This method may be called concurrently with {@code newStream()}, and it's safe.  All pending
    * streams will be served by the latest picker (if a same picker is given more than once, they are
