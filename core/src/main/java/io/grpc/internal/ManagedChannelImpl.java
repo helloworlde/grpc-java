@@ -1253,9 +1253,15 @@ final class ManagedChannelImpl extends ManagedChannel implements
   }
 
 
+  /**
+   * LoadBalancer Helper
+   */
   private class LbHelperImpl extends LoadBalancer.Helper {
     AutoConfiguredLoadBalancer lb;
 
+    /**
+     * 创建 Subchannel
+     */
     @Deprecated
     @Override
     public AbstractSubchannel createSubchannel(List<EquivalentAddressGroup> addressGroups, Attributes attrs) {
@@ -1275,9 +1281,11 @@ final class ManagedChannelImpl extends ManagedChannel implements
         @Override
         public void onSubchannelState(ConnectivityStateInfo newState) {
           // Call LB only if it's not shutdown.  If LB is shutdown, lbHelper won't match.
+          // 只有 LB 没有 shutdown 的时候调用，如果 LB 是 shutdown， lbHelper 不会匹配
           if (LbHelperImpl.this != ManagedChannelImpl.this.lbHelper) {
             return;
           }
+          // 更新 Subchannel 状态
           lb.handleSubchannelState(subchannel, newState);
         }
       };
@@ -1300,6 +1308,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     private SubchannelImpl createSubchannelInternal(CreateSubchannelArgs args) {
       // TODO(ejona): can we be even stricter? Like loadBalancer == null?
       checkState(!terminated, "Channel is terminated");
+      // 创建 Subchannel 实现
       return new SubchannelImpl(args, this);
     }
 
@@ -1565,11 +1574,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
         public void run() {
 
           List<EquivalentAddressGroup> servers = resolutionResult.getAddresses();
-          channelLogger.log(
-                  ChannelLogLevel.DEBUG,
-                  "Resolved address: {0}, config={1}",
-                  servers,
-                  resolutionResult.getAttributes());
+          channelLogger.log(ChannelLogLevel.DEBUG, "Resolved address: {0}, config={1}", servers, resolutionResult.getAttributes());
 
           if (lastResolutionState != ResolutionState.SUCCESS) {
             channelLogger.log(ChannelLogLevel.INFO, "Address resolved: {0}", servers);
@@ -1589,9 +1594,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
           // 如果不查找配置，则使用默认配置
           if (!lookUpServiceConfig) {
             if (validServiceConfig != null) {
-              channelLogger.log(
-                      ChannelLogLevel.INFO,
-                      "Service config from name resolver discarded by channel settings");
+              channelLogger.log(ChannelLogLevel.INFO, "Service config from name resolver discarded by channel settings");
             }
             effectiveServiceConfig = defaultServiceConfig == null ? EMPTY_SERVICE_CONFIG : defaultServiceConfig;
           } else {
@@ -1602,16 +1605,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
               effectiveServiceConfig = validServiceConfig;
             } else if (defaultServiceConfig != null) {
               effectiveServiceConfig = defaultServiceConfig;
-              channelLogger.log(
-                      ChannelLogLevel.INFO,
-                      "Received no service config, using default service config");
+              channelLogger.log(ChannelLogLevel.INFO, "Received no service config, using default service config");
             } else if (serviceConfigError != null) {
               // 如果不更新服务配置，则报错
               if (!serviceConfigUpdated) {
                 // First DNS lookup has invalid service config, and cannot fall back to default
-                channelLogger.log(
-                        ChannelLogLevel.INFO,
-                        "Fallback to error due to invalid first service config without default config");
+                channelLogger.log(ChannelLogLevel.INFO, "Fallback to error due to invalid first service config without default config");
                 onError(configOrError.getError());
                 return;
               } else {
@@ -1622,10 +1621,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
             }
             // 如果配置发生变化，则更新
             if (!effectiveServiceConfig.equals(lastServiceConfig)) {
-              channelLogger.log(
-                      ChannelLogLevel.INFO,
-                      "Service config changed{0}",
-                      effectiveServiceConfig == EMPTY_SERVICE_CONFIG ? " to empty" : "");
+              channelLogger.log(ChannelLogLevel.INFO, "Service config changed{0}", effectiveServiceConfig == EMPTY_SERVICE_CONFIG ? " to empty" : "");
               lastServiceConfig = effectiveServiceConfig;
             }
 
@@ -1636,10 +1632,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
               // 更新配置
               handleServiceConfigUpdate();
             } catch (RuntimeException re) {
-              logger.log(
-                      Level.WARNING,
-                      "[" + getLogId() + "] Unexpected exception from parsing service config",
-                      re);
+              logger.log(Level.WARNING, "[" + getLogId() + "] Unexpected exception from parsing service config", re);
             }
           }
 
@@ -1761,7 +1754,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
               timeProvider.currentTimeNanos(),
               "Subchannel for " + args.getAddresses());
 
-      // 创建日志
+      // 创建 Subchannel 日志实现
       subchannelLogger = new ChannelLoggerImpl(subchannelTracer, timeProvider);
     }
 
@@ -2051,18 +2044,22 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   /**
    * Must be accessed from syncContext.
+   * IDLE 模式状态聚合器
    */
   private final class IdleModeStateAggregator extends InUseStateAggregator<Object> {
     @Override
     protected void handleInUse() {
+      // 当处于 in-use 状态时，退出 IDLE 模式
       exitIdleMode();
     }
 
     @Override
     protected void handleNotInUse() {
+      // 如果是 shutdown，则直接返回
       if (shutdown.get()) {
         return;
       }
+      // 不是 shutdown，重新调度空闲计时器
       rescheduleIdleTimer();
     }
   }
