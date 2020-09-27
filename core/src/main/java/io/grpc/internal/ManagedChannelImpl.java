@@ -1793,6 +1793,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
           maybeTerminateChannel();
         }
 
+        /**
+         * 更新 Subchannel 状态变化
+         *
+         * @param is       Subchannel
+         * @param newState 新的状态
+         */
         @Override
         void onStateChange(InternalSubchannel is, ConnectivityStateInfo newState) {
           // 如果状态是 TRANSIENT_FAILURE 或者 IDLE，则强制刷新 NameResolver

@@ -99,6 +99,7 @@ public interface ManagedClientTransport extends ClientTransport {
     /**
      * The transport is ready to accept traffic, because the connection is established.  This is
      * called at most once.
+     * Transport 已经准备就绪可以接收流量，此时连接已经建立，这个方法最多调用一次
      */
     void transportReady();
 

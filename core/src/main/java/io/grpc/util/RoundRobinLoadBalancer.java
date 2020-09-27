@@ -185,7 +185,7 @@ final class RoundRobinLoadBalancer extends LoadBalancer {
      */
     private void processSubchannelState(Subchannel subchannel, ConnectivityStateInfo stateInfo) {
 
-        // 如果地址不是当前 SubChannel，则不处理
+        // 如果没有这个 Subchannel，则不处理
         if (subchannels.get(stripAttrs(subchannel.getAddresses())) != subchannel) {
             return;
         }
@@ -198,9 +198,8 @@ final class RoundRobinLoadBalancer extends LoadBalancer {
         // 获取 Subchannel 连接状态
         Ref<ConnectivityStateInfo> subchannelStateRef = getSubchannelStateInfoRef(subchannel);
 
-        // 如果连接状态是 TRANSIENT_FAILURE
+        // 如果当前的状态是 TRANSIENT_FAILURE，新状态是 CONNECTING 或者 IDLE，则不做处理
         if (subchannelStateRef.value.getState().equals(TRANSIENT_FAILURE)) {
-            // 如果 Subchannel 状态是 CONNECTING 或者 IDLE，则返回
             if (stateInfo.getState().equals(CONNECTING) || stateInfo.getState().equals(IDLE)) {
                 return;
             }

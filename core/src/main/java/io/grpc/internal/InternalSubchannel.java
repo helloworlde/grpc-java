@@ -334,18 +334,27 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
     });
   }
 
+  /**
+   * 更新连接状态
+   *
+   * @param newState
+   */
   private void gotoNonErrorState(final ConnectivityState newState) {
     syncContext.throwIfNotInThisSynchronizationContext();
 
     gotoState(ConnectivityStateInfo.forNonError(newState));
   }
 
+  /**
+   * 当状态发生变化时修改状态
+   *
+   * @param newState 新的状态
+   */
   private void gotoState(final ConnectivityStateInfo newState) {
     syncContext.throwIfNotInThisSynchronizationContext();
 
     if (state.getState() != newState.getState()) {
-      Preconditions.checkState(state.getState() != SHUTDOWN,
-          "Cannot transition out of SHUTDOWN to " + newState);
+      Preconditions.checkState(state.getState() != SHUTDOWN, "Cannot transition out of SHUTDOWN to " + newState);
       state = newState;
       callback.onStateChange(InternalSubchannel.this, newState);
     }
@@ -546,7 +555,9 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
     }
   }
 
-  /** Listener for real transports. */
+  /**
+   * Listener for real transports.
+   */
   private class TransportListener implements ManagedClientTransport.Listener {
     final ConnectionClientTransport transport;
     final SocketAddress address;
@@ -557,21 +568,26 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
       this.address = address;
     }
 
+    /**
+     * Transport 已经 READY
+     */
     @Override
     public void transportReady() {
       channelLogger.log(ChannelLogLevel.INFO, "READY");
+
       syncContext.execute(new Runnable() {
         @Override
         public void run() {
           reconnectPolicy = null;
+          // 如果是 SHUTDOWN 则关闭 Transport
           if (shutdownReason != null) {
             // activeTransport should have already been set to null by shutdown(). We keep it null.
-            Preconditions.checkState(activeTransport == null,
-                "Unexpected non-null activeTransport");
+            Preconditions.checkState(activeTransport == null, "Unexpected non-null activeTransport");
             transport.shutdown(shutdownReason);
           } else if (pendingTransport == transport) {
             activeTransport = transport;
             pendingTransport = null;
+            // 如果是等待 READY，则更新状态为 READY
             gotoNonErrorState(READY);
           }
         }
@@ -585,8 +601,7 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
 
     @Override
     public void transportShutdown(final Status s) {
-      channelLogger.log(
-          ChannelLogLevel.INFO, "{0} SHUTDOWN with {1}", transport.getLogId(), printShortStatus(s));
+      channelLogger.log(ChannelLogLevel.INFO, "{0} SHUTDOWN with {1}", transport.getLogId(), printShortStatus(s));
       shutdownInitiated = true;
       syncContext.execute(new Runnable() {
         @Override
@@ -599,8 +614,7 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
             addressIndex.reset();
             gotoNonErrorState(IDLE);
           } else if (pendingTransport == transport) {
-            Preconditions.checkState(state.getState() == CONNECTING,
-                "Expected state is CONNECTING, actual state is %s", state.getState());
+            Preconditions.checkState(state.getState() == CONNECTING, "Expected state is CONNECTING, actual state is %s", state.getState());
             addressIndex.increment();
             // Continue reconnect if there are still addresses to try.
             if (!addressIndex.isValid()) {
@@ -619,8 +633,7 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
 
     @Override
     public void transportTerminated() {
-      Preconditions.checkState(
-          shutdownInitiated, "transportShutdown() must be called before transportTerminated().");
+      Preconditions.checkState(shutdownInitiated, "transportShutdown() must be called before transportTerminated().");
 
       channelLogger.log(ChannelLogLevel.INFO, "{0} Terminated", transport.getLogId());
       channelz.removeClientSocket(transport);
