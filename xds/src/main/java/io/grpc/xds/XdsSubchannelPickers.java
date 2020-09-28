@@ -16,48 +16,54 @@
 
 package io.grpc.xds;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.MoreObjects;
 import io.grpc.LoadBalancer.PickResult;
 import io.grpc.LoadBalancer.PickSubchannelArgs;
 import io.grpc.LoadBalancer.SubchannelPicker;
 import io.grpc.Status;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 final class XdsSubchannelPickers {
 
-  private XdsSubchannelPickers() { /* DO NOT CALL ME */ }
+    private XdsSubchannelPickers() { /* DO NOT CALL ME */ }
 
-  static final SubchannelPicker BUFFER_PICKER = new SubchannelPicker() {
-    @Override
-    public PickResult pickSubchannel(PickSubchannelArgs args) {
-      return PickResult.withNoResult();
+    /**
+     * 没有地址的 SubchannelPicker
+     */
+    static final SubchannelPicker BUFFER_PICKER = new SubchannelPicker() {
+        @Override
+        public PickResult pickSubchannel(PickSubchannelArgs args) {
+            return PickResult.withNoResult();
+        }
+
+        @Override
+        public String toString() {
+            return "BUFFER_PICKER";
+        }
+    };
+
+    /**
+     * 错误的 SubchannelPicker
+     */
+    static final class ErrorPicker extends SubchannelPicker {
+
+        private final Status error;
+
+        ErrorPicker(Status error) {
+            this.error = checkNotNull(error, "error");
+        }
+
+        @Override
+        public PickResult pickSubchannel(PickSubchannelArgs args) {
+            return PickResult.withError(error);
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                              .add("error", error)
+                              .toString();
+        }
     }
-
-    @Override
-    public String toString() {
-      return "BUFFER_PICKER";
-    }
-  };
-
-  static final class ErrorPicker extends SubchannelPicker {
-
-    private final Status error;
-
-    ErrorPicker(Status error) {
-      this.error = checkNotNull(error, "error");
-    }
-
-    @Override
-    public PickResult pickSubchannel(PickSubchannelArgs args) {
-      return PickResult.withError(error);
-    }
-
-    @Override
-    public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("error", error)
-          .toString();
-    }
-  }
 }

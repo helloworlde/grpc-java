@@ -16,16 +16,17 @@
 
 package io.grpc;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.Objects;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.Immutable;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * An immutable type-safe container of attributes.
@@ -234,10 +235,11 @@ public final class Attributes {
 
     /**
      * Removes the key and associated value from the attribtues.
+     * 从 attribtues 中移除给定的 key 和相关联的 value
      *
-     * @since 1.22.0
-     * @param key The key to remove
+     * @param key The key to remove 要移除的 key
      * @return this
+     * @since 1.22.0
      */
     @ExperimentalApi("https://github.com/grpc/grpc-java/issues/5777")
     public <T> Builder discard(Key<T> key) {
@@ -246,6 +248,7 @@ public final class Attributes {
         newBaseData.remove(key);
         base = new Attributes(newBaseData);
       }
+
       if (newdata != null) {
         newdata.remove(key);
       }

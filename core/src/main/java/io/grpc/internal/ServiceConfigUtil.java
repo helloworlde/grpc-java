@@ -446,20 +446,29 @@ public final class ServiceConfigUtil {
     }
   }
 
+  /**
+   * 策略选择器
+   */
   public static final class PolicySelection {
+
     final LoadBalancerProvider provider;
+
     @Deprecated
     @Nullable
     final Map<String, ?> rawConfig;
+
     @Nullable
     final Object config;
 
-    /** Constructs a PolicySelection with selected LB provider, a copy of raw config and the deeply
-     * parsed LB config. */
-    public PolicySelection(
-        LoadBalancerProvider provider,
-        @Nullable Map<String, ?> rawConfig,
-        @Nullable Object config) {
+    /**
+     * Constructs a PolicySelection with selected LB provider, a copy of raw config and the deeply
+     * parsed LB config.
+     * <p>
+     * 根据所选的 LB 提供器构造一个新的策略选择器，复制了原始的配置，并且解析了 LB 的配置
+     */
+    public PolicySelection(LoadBalancerProvider provider,
+                           @Nullable Map<String, ?> rawConfig,
+                           @Nullable Object config) {
       this.provider = checkNotNull(provider, "provider");
       this.rawConfig = rawConfig;
       this.config = config;
@@ -484,8 +493,8 @@ public final class ServiceConfigUtil {
       }
       PolicySelection that = (PolicySelection) o;
       return Objects.equal(provider, that.provider)
-          && Objects.equal(rawConfig, that.rawConfig)
-          && Objects.equal(config, that.config);
+              && Objects.equal(rawConfig, that.rawConfig)
+              && Objects.equal(config, that.config);
     }
 
     @Override
@@ -496,10 +505,10 @@ public final class ServiceConfigUtil {
     @Override
     public String toString() {
       return MoreObjects.toStringHelper(this)
-          .add("provider", provider)
-          .add("rawConfig", rawConfig)
-          .add("config", config)
-          .toString();
+                        .add("provider", provider)
+                        .add("rawConfig", rawConfig)
+                        .add("config", config)
+                        .toString();
     }
   }
 }
