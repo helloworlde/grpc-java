@@ -1092,16 +1092,25 @@ final class ManagedChannelImpl extends ManagedChannel implements
   @Override
   @SuppressWarnings("deprecation")
   public ConnectivityState getState(boolean requestConnection) {
+    // 获取连接状态
     ConnectivityState savedChannelState = channelStateManager.getState();
+
+    // 如果连接状态是 IDLE， 则提交建立连接的任务
     if (requestConnection && savedChannelState == IDLE) {
+
+      // 要求建立连接的任务
       final class RequestConnection implements Runnable {
         @Override
         public void run() {
+          // 退出空闲模式，会做命名解析，并创建负载均衡
           exitIdleMode();
+          // subchannelPicker 会在 updateBalancingState 时更新
           if (subchannelPicker != null) {
+            // 要求建立连接
             subchannelPicker.requestConnection();
           }
           if (lbHelper != null) {
+            // 要求 LoadBalancer 为 Subchannel 建立连接，依赖于 LoadBalancer 具体实现
             lbHelper.lb.requestConnection();
           }
         }
