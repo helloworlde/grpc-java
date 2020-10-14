@@ -1610,8 +1610,9 @@ abstract class RetriableStream<ReqT> implements ClientStream {
   }
 
   /**
-   *  Used to keep track of the total amount of memory used to buffer retryable or hedged RPCs for
-   *  the Channel. There should be a single instance of it for each channel.
+   * Used to keep track of the total amount of memory used to buffer retryable or hedged RPCs for
+   * the Channel. There should be a single instance of it for each channel.
+   * 用于跟踪记录重试和对冲请求的内存 Buffer 使用量，每个 Channel 都有一个实例
    */
   static final class ChannelBufferMeter {
     private final AtomicLong bufferUsed = new AtomicLong();

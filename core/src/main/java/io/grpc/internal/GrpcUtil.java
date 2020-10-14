@@ -715,6 +715,7 @@ public final class GrpcUtil {
         return transport;
       }
 
+      // 如果有 tracer，则创建一个新的 Stream
       // TODO RETRY
       return new ClientTransport() {
         @Override
@@ -740,10 +741,14 @@ public final class GrpcUtil {
         }
       };
     }
+    // 如果 PickResult 状态不是 OK
     if (!result.getStatus().isOk()) {
+      // 如果结果是 drop 的，则返回 DROPPED 的 Transport
       if (result.isDrop()) {
         return new FailingClientTransport(result.getStatus(), RpcProgress.DROPPED);
       }
+
+      // 如果 waitForReady 是 false，则返回这个请求已经处理
       if (!isWaitForReady) {
         return new FailingClientTransport(result.getStatus(), RpcProgress.PROCESSED);
       }
@@ -751,7 +756,10 @@ public final class GrpcUtil {
     return null;
   }
 
-  /** Quietly closes all messages in MessageProducer. */
+  /**
+   * Quietly closes all messages in MessageProducer.
+   * 静默关闭 MessageProducer 中所有的消息
+   */
   static void closeQuietly(MessageProducer producer) {
     InputStream message;
     while ((message = producer.next()) != null) {
@@ -762,6 +770,7 @@ public final class GrpcUtil {
   /**
    * Closes a Closeable, ignoring IOExceptions.
    * This method exists because Guava's {@code Closeables.closeQuietly()} is beta.
+   * 静默关闭流
    */
   public static void closeQuietly(@Nullable Closeable message) {
     if (message == null) {

@@ -95,27 +95,36 @@ final class ManagedChannelImpl extends ManagedChannel implements
   static final long SUBCHANNEL_SHUTDOWN_DELAY_SECONDS = 5;
 
   @VisibleForTesting
-  static final Status SHUTDOWN_NOW_STATUS =
-      Status.UNAVAILABLE.withDescription("Channel shutdownNow invoked");
+  static final Status SHUTDOWN_NOW_STATUS = Status.UNAVAILABLE.withDescription("Channel shutdownNow invoked");
 
   @VisibleForTesting
-  static final Status SHUTDOWN_STATUS =
-      Status.UNAVAILABLE.withDescription("Channel shutdown invoked");
+  static final Status SHUTDOWN_STATUS = Status.UNAVAILABLE.withDescription("Channel shutdown invoked");
 
   @VisibleForTesting
-  static final Status SUBCHANNEL_SHUTDOWN_STATUS =
-      Status.UNAVAILABLE.withDescription("Subchannel shutdown invoked");
+  static final Status SUBCHANNEL_SHUTDOWN_STATUS = Status.UNAVAILABLE.withDescription("Subchannel shutdown invoked");
 
   // 默认的空配置
   private static final ManagedChannelServiceConfig EMPTY_SERVICE_CONFIG = ManagedChannelServiceConfig.empty();
 
   private final InternalLogId logId;
+
+  /**
+   * 命名解析
+   */
   private final String target;
   private final NameResolverRegistry nameResolverRegistry;
   private final NameResolver.Factory nameResolverFactory;
   private final NameResolver.Args nameResolverArgs;
+
+  /**
+   * 负载均衡
+   */
   private final AutoConfiguredLoadBalancerFactory loadBalancerFactory;
   private final ClientTransportFactory transportFactory;
+
+  /**
+   * 线程池
+   */
   private final RestrictedScheduledExecutor scheduledExecutor;
   private final Executor executor;
   private final ObjectPool<? extends Executor> executorPool;
@@ -123,52 +132,63 @@ final class ManagedChannelImpl extends ManagedChannel implements
   private final ExecutorHolder balancerRpcExecutorHolder;
   private final ExecutorHolder offloadExecutorHolder;
   private final TimeProvider timeProvider;
+
   private final int maxTraceEvents;
 
   @VisibleForTesting
-  final SynchronizationContext syncContext = new SynchronizationContext(
-      new Thread.UncaughtExceptionHandler() {
-        @Override
-        public void uncaughtException(Thread t, Throwable e) {
-          logger.log(
-              Level.SEVERE,
-              "[" + getLogId() + "] Uncaught exception in the SynchronizationContext. Panic!",
-              e);
-          panic(e);
-        }
-      });
+  final SynchronizationContext syncContext = new SynchronizationContext(new Thread.UncaughtExceptionHandler() {
+    @Override
+    public void uncaughtException(Thread t, Throwable e) {
+      logger.log(Level.SEVERE, "[" + getLogId() + "] Uncaught exception in the SynchronizationContext. Panic!", e);
+      panic(e);
+    }
+  });
 
+  /**
+   * 请求压缩解压
+   */
   private boolean fullStreamDecompression;
-
   private final DecompressorRegistry decompressorRegistry;
   private final CompressorRegistry compressorRegistry;
 
+  // 记录
   private final Supplier<Stopwatch> stopwatchSupplier;
-  /** The timout before entering idle mode. */
+  /**
+   * The timout before entering idle mode.
+   * 进入 IDLE 模式前的等待时间
+   */
   private final long idleTimeoutMillis;
 
+  // 连接状态管理器
   private final ConnectivityStateManager channelStateManager = new ConnectivityStateManager();
 
+  // 配置拦截器
   private final ServiceConfigInterceptor serviceConfigInterceptor;
 
+  // 策略提供器
   private final BackoffPolicy.Provider backoffPolicyProvider;
 
   /**
    * We delegate to this channel, so that we can have interceptors as necessary. If there aren't
    * any interceptors and the {@link io.grpc.BinaryLog} is {@code null} then this will just be a
    * {@link RealChannel}.
+   * 代理这个 Channel，由拦截器封装后提供；如果没有拦截器，且 BinaryLog 也是 null，则是一个 RealChannel
    */
   private final Channel interceptorChannel;
-  @Nullable private final String userAgent;
+
+  @Nullable
+  private final String userAgent;
 
   // Only null after channel is terminated. Must be assigned from the syncContext.
   // 服务发现
   private NameResolver nameResolver;
 
   // Must be accessed from the syncContext.
+  // 命名解析是否启动
   private boolean nameResolverStarted;
 
   // null when channel is in idle mode.  Must be assigned from syncContext.
+  // LoadBalancer 工具
   @Nullable
   private LbHelperImpl lbHelper;
 
@@ -184,18 +204,22 @@ final class ManagedChannelImpl extends ManagedChannel implements
   // Must be mutated from syncContext
   // If any monitoring hook to be added later needs to get a snapshot of this Set, we could
   // switch to a ConcurrentHashMap.
+  // Subchannel 集合
   private final Set<InternalSubchannel> subchannels = new HashSet<>(16, .75f);
 
   // Must be mutated from syncContext
+  // 用于 Channel 自身的 Channel 集合
   private final Set<OobChannel> oobChannels = new HashSet<>(1, .75f);
 
   // reprocess() must be run from syncContext
+  // 延迟执行的 ClientTransport
   private final DelayedClientTransport delayedTransport;
+
   // 保存未提交的可重试流的注册器
   private final UncommittedRetriableStreamsRegistry uncommittedRetriableStreamsRegistry = new UncommittedRetriableStreamsRegistry();
 
   // Shutdown states.
-  //
+  // 关闭状态
   // Channel's shutdown process:
   // 1. shutdown(): stop accepting new calls from applications
   //   1a shutdown <- true
@@ -219,8 +243,10 @@ final class ManagedChannelImpl extends ManagedChannel implements
   private volatile boolean terminated;
   private final CountDownLatch terminatedLatch = new CountDownLatch(1);
 
+  /**
+   * 统计 Channel 调用信息
+   */
   private final CallTracer.Factory callTracerFactory;
-  // 统计 Channel 调用信息
   private final CallTracer channelCallTracer;
   private final ChannelTracer channelTracer;
   private final ChannelLogger channelLogger;
@@ -228,22 +254,31 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   // Must be mutated and read from syncContext
   // a flag for doing channel tracing when flipped
+  // 记录最新的命名解析
   private ResolutionState lastResolutionState = ResolutionState.NO_RESOLUTION;
+
   // Must be mutated and read from constructor or syncContext
   // used for channel tracing when value changed
+  // 记录最新的配置
   private ManagedChannelServiceConfig lastServiceConfig = EMPTY_SERVICE_CONFIG;
+
+  // 默认的配置
   @Nullable
   private final ManagedChannelServiceConfig defaultServiceConfig;
+
   // Must be mutated and read from constructor or syncContext
+  // 配置是否变化
   private boolean serviceConfigUpdated = false;
 
   // 查找服务配置
   private final boolean lookUpServiceConfig;
 
   // One instance per channel.
+  // 用于跟踪记录重试和对冲请求的内存 Buffer 使用量
   private final ChannelBufferMeter channelBufferUsed = new ChannelBufferMeter();
-
+  // 单个请求的 Buffer 限制
   private final long perRpcBufferLimit;
+  // Channel 的 Buffer 限制
   private final long channelBufferLimit;
 
   // Temporary false flag that can skip the retry code path.
@@ -251,10 +286,13 @@ final class ManagedChannelImpl extends ManagedChannel implements
   private final boolean retryEnabled;
 
   // Called from syncContext
-  private final ManagedClientTransport.Listener delayedTransportListener =
-      new DelayedTransportListener();
+  // 延迟执行的 Transport 监听器
+  private final ManagedClientTransport.Listener delayedTransportListener = new DelayedTransportListener();
 
-  // Must be called from syncContext
+  /**
+   * 立即关闭所有的 Subchannel
+   * Must be called from syncContext
+   */
   private void maybeShutdownNowSubchannels() {
     if (shutdownNowed) {
       for (InternalSubchannel subchannel : subchannels) {
@@ -267,6 +305,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   }
 
   // Must be accessed from syncContext
+  // IDLE 模式状态聚合器
   @VisibleForTesting
   final InUseStateAggregator<Object> inUseStateAggregator = new IdleModeStateAggregator();
 
@@ -308,8 +347,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
   }
 
   // Run from syncContext
+  // 退出 IDLE 模式的任务
   private class IdleModeTimer implements Runnable {
-
     @Override
     public void run() {
       // 退出空闲模式
@@ -423,6 +462,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   /**
    * 取消空闲计时器
+   *
    * @param permanent
    */
   // Must be run from syncContext
@@ -457,10 +497,14 @@ final class ManagedChannelImpl extends ManagedChannel implements
   }
 
   // Must be used from syncContext
-  @Nullable private ScheduledHandle scheduledNameResolverRefresh;
+  // 延迟执行的命名解析
+  @Nullable
+  private ScheduledHandle scheduledNameResolverRefresh;
   // The policy to control backoff between name resolution attempts. Non-null when an attempt is
   // scheduled. Must be used from syncContext
-  @Nullable private BackoffPolicy nameResolverBackoffPolicy;
+  // 命名解析尝试之间的退避策略，当有尝试被调度时不能为空
+  @Nullable
+  private BackoffPolicy nameResolverBackoffPolicy;
 
   /**
    * 取消服务发现任务
@@ -499,6 +543,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
+  /**
+   * Transport 提供器
+   */
   private final class ChannelTransportProvider implements ClientTransportProvider {
     /**
      * 通过参数，选择某个 Subchannel，发起调用
@@ -546,7 +593,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
       // 选择某个 SubChannel 发起调用，即选择某个服务端
       PickResult pickResult = pickerCopy.pickSubchannel(args);
       ClientTransport transport = GrpcUtil.getTransportFromPickResult(pickResult, args.getCallOptions().isWaitForReady());
-      // 如果有 Transport，则返回
+      // 如果有 Transport，则返回，没有则返回 delayedTransport
       if (transport != null) {
         return transport;
       }
@@ -634,8 +681,10 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
+  // Transport 提供器
   private final ClientTransportProvider transportProvider = new ChannelTransportProvider();
 
+  // 重新调度任务并延迟执行
   private final Rescheduler idleTimer;
 
   /**
@@ -2279,6 +2328,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   /**
    * A ResolutionState indicates the status of last name resolution.
+   * 记录最新的命名解析的结果
    */
   enum ResolutionState {
     NO_RESOLUTION,
