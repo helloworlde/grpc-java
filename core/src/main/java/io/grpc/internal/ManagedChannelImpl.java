@@ -439,7 +439,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   }
 
   /**
-   * 退出空闲模式
+   * 进入空闲模式，关闭服务发现和负载均衡，并修改状态为 IDLE
    */
   // Must be run from syncContext
   private void enterIdleMode() {
@@ -898,10 +898,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
   /**
    * Initiates an orderly shutdown in which preexisting calls continue but new calls are immediately
    * cancelled.
+   * 开始顺序的关闭 Channel，之前存在的调用会继续，新的调用会被立即取消
    */
   @Override
   public ManagedChannelImpl shutdown() {
     channelLogger.log(ChannelLogLevel.DEBUG, "shutdown() called");
+    // 如果状态已经是关闭，则返回
     if (!shutdown.compareAndSet(false, true)) {
       return this;
     }
@@ -910,6 +912,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     // delayedTransport.shutdown() may also add some tasks into the queue. But some things inside
     // delayedTransport.shutdown() like setting delayedTransport.shutdown = true are not run in the
     // syncContext's queue and should not be blocked, so we do not drain() immediately here.
+    // 提交将状态修改为 SHUTDOWN 的任务
     final class Shutdown implements Runnable {
       @Override
       public void run() {
@@ -920,7 +923,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
     syncContext.executeLater(new Shutdown());
 
+    // 关闭 delayedTransport
     uncommittedRetriableStreamsRegistry.onShutdown(SHUTDOWN_STATUS);
+    // 取消空闲计时器
     final class CancelIdleTimer implements Runnable {
       @Override
       public void run() {
@@ -936,6 +941,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
    * Initiates a forceful shutdown in which preexisting and new calls are cancelled. Although
    * forceful, the shutdown process is still not instantaneous; {@link #isTerminated()} will likely
    * return {@code false} immediately after this method returns.
+   * <p>
+   * 开始强制关闭，已经存在的和新的请求都会被取消，即使是强制的，关闭进程也不是瞬间的；当这个方法返回后，isTerminated()
+   * 方法会立即返回 false
    */
   @Override
   public ManagedChannelImpl shutdownNow() {
@@ -960,17 +968,21 @@ final class ManagedChannelImpl extends ManagedChannel implements
   // Called from syncContext
   @VisibleForTesting
   void panic(final Throwable t) {
+    // 如果已经是 panic 了，则返回
     if (panicMode) {
       // Preserve the first panic information
       return;
     }
+    // 修改 panic 状态
     panicMode = true;
+    // 取消空闲计时器
     cancelIdleTimer(/* permanent= */ true);
+    // 关闭服务发现和负载均衡
     shutdownNameResolverAndLoadBalancer(false);
+
+    // 创建异常的 Subchannel Picker
     final class PanicSubchannelPicker extends SubchannelPicker {
-      private final PickResult panicPickResult =
-          PickResult.withDrop(
-              Status.INTERNAL.withDescription("Panic! This is a bug!").withCause(t));
+      private final PickResult panicPickResult = PickResult.withDrop(Status.INTERNAL.withDescription("Panic! This is a bug!").withCause(t));
 
       @Override
       public PickResult pickSubchannel(PickSubchannelArgs args) {
@@ -980,16 +992,21 @@ final class ManagedChannelImpl extends ManagedChannel implements
       @Override
       public String toString() {
         return MoreObjects.toStringHelper(PanicSubchannelPicker.class)
-            .add("panicPickResult", panicPickResult)
-            .toString();
+                          .add("panicPickResult", panicPickResult)
+                          .toString();
       }
     }
 
+    // 更新 Subchannel Picker
     updateSubchannelPicker(new PanicSubchannelPicker());
     channelLogger.log(ChannelLogLevel.ERROR, "PANIC! Entering TRANSIENT_FAILURE");
+    // 状态改为 TRANSIENT_FAILURE
     channelStateManager.gotoState(TRANSIENT_FAILURE);
   }
 
+  /**
+   * 是否是 panic 状态
+   */
   @VisibleForTesting
   boolean isInPanicMode() {
     return panicMode;
@@ -1007,16 +1024,25 @@ final class ManagedChannelImpl extends ManagedChannel implements
     delayedTransport.reprocess(newPicker);
   }
 
+  /**
+   * 是否 shutdown 状态
+   */
   @Override
   public boolean isShutdown() {
     return shutdown.get();
   }
 
+  /**
+   * 等待终止
+   */
   @Override
   public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
     return terminatedLatch.await(timeout, unit);
   }
 
+  /**
+   * 是否终止状态
+   */
   @Override
   public boolean isTerminated() {
     return terminated;
@@ -1033,6 +1059,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
     return interceptorChannel.newCall(method, callOptions);
   }
 
+  /**
+   * Channel 的目标地址
+   */
   @Override
   public String authority() {
     return interceptorChannel.authority();
@@ -1064,7 +1093,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
     private final String authority;
 
     private RealChannel(String authority) {
-      this.authority =  checkNotNull(authority, "authority");
+      this.authority = checkNotNull(authority, "authority");
     }
 
     /**
@@ -1138,6 +1167,13 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
+  /**
+   * 获取连接状态
+   *
+   * @param requestConnection if {@code true}, the channel will try to make a connection if it is
+   *                          currently IDLE
+   *                          如果是true，且当前是 IDLE 模式，则 Channel 会尝试创建连接
+   */
   @Override
   @SuppressWarnings("deprecation")
   public ConnectivityState getState(boolean requestConnection) {
@@ -1170,6 +1206,14 @@ final class ManagedChannelImpl extends ManagedChannel implements
     return savedChannelState;
   }
 
+  /**
+   * 当 Channel 状态发生变化时触发 callback
+   *
+   * @param source   the assumed current state, typically just returned by {@link #getState}
+   *                 假定的当前状态，通常是由 getState 返回的
+   * @param callback the one-off callback
+   *                 一次性的回调
+   */
   @Override
   public void notifyWhenStateChanged(final ConnectivityState source, final Runnable callback) {
     final class NotifyStateChanged implements Runnable {
@@ -1182,21 +1226,29 @@ final class ManagedChannelImpl extends ManagedChannel implements
     syncContext.execute(new NotifyStateChanged());
   }
 
+  /**
+   * 重置连接状态，重新连接
+   */
   @Override
   public void resetConnectBackoff() {
     final class ResetConnectBackoff implements Runnable {
       @Override
       public void run() {
+        // 如果是 Shutdown，则不做操作
         if (shutdown.get()) {
           return;
         }
+        // 如果需要命名解析，则重新执行服务发现
         if (scheduledNameResolverRefresh != null && scheduledNameResolverRefresh.isPending()) {
           checkState(nameResolverStarted, "name resolver must be started");
           refreshAndResetNameResolution();
         }
+
+        // 遍历所有的 Subchannel，如果状态是 TRANSIENT_FAILURE 则立即建立连接
         for (InternalSubchannel subchannel : subchannels) {
           subchannel.resetConnectBackoff();
         }
+        // 遍历所有的 OobChannel，如果状态是 TRANSIENT_FAILURE 则立即建立连接
         for (OobChannel oobChannel : oobChannels) {
           oobChannel.resetConnectBackoff();
         }
@@ -1206,15 +1258,21 @@ final class ManagedChannelImpl extends ManagedChannel implements
     syncContext.execute(new ResetConnectBackoff());
   }
 
+  /**
+   * 进入空闲模式，关闭服务发现和负载均衡，并修改状态为 IDLE
+   */
   @Override
   public void enterIdle() {
     final class PrepareToLoseNetworkRunnable implements Runnable {
       @Override
       public void run() {
+        // 如果是 shutdown 状态，或者 LB Helper 是空的，则不做操作
         if (shutdown.get() || lbHelper == null) {
           return;
         }
+        // 取消空闲计时器
         cancelIdleTimer(/* permanent= */ false);
+        // 进入空闲模式
         enterIdleMode();
       }
     }
@@ -1241,6 +1299,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
     @GuardedBy("lock")
     Status shutdownStatus;
 
+    /**
+     * 关闭 delayedTransport
+     */
     void onShutdown(Status reason) {
       boolean shouldShutdownDelayedTransport = false;
       synchronized (lock) {
@@ -1251,6 +1312,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
         // Keep the delayedTransport open until there is no more uncommitted streams, b/c those
         // retriable streams, which may be in backoff and not using any transport, are already
         // started RPCs.
+        // 保持 delayedTransport 开启，直到没有未提交的流，已经启动的RPC，可能处于退避状态且未使用任何传输
         if (uncommittedRetriableStreams.isEmpty()) {
           shouldShutdownDelayedTransport = true;
         }
@@ -1261,6 +1323,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
       }
     }
 
+    /**
+     * 立即关闭 delayedTransport 并取消流
+     */
     void onShutdownNow(Status reason) {
       onShutdown(reason);
       Collection<ClientStream> streams;
@@ -1291,6 +1356,11 @@ final class ManagedChannelImpl extends ManagedChannel implements
       }
     }
 
+    /**
+     * 从队列中移除等待执行的流
+     *
+     * @param retriableStream
+     */
     void remove(RetriableStream<?> retriableStream) {
       Status shutdownStatusCopy = null;
 

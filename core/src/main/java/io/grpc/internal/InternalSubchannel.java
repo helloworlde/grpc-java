@@ -318,6 +318,7 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
   /**
    * Immediately attempt to reconnect if the current state is TRANSIENT_FAILURE. Otherwise this
    * method has no effect.
+   * 如果当前的状态是 TRANSIENT_FAILURE，则立即尝试重新连接，其他状态没有任何效果
    */
   void resetConnectBackoff() {
     syncContext.execute(new Runnable() {
@@ -326,9 +327,12 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
         if (state.getState() != TRANSIENT_FAILURE) {
           return;
         }
+        // 取消重新连接的任务
         cancelReconnectTask();
         channelLogger.log(ChannelLogLevel.INFO, "CONNECTING; backoff interrupted");
+        // 状态修改为 CONNECTING
         gotoNonErrorState(CONNECTING);
+        // 开始一个新的 Transport
         startNewTransport();
       }
     });
