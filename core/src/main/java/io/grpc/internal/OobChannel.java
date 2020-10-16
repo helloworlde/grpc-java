@@ -61,281 +61,315 @@ import static com.google.common.base.Preconditions.checkNotNull;
 /**
  * A ManagedChannel backed by a single {@link InternalSubchannel} and used for {@link LoadBalancer}
  * to its own RPC needs.
+ * <p>
+ * Channel 用于自己 LoadBalancer 的 RPC 请求的 Channel
  */
 @ThreadSafe
 final class OobChannel extends ManagedChannel implements InternalInstrumented<ChannelStats> {
-  private static final Logger log = Logger.getLogger(OobChannel.class.getName());
 
-  private InternalSubchannel subchannel;
-  private AbstractSubchannel subchannelImpl;
-  private SubchannelPicker subchannelPicker;
+    private static final Logger log = Logger.getLogger(OobChannel.class.getName());
 
-  private final InternalLogId logId;
-  private final String authority;
-  private final DelayedClientTransport delayedTransport;
-  private final InternalChannelz channelz;
-  private final ObjectPool<? extends Executor> executorPool;
-  private final Executor executor;
-  private final ScheduledExecutorService deadlineCancellationExecutor;
-  private final CountDownLatch terminatedLatch = new CountDownLatch(1);
-  private volatile boolean shutdown;
-  private final CallTracer channelCallsTracer;
-  private final ChannelTracer channelTracer;
-  private final TimeProvider timeProvider;
+    private InternalSubchannel subchannel;
+    private AbstractSubchannel subchannelImpl;
+    private SubchannelPicker subchannelPicker;
 
-  private final ClientTransportProvider transportProvider = new ClientTransportProvider() {
-    @Override
-    public ClientTransport get(PickSubchannelArgs args) {
-      // delayed transport's newStream() always acquires a lock, but concurrent performance doesn't
-      // matter here because OOB communication should be sparse, and it's not on application RPC's
-      // critical path.
-      return delayedTransport;
-    }
+    private final InternalLogId logId;
+    private final String authority;
+    private final DelayedClientTransport delayedTransport;
+    private final InternalChannelz channelz;
+    private final ObjectPool<? extends Executor> executorPool;
+    private final Executor executor;
+    private final ScheduledExecutorService deadlineCancellationExecutor;
+    private final CountDownLatch terminatedLatch = new CountDownLatch(1);
+    private volatile boolean shutdown;
+    private final CallTracer channelCallsTracer;
+    private final ChannelTracer channelTracer;
+    private final TimeProvider timeProvider;
 
-    @Override
-    public <ReqT> ClientStream newRetriableStream(MethodDescriptor<ReqT, ?> method,
-        CallOptions callOptions, Metadata headers, Context context) {
-      throw new UnsupportedOperationException("OobChannel should not create retriable streams");
-    }
-  };
-
-  OobChannel(String authority,
-             ObjectPool<? extends Executor> executorPool,
-             ScheduledExecutorService deadlineCancellationExecutor,
-             SynchronizationContext syncContext,
-             CallTracer callsTracer,
-             ChannelTracer channelTracer,
-             InternalChannelz channelz,
-             TimeProvider timeProvider) {
-    this.authority = checkNotNull(authority, "authority");
-    this.logId = InternalLogId.allocate(getClass(), authority);
-    this.executorPool = checkNotNull(executorPool, "executorPool");
-    this.executor = checkNotNull(executorPool.getObject(), "executor");
-    this.deadlineCancellationExecutor = checkNotNull(deadlineCancellationExecutor, "deadlineCancellationExecutor");
-    this.delayedTransport = new DelayedClientTransport(executor, syncContext);
-    this.channelz = Preconditions.checkNotNull(channelz);
-
-    this.delayedTransport.start(new ManagedClientTransport.Listener() {
-      @Override
-      public void transportShutdown(Status s) {
-        // Don't care
-      }
-
-      @Override
-      public void transportTerminated() {
-        subchannelImpl.shutdown();
-      }
-
-      @Override
-      public void transportReady() {
-        // Don't care
-      }
-
-      @Override
-      public void transportInUse(boolean inUse) {
-        // Don't care
-      }
-    });
-    this.channelCallsTracer = callsTracer;
-    this.channelTracer = checkNotNull(channelTracer, "channelTracer");
-    this.timeProvider = checkNotNull(timeProvider, "timeProvider");
-  }
-
-  // Must be called only once, right after the OobChannel is created.
-  void setSubchannel(final InternalSubchannel subchannel) {
-    log.log(Level.FINE, "[{0}] Created with [{1}]", new Object[] {this, subchannel});
-    this.subchannel = subchannel;
-    subchannelImpl = new AbstractSubchannel() {
+    /**
+     * Transport 提供器
+     */
+    private final ClientTransportProvider transportProvider = new ClientTransportProvider() {
         @Override
-        public void shutdown() {
-          subchannel.shutdown(Status.UNAVAILABLE.withDescription("OobChannel is shutdown"));
+        public ClientTransport get(PickSubchannelArgs args) {
+            // delayed transport's newStream() always acquires a lock, but concurrent performance doesn't
+            // matter here because OOB communication should be sparse, and it's not on application RPC's
+            // critical path.
+            return delayedTransport;
         }
 
         @Override
-        InternalInstrumented<ChannelStats> getInstrumentedInternalSubchannel() {
-          return subchannel;
-        }
-
-        @Override
-        public void requestConnection() {
-          subchannel.obtainActiveTransport();
-        }
-
-        @Override
-        public List<EquivalentAddressGroup> getAllAddresses() {
-          return subchannel.getAddressGroups();
-        }
-
-        @Override
-        public Attributes getAttributes() {
-          return Attributes.EMPTY;
-        }
-
-        @Override
-        public Object getInternalSubchannel() {
-          return subchannel;
+        public <ReqT> ClientStream newRetriableStream(MethodDescriptor<ReqT, ?> method,
+                                                      CallOptions callOptions, Metadata headers, Context context) {
+            throw new UnsupportedOperationException("OobChannel should not create retriable streams");
         }
     };
 
-    final class OobSubchannelPicker extends SubchannelPicker {
-      final PickResult result = PickResult.withSubchannel(subchannelImpl);
+    OobChannel(String authority,
+               ObjectPool<? extends Executor> executorPool,
+               ScheduledExecutorService deadlineCancellationExecutor,
+               SynchronizationContext syncContext,
+               CallTracer callsTracer,
+               ChannelTracer channelTracer,
+               InternalChannelz channelz,
+               TimeProvider timeProvider) {
+        this.authority = checkNotNull(authority, "authority");
+        this.logId = InternalLogId.allocate(getClass(), authority);
+        this.executorPool = checkNotNull(executorPool, "executorPool");
+        this.executor = checkNotNull(executorPool.getObject(), "executor");
+        this.deadlineCancellationExecutor = checkNotNull(deadlineCancellationExecutor, "deadlineCancellationExecutor");
+        this.delayedTransport = new DelayedClientTransport(executor, syncContext);
+        this.channelz = Preconditions.checkNotNull(channelz);
 
-      @Override
-      public PickResult pickSubchannel(PickSubchannelArgs args) {
-        return result;
-      }
+        // 启动监听器
+        this.delayedTransport.start(new ManagedClientTransport.Listener() {
+            @Override
+            public void transportShutdown(Status s) {
+                // Don't care
+            }
 
-      @Override
-      public String toString() {
-        return MoreObjects.toStringHelper(OobSubchannelPicker.class)
-            .add("result", result)
-            .toString();
-      }
+            @Override
+            public void transportTerminated() {
+                subchannelImpl.shutdown();
+            }
+
+            @Override
+            public void transportReady() {
+                // Don't care
+            }
+
+            @Override
+            public void transportInUse(boolean inUse) {
+                // Don't care
+            }
+        });
+        this.channelCallsTracer = callsTracer;
+        this.channelTracer = checkNotNull(channelTracer, "channelTracer");
+        this.timeProvider = checkNotNull(timeProvider, "timeProvider");
     }
 
-    subchannelPicker = new OobSubchannelPicker();
-    delayedTransport.reprocess(subchannelPicker);
-  }
+    // Must be called only once, right after the OobChannel is created.
+    // 当创建后设置 Subchannel
+    void setSubchannel(final InternalSubchannel subchannel) {
+        log.log(Level.FINE, "[{0}] Created with [{1}]", new Object[]{this, subchannel});
+        this.subchannel = subchannel;
 
-  void updateAddresses(EquivalentAddressGroup eag) {
-    subchannel.updateAddresses(Collections.singletonList(eag));
-  }
+        subchannelImpl = new AbstractSubchannel() {
+            @Override
+            public void shutdown() {
+                subchannel.shutdown(Status.UNAVAILABLE.withDescription("OobChannel is shutdown"));
+            }
 
-  @Override
-  public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(
-      MethodDescriptor<RequestT, ResponseT> methodDescriptor, CallOptions callOptions) {
-    return new ClientCallImpl<>(methodDescriptor,
-        callOptions.getExecutor() == null ? executor : callOptions.getExecutor(),
-        callOptions, transportProvider, deadlineCancellationExecutor, channelCallsTracer,
-        false /* retryEnabled */);
-  }
+            @Override
+            InternalInstrumented<ChannelStats> getInstrumentedInternalSubchannel() {
+                return subchannel;
+            }
 
-  @Override
-  public String authority() {
-    return authority;
-  }
+            @Override
+            public void requestConnection() {
+                subchannel.obtainActiveTransport();
+            }
 
-  @Override
-  public boolean isTerminated() {
-    return terminatedLatch.getCount() == 0;
-  }
+            @Override
+            public List<EquivalentAddressGroup> getAllAddresses() {
+                return subchannel.getAddressGroups();
+            }
 
-  @Override
-  public boolean awaitTermination(long time, TimeUnit unit) throws InterruptedException {
-    return terminatedLatch.await(time, unit);
-  }
+            @Override
+            public Attributes getAttributes() {
+                return Attributes.EMPTY;
+            }
 
-  @Override
-  public ConnectivityState getState(boolean requestConnectionIgnored) {
-    if (subchannel == null) {
-      return ConnectivityState.IDLE;
-    }
-    return subchannel.getState();
-  }
+            @Override
+            public Object getInternalSubchannel() {
+                return subchannel;
+            }
+        };
 
-  @Override
-  public ManagedChannel shutdown() {
-    shutdown = true;
-    delayedTransport.shutdown(Status.UNAVAILABLE.withDescription("OobChannel.shutdown() called"));
-    return this;
-  }
+        // Subchannel 选择器
+        final class OobSubchannelPicker extends SubchannelPicker {
+            final PickResult result = PickResult.withSubchannel(subchannelImpl);
 
-  @Override
-  public boolean isShutdown() {
-    return shutdown;
-  }
+            @Override
+            public PickResult pickSubchannel(PickSubchannelArgs args) {
+                return result;
+            }
 
-  @Override
-  public ManagedChannel shutdownNow() {
-    shutdown = true;
-    delayedTransport.shutdownNow(
-        Status.UNAVAILABLE.withDescription("OobChannel.shutdownNow() called"));
-    return this;
-  }
-
-  void handleSubchannelStateChange(final ConnectivityStateInfo newState) {
-    channelTracer.reportEvent(
-        new ChannelTrace.Event.Builder()
-            .setDescription("Entering " + newState.getState() + " state")
-            .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
-            .setTimestampNanos(timeProvider.currentTimeNanos())
-            .build());
-    switch (newState.getState()) {
-      case READY:
-      case IDLE:
-        delayedTransport.reprocess(subchannelPicker);
-        break;
-      case TRANSIENT_FAILURE:
-        final class OobErrorPicker extends SubchannelPicker {
-          final PickResult errorResult = PickResult.withError(newState.getStatus());
-
-          @Override
-          public PickResult pickSubchannel(PickSubchannelArgs args) {
-            return errorResult;
-          }
-
-          @Override
-          public String toString() {
-            return MoreObjects.toStringHelper(OobErrorPicker.class)
-                .add("errorResult", errorResult)
-                .toString();
-          }
+            @Override
+            public String toString() {
+                return MoreObjects.toStringHelper(OobSubchannelPicker.class)
+                                  .add("result", result)
+                                  .toString();
+            }
         }
 
-        delayedTransport.reprocess(new OobErrorPicker());
-        break;
-      default:
-        // Do nothing
+        subchannelPicker = new OobSubchannelPicker();
+        delayedTransport.reprocess(subchannelPicker);
     }
-  }
 
-  // must be run from channel executor
-  void handleSubchannelTerminated() {
-    channelz.removeSubchannel(this);
-    // When delayedTransport is terminated, it shuts down subchannel.  Therefore, at this point
-    // both delayedTransport and subchannel have terminated.
-    executorPool.returnObject(executor);
-    terminatedLatch.countDown();
-  }
+    void updateAddresses(EquivalentAddressGroup eag) {
+        subchannel.updateAddresses(Collections.singletonList(eag));
+    }
 
-  @VisibleForTesting
-  Subchannel getSubchannel() {
-    return subchannelImpl;
-  }
+    /**
+     * 创建新的调用
+     *
+     * @param methodDescriptor describes the name and parameter types of the operation to call.
+     *                         描述要调用的方法名称和参数
+     * @param callOptions      runtime options to be applied to this call.
+     *                         这次调用的参数
+     */
+    @Override
+    public <RequestT, ResponseT> ClientCall<RequestT, ResponseT> newCall(MethodDescriptor<RequestT, ResponseT> methodDescriptor,
+                                                                         CallOptions callOptions) {
+        return new ClientCallImpl<>(methodDescriptor,
+                callOptions.getExecutor() == null ? executor : callOptions.getExecutor(),
+                callOptions, transportProvider, deadlineCancellationExecutor, channelCallsTracer,
+                false /* retryEnabled */);
+    }
 
-  InternalSubchannel getInternalSubchannel() {
-    return subchannel;
-  }
+    @Override
+    public String authority() {
+        return authority;
+    }
 
-  @Override
-  public ListenableFuture<ChannelStats> getStats() {
-    final SettableFuture<ChannelStats> ret = SettableFuture.create();
-    final ChannelStats.Builder builder = new ChannelStats.Builder();
-    channelCallsTracer.updateBuilder(builder);
-    channelTracer.updateBuilder(builder);
-    builder
-        .setTarget(authority)
-        .setState(subchannel.getState())
-        .setSubchannels(Collections.<InternalWithLogId>singletonList(subchannel));
-    ret.set(builder.build());
-    return ret;
-  }
+    @Override
+    public boolean isTerminated() {
+        return terminatedLatch.getCount() == 0;
+    }
 
-  @Override
-  public InternalLogId getLogId() {
-    return logId;
-  }
+    @Override
+    public boolean awaitTermination(long time, TimeUnit unit) throws InterruptedException {
+        return terminatedLatch.await(time, unit);
+    }
 
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .add("logId", logId.getId())
-        .add("authority", authority)
-        .toString();
-  }
+    /**
+     * 获取连接状态，不会要求建立连接
+     */
+    @Override
+    public ConnectivityState getState(boolean requestConnectionIgnored) {
+        if (subchannel == null) {
+            return ConnectivityState.IDLE;
+        }
+        return subchannel.getState();
+    }
 
-  @Override
-  public void resetConnectBackoff() {
-    subchannel.resetConnectBackoff();
-  }
+    @Override
+    public ManagedChannel shutdown() {
+        shutdown = true;
+        delayedTransport.shutdown(Status.UNAVAILABLE.withDescription("OobChannel.shutdown() called"));
+        return this;
+    }
+
+    @Override
+    public boolean isShutdown() {
+        return shutdown;
+    }
+
+    @Override
+    public ManagedChannel shutdownNow() {
+        shutdown = true;
+        delayedTransport.shutdownNow(Status.UNAVAILABLE.withDescription("OobChannel.shutdownNow() called"));
+        return this;
+    }
+
+    /**
+     * 处理状态变化
+     *
+     * @param newState
+     */
+    void handleSubchannelStateChange(final ConnectivityStateInfo newState) {
+        // 记录事件
+        channelTracer.reportEvent(new ChannelTrace.Event.Builder()
+                .setDescription("Entering " + newState.getState() + " state")
+                .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
+                .setTimestampNanos(timeProvider.currentTimeNanos())
+                .build());
+
+        switch (newState.getState()) {
+            case READY:
+            case IDLE:
+                delayedTransport.reprocess(subchannelPicker);
+                break;
+            case TRANSIENT_FAILURE:
+                final class OobErrorPicker extends SubchannelPicker {
+                    final PickResult errorResult = PickResult.withError(newState.getStatus());
+
+                    @Override
+                    public PickResult pickSubchannel(PickSubchannelArgs args) {
+                        return errorResult;
+                    }
+
+                    @Override
+                    public String toString() {
+                        return MoreObjects.toStringHelper(OobErrorPicker.class)
+                                          .add("errorResult", errorResult)
+                                          .toString();
+                    }
+                }
+
+                delayedTransport.reprocess(new OobErrorPicker());
+                break;
+            default:
+                // Do nothing
+        }
+    }
+
+    // must be run from channel executor
+    // 关闭
+    void handleSubchannelTerminated() {
+        channelz.removeSubchannel(this);
+        // When delayedTransport is terminated, it shuts down subchannel.  Therefore, at this point
+        // both delayedTransport and subchannel have terminated.
+        executorPool.returnObject(executor);
+        terminatedLatch.countDown();
+    }
+
+    @VisibleForTesting
+    Subchannel getSubchannel() {
+        return subchannelImpl;
+    }
+
+    InternalSubchannel getInternalSubchannel() {
+        return subchannel;
+    }
+
+    /**
+     * 获取统计数据
+     */
+    @Override
+    public ListenableFuture<ChannelStats> getStats() {
+        final SettableFuture<ChannelStats> ret = SettableFuture.create();
+        final ChannelStats.Builder builder = new ChannelStats.Builder();
+
+        channelCallsTracer.updateBuilder(builder);
+        channelTracer.updateBuilder(builder);
+
+        builder.setTarget(authority)
+               .setState(subchannel.getState())
+               .setSubchannels(Collections.<InternalWithLogId>singletonList(subchannel));
+        ret.set(builder.build());
+        return ret;
+    }
+
+    @Override
+    public InternalLogId getLogId() {
+        return logId;
+    }
+
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this)
+                          .add("logId", logId.getId())
+                          .add("authority", authority)
+                          .toString();
+    }
+
+    /**
+     * 重新连接
+     */
+    @Override
+    public void resetConnectBackoff() {
+        subchannel.resetConnectBackoff();
+    }
 }
