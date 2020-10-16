@@ -154,17 +154,26 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
 
   private Status shutdownReason;
 
-  InternalSubchannel(List<EquivalentAddressGroup> addressGroups, String authority, String userAgent,
-      BackoffPolicy.Provider backoffPolicyProvider,
-      ClientTransportFactory transportFactory, ScheduledExecutorService scheduledExecutor,
-      Supplier<Stopwatch> stopwatchSupplier, SynchronizationContext syncContext, Callback callback,
-      InternalChannelz channelz, CallTracer callsTracer, ChannelTracer channelTracer,
-      InternalLogId logId, ChannelLogger channelLogger) {
+  InternalSubchannel(List<EquivalentAddressGroup> addressGroups,
+                     String authority,
+                     String userAgent,
+                     BackoffPolicy.Provider backoffPolicyProvider,
+                     ClientTransportFactory transportFactory,
+                     ScheduledExecutorService scheduledExecutor,
+                     Supplier<Stopwatch> stopwatchSupplier,
+                     SynchronizationContext syncContext,
+                     Callback callback,
+                     InternalChannelz channelz,
+                     CallTracer callsTracer,
+                     ChannelTracer channelTracer,
+                     InternalLogId logId,
+                     ChannelLogger channelLogger) {
+
     Preconditions.checkNotNull(addressGroups, "addressGroups");
     Preconditions.checkArgument(!addressGroups.isEmpty(), "addressGroups is empty");
     checkListHasNoNulls(addressGroups, "addressGroups contains null entry");
-    List<EquivalentAddressGroup> unmodifiableAddressGroups =
-        Collections.unmodifiableList(new ArrayList<>(addressGroups));
+
+    List<EquivalentAddressGroup> unmodifiableAddressGroups = Collections.unmodifiableList(new ArrayList<>(addressGroups));
     this.addressGroups = unmodifiableAddressGroups;
     this.addressIndex = new Index(unmodifiableAddressGroups);
     this.authority = authority;

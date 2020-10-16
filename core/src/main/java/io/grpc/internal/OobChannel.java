@@ -16,8 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
@@ -47,6 +45,8 @@ import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.SynchronizationContext;
 import io.grpc.internal.ClientCallImpl.ClientTransportProvider;
+
+import javax.annotation.concurrent.ThreadSafe;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -55,7 +55,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * A ManagedChannel backed by a single {@link InternalSubchannel} and used for {@link LoadBalancer}
@@ -98,40 +99,43 @@ final class OobChannel extends ManagedChannel implements InternalInstrumented<Ch
     }
   };
 
-  OobChannel(
-      String authority, ObjectPool<? extends Executor> executorPool,
-      ScheduledExecutorService deadlineCancellationExecutor, SynchronizationContext syncContext,
-      CallTracer callsTracer, ChannelTracer channelTracer, InternalChannelz channelz,
-      TimeProvider timeProvider) {
+  OobChannel(String authority,
+             ObjectPool<? extends Executor> executorPool,
+             ScheduledExecutorService deadlineCancellationExecutor,
+             SynchronizationContext syncContext,
+             CallTracer callsTracer,
+             ChannelTracer channelTracer,
+             InternalChannelz channelz,
+             TimeProvider timeProvider) {
     this.authority = checkNotNull(authority, "authority");
     this.logId = InternalLogId.allocate(getClass(), authority);
     this.executorPool = checkNotNull(executorPool, "executorPool");
     this.executor = checkNotNull(executorPool.getObject(), "executor");
-    this.deadlineCancellationExecutor = checkNotNull(
-        deadlineCancellationExecutor, "deadlineCancellationExecutor");
+    this.deadlineCancellationExecutor = checkNotNull(deadlineCancellationExecutor, "deadlineCancellationExecutor");
     this.delayedTransport = new DelayedClientTransport(executor, syncContext);
     this.channelz = Preconditions.checkNotNull(channelz);
+
     this.delayedTransport.start(new ManagedClientTransport.Listener() {
-        @Override
-        public void transportShutdown(Status s) {
-          // Don't care
-        }
+      @Override
+      public void transportShutdown(Status s) {
+        // Don't care
+      }
 
-        @Override
-        public void transportTerminated() {
-          subchannelImpl.shutdown();
-        }
+      @Override
+      public void transportTerminated() {
+        subchannelImpl.shutdown();
+      }
 
-        @Override
-        public void transportReady() {
-          // Don't care
-        }
+      @Override
+      public void transportReady() {
+        // Don't care
+      }
 
-        @Override
-        public void transportInUse(boolean inUse) {
-          // Don't care
-        }
-      });
+      @Override
+      public void transportInUse(boolean inUse) {
+        // Don't care
+      }
+    });
     this.channelCallsTracer = callsTracer;
     this.channelTracer = checkNotNull(channelTracer, "channelTracer");
     this.timeProvider = checkNotNull(timeProvider, "timeProvider");

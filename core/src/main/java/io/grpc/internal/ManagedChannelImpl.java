@@ -1422,6 +1422,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
       return subchannel;
     }
 
+    /**
+     * 创建 Subchannel
+     */
     @Override
     public AbstractSubchannel createSubchannel(CreateSubchannelArgs args) {
       syncContext.throwIfNotInThisSynchronizationContext();
@@ -1475,6 +1478,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
       syncContext.execute(new UpdateBalancingState());
     }
 
+    /**
+     * 重新解析服务
+     */
     @Override
     public void refreshNameResolution() {
       logWarningIfNotInSyncContext("refreshNameResolution()");
@@ -1488,42 +1494,70 @@ final class ManagedChannelImpl extends ManagedChannel implements
       syncContext.execute(new LoadBalancerRefreshNameResolution());
     }
 
+    /**
+     * 更新指定 Subchannel 的地址
+     *
+     * @param subchannel 指定的 Subchannel
+     * @param addrs      地址
+     */
     @Deprecated
     @Override
-    public void updateSubchannelAddresses(
-            LoadBalancer.Subchannel subchannel, List<EquivalentAddressGroup> addrs) {
-      checkArgument(subchannel instanceof SubchannelImpl,
-              "subchannel must have been returned from createSubchannel");
+    public void updateSubchannelAddresses(LoadBalancer.Subchannel subchannel,
+                                          List<EquivalentAddressGroup> addrs) {
+      checkArgument(subchannel instanceof SubchannelImpl, "subchannel must have been returned from createSubchannel");
       logWarningIfNotInSyncContext("updateSubchannelAddresses()");
       ((InternalSubchannel) subchannel.getInternalSubchannel()).updateAddresses(addrs);
     }
 
+    /**
+     * 创建 OobChannel
+     */
     @Override
     public ManagedChannel createOobChannel(EquivalentAddressGroup addressGroup, String authority) {
       // TODO(ejona): can we be even stricter? Like terminating?
       checkState(!terminated, "Channel is terminated");
       long oobChannelCreationTime = timeProvider.currentTimeNanos();
       InternalLogId oobLogId = InternalLogId.allocate("OobChannel", /*details=*/ null);
-      InternalLogId subchannelLogId =
-              InternalLogId.allocate("Subchannel-OOB", /*details=*/ authority);
-      ChannelTracer oobChannelTracer =
-              new ChannelTracer(
-                      oobLogId, maxTraceEvents, oobChannelCreationTime,
-                      "OobChannel for " + addressGroup);
-      final OobChannel oobChannel = new OobChannel(
-              authority, balancerRpcExecutorPool, transportFactory.getScheduledExecutorService(),
-              syncContext, callTracerFactory.create(), oobChannelTracer, channelz, timeProvider);
+      InternalLogId subchannelLogId = InternalLogId.allocate("Subchannel-OOB", /*details=*/ authority);
+
+      // 记录 Channel 的追踪器
+      ChannelTracer oobChannelTracer = new ChannelTracer(oobLogId,
+              maxTraceEvents,
+              oobChannelCreationTime,
+              "OobChannel for " + addressGroup);
+
+      // 用于 Channel 自身的 Channel
+      final OobChannel oobChannel = new OobChannel(authority,
+              balancerRpcExecutorPool,
+              transportFactory.getScheduledExecutorService(),
+              syncContext,
+              callTracerFactory.create(),
+              oobChannelTracer,
+              channelz,
+              timeProvider);
+
+      // 记录事件
       channelTracer.reportEvent(new ChannelTrace.Event.Builder()
               .setDescription("Child OobChannel created")
               .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
               .setTimestampNanos(oobChannelCreationTime)
               .setChannelRef(oobChannel)
               .build());
-      ChannelTracer subchannelTracer =
-              new ChannelTracer(subchannelLogId, maxTraceEvents, oobChannelCreationTime,
-                      "Subchannel for " + addressGroup);
+
+      // 记录 Subchannel 的追踪器
+      ChannelTracer subchannelTracer = new ChannelTracer(subchannelLogId,
+              maxTraceEvents,
+              oobChannelCreationTime,
+              "Subchannel for " + addressGroup);
+
+      // 日志
       ChannelLogger subchannelLogger = new ChannelLoggerImpl(subchannelTracer, timeProvider);
+
+      // 终止和状态变化回调
       final class ManagedOobChannelCallback extends InternalSubchannel.Callback {
+        /**
+         * 终止
+         */
         @Override
         void onTerminated(InternalSubchannel is) {
           oobChannels.remove(oobChannel);
@@ -1532,6 +1566,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
           maybeTerminateChannel();
         }
 
+        /**
+         * 状态变化
+         */
         @Override
         void onStateChange(InternalSubchannel is, ConnectivityStateInfo newState) {
           handleInternalSubchannelState(newState);
@@ -1539,10 +1576,15 @@ final class ManagedChannelImpl extends ManagedChannel implements
         }
       }
 
-      final InternalSubchannel internalSubchannel = new InternalSubchannel(
-              Collections.singletonList(addressGroup),
-              authority, userAgent, backoffPolicyProvider, transportFactory,
-              transportFactory.getScheduledExecutorService(), stopwatchSupplier, syncContext,
+      // 创建内部的 Subchannel
+      final InternalSubchannel internalSubchannel = new InternalSubchannel(Collections.singletonList(addressGroup),
+              authority,
+              userAgent,
+              backoffPolicyProvider,
+              transportFactory,
+              transportFactory.getScheduledExecutorService(),
+              stopwatchSupplier,
+              syncContext,
               // All callback methods are run from syncContext
               new ManagedOobChannelCallback(),
               channelz,
@@ -1550,15 +1592,20 @@ final class ManagedChannelImpl extends ManagedChannel implements
               subchannelTracer,
               subchannelLogId,
               subchannelLogger);
+
+      // 记录事件
       oobChannelTracer.reportEvent(new ChannelTrace.Event.Builder()
               .setDescription("Child Subchannel created")
               .setSeverity(ChannelTrace.Event.Severity.CT_INFO)
               .setTimestampNanos(oobChannelCreationTime)
               .setSubchannelRef(internalSubchannel)
               .build());
+
       channelz.addSubchannel(oobChannel);
       channelz.addSubchannel(internalSubchannel);
       oobChannel.setSubchannel(internalSubchannel);
+
+      // 将 OobChannel 添加到集合中
       final class AddOobChannel implements Runnable {
         @Override
         public void run() {
@@ -1577,10 +1624,13 @@ final class ManagedChannelImpl extends ManagedChannel implements
       return oobChannel;
     }
 
+    /**
+     * 创建 OobChannel 的 Builder
+     */
     @Override
     public ManagedChannelBuilder<?> createResolvingOobChannelBuilder(String target) {
-      final class ResolvingOobChannelBuilder
-              extends AbstractManagedChannelImplBuilder<ResolvingOobChannelBuilder> {
+
+      final class ResolvingOobChannelBuilder extends AbstractManagedChannelImplBuilder<ResolvingOobChannelBuilder> {
         int defaultPort = -1;
 
         ResolvingOobChannelBuilder(String target) {
@@ -1600,8 +1650,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
         @Override
         public ManagedChannel build() {
           // TODO(creamsoup) prevent main channel to shutdown if oob channel is not terminated
-          return new ManagedChannelImpl(
-                  this,
+          // 创建 ManagedChannel
+          return new ManagedChannelImpl(this,
                   transportFactory,
                   backoffPolicyProvider,
                   balancerRpcExecutorPool,
@@ -1626,10 +1676,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
       return builder;
     }
 
+    /**
+     * 更新 OobChannel 的地址
+     */
     @Override
     public void updateOobChannelAddresses(ManagedChannel channel, EquivalentAddressGroup eag) {
-      checkArgument(channel instanceof OobChannel,
-              "channel must have been returned from createOobChannel");
+      checkArgument(channel instanceof OobChannel, "channel must have been returned from createOobChannel");
       ((OobChannel) channel).updateAddresses(eag);
     }
 
@@ -1670,6 +1722,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
+  /**
+   * 命名解析监听器
+   */
   private final class NameResolverListener extends NameResolver.Listener2 {
     final LbHelperImpl helper;
     final NameResolver resolver;
@@ -1679,7 +1734,6 @@ final class ManagedChannelImpl extends ManagedChannel implements
      *
      * @param helperImpl 负载均衡提供器
      * @param resolver   服务发现
-     * @return 服务发现监听器
      */
     NameResolverListener(LbHelperImpl helperImpl, NameResolver resolver) {
       this.helper = checkNotNull(helperImpl, "helperImpl");
@@ -1797,6 +1851,10 @@ final class ManagedChannelImpl extends ManagedChannel implements
       syncContext.execute(new NamesResolved());
     }
 
+    /**
+     * 处理命名解析错误
+     * @param error a non-OK status
+     */
     @Override
     public void onError(final Status error) {
       checkArgument(!error.isOk(), "the error status must not be OK");
@@ -1810,9 +1868,12 @@ final class ManagedChannelImpl extends ManagedChannel implements
       syncContext.execute(new NameResolverErrorHandler());
     }
 
+    /**
+     * 处理命名解析错误
+     */
     private void handleErrorInSyncContext(Status error) {
-      logger.log(Level.WARNING, "[{0}] Failed to resolve name. status={1}",
-          new Object[] {getLogId(), error});
+      logger.log(Level.WARNING, "[{0}] Failed to resolve name. status={1}", new Object[]{getLogId(), error});
+
       if (lastResolutionState != ResolutionState.ERROR) {
         channelLogger.log(ChannelLogLevel.WARNING, "Failed to resolve name: {0}", error);
         lastResolutionState = ResolutionState.ERROR;
@@ -1824,9 +1885,13 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
       helper.lb.handleNameResolutionError(error);
 
+      // 延迟执行服务解析
       scheduleExponentialBackOffInSyncContext();
     }
 
+    /**
+     * 延迟执行服务解析
+     */
     private void scheduleExponentialBackOffInSyncContext() {
       if (scheduledNameResolverRefresh != null && scheduledNameResolverRefresh.isPending()) {
         // The name resolver may invoke onError multiple times, but we only want to
@@ -1839,13 +1904,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
         nameResolverBackoffPolicy = backoffPolicyProvider.get();
       }
       long delayNanos = nameResolverBackoffPolicy.nextBackoffNanos();
-      channelLogger.log(
-          ChannelLogLevel.DEBUG,
-          "Scheduling DNS resolution backoff for {0} ns", delayNanos);
-      scheduledNameResolverRefresh =
-          syncContext.schedule(
-              new DelayedNameResolverRefresh(), delayNanos, TimeUnit.NANOSECONDS,
-              transportFactory .getScheduledExecutorService());
+      channelLogger.log(ChannelLogLevel.DEBUG, "Scheduling DNS resolution backoff for {0} ns", delayNanos);
+      // 延迟执行服务解析
+      scheduledNameResolverRefresh = syncContext.schedule(new DelayedNameResolverRefresh(), delayNanos, TimeUnit.NANOSECONDS, transportFactory.getScheduledExecutorService());
     }
   }
 
@@ -1888,6 +1949,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
     // This can be called either in or outside of syncContext
     // TODO(zhangkun83): merge it back into start() once the caller createSubchannel() is deleted.
+    // 启动 Subchannel 监听器
     private void internalStart(final SubchannelStateListener listener) {
       checkState(!started, "already started");
       checkState(!shutdown, "already shutdown");
@@ -2005,6 +2067,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
       return subchannel;
     }
 
+    /**
+     * 关闭 Subchannel
+     */
     @Override
     public void shutdown() {
       // TODO(zhangkun83): replace shutdown() with internalShutdown() to turn the warning into an
@@ -2145,7 +2210,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
   }
 
   /**
-   * Called from syncContext.
+   * DelayedTransport 监听器
    */
   private final class DelayedTransportListener implements ManagedClientTransport.Listener {
     @Override
@@ -2200,6 +2265,7 @@ final class ManagedChannelImpl extends ManagedChannel implements
 
   /**
    * Lazily request for Executor from an executor pool.
+   * 从线程池集合中延迟获取线程池
    */
   private static final class ExecutorHolder {
     private final ObjectPool<? extends Executor> pool;
@@ -2223,6 +2289,9 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
   }
 
+  /**
+   * 线程池
+   */
   private static final class RestrictedScheduledExecutor implements ScheduledExecutorService {
     final ScheduledExecutorService delegate;
 
@@ -2241,39 +2310,32 @@ final class ManagedChannelImpl extends ManagedChannel implements
     }
 
     @Override
-    public ScheduledFuture<?> scheduleAtFixedRate(
-        Runnable command, long initialDelay, long period, TimeUnit unit) {
+    public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
       return delegate.scheduleAtFixedRate(command, initialDelay, period, unit);
     }
 
     @Override
-    public ScheduledFuture<?> scheduleWithFixedDelay(
-        Runnable command, long initialDelay, long delay, TimeUnit unit) {
+    public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
       return delegate.scheduleWithFixedDelay(command, initialDelay, delay, unit);
     }
 
     @Override
-    public boolean awaitTermination(long timeout, TimeUnit unit)
-        throws InterruptedException {
+    public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
       return delegate.awaitTermination(timeout, unit);
     }
 
     @Override
-    public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks)
-        throws InterruptedException {
+    public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks) throws InterruptedException {
       return delegate.invokeAll(tasks);
     }
 
     @Override
-    public <T> List<Future<T>> invokeAll(
-        Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit)
-        throws InterruptedException {
+    public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException {
       return delegate.invokeAll(tasks, timeout, unit);
     }
 
     @Override
-    public <T> T invokeAny(Collection<? extends Callable<T>> tasks)
-        throws InterruptedException, ExecutionException {
+    public <T> T invokeAny(Collection<? extends Callable<T>> tasks) throws InterruptedException, ExecutionException {
       return delegate.invokeAny(tasks);
     }
 

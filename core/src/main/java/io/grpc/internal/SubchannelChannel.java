@@ -16,8 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
@@ -29,9 +27,11 @@ import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.internal.ClientCallImpl.ClientTransportProvider;
 import io.grpc.internal.ClientStreamListener.RpcProgress;
-import io.grpc.internal.GrpcUtil;
+
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 final class SubchannelChannel extends Channel {
   @VisibleForTesting
@@ -66,13 +66,13 @@ final class SubchannelChannel extends Channel {
       }
     };
 
-  SubchannelChannel(
-      InternalSubchannel subchannel, Executor executor,
-      ScheduledExecutorService deadlineCancellationExecutor, CallTracer callsTracer) {
+  SubchannelChannel(InternalSubchannel subchannel,
+                    Executor executor,
+                    ScheduledExecutorService deadlineCancellationExecutor,
+                    CallTracer callsTracer) {
     this.subchannel = checkNotNull(subchannel, "subchannel");
     this.executor = checkNotNull(executor, "executor");
-    this.deadlineCancellationExecutor =
-        checkNotNull(deadlineCancellationExecutor, "deadlineCancellationExecutor");
+    this.deadlineCancellationExecutor = checkNotNull(deadlineCancellationExecutor, "deadlineCancellationExecutor");
     this.callsTracer = checkNotNull(callsTracer, "callsTracer");
   }
 
