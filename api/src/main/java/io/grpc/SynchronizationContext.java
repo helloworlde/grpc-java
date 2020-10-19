@@ -187,9 +187,11 @@ public final class SynchronizationContext implements Executor {
 
   /**
    * Allows the user to check the status and/or cancel a task scheduled by {@link #schedule}.
+   * 允许用户检查任务的状态或者取消任务调度
    *
    * <p>This class is NOT thread-safe.  All methods must be run from the same {@link
    * SynchronizationContext} as which the task was scheduled in.
+   * 这个类不是线程安全的，所有的方法必须通过调度任务的同一个 SynchronizationContext 访问
    */
   public static final class ScheduledHandle {
     private final ManagedRunnable runnable;
@@ -212,6 +214,7 @@ public final class SynchronizationContext implements Executor {
     /**
      * Returns {@code true} if the task will eventually run, meaning that it has neither started
      * running nor been cancelled.
+     * 如果任务最终会执行，则返回 true，意味着既不是 started 也不是 cancelled 状态
      */
     public boolean isPending() {
       return !(runnable.hasStarted || runnable.isCancelled);
