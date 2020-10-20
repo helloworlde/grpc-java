@@ -17,16 +17,21 @@
 package io.grpc.internal;
 
 import io.grpc.Attributes;
+
 import javax.annotation.concurrent.ThreadSafe;
 
 /**
  * A {@link ManagedClientTransport} that is based on a connection.
+ * <p>
+ * 基于连接的 ManagedClientTransport
  */
 @ThreadSafe
 public interface ConnectionClientTransport extends ManagedClientTransport {
-  /**
-   * Returns a set of attributes, which may vary depending on the state of the transport. The keys
-   * should define in what states they will be present.
-   */
-  Attributes getAttributes();
+    /**
+     * Returns a set of attributes, which may vary depending on the state of the transport. The keys
+     * should define in what states they will be present.
+     * <p>
+     * 返回属性集合，根据 Transport 的状态变化而变化，key 应当定义他们已什么样的状态出现
+     */
+    Attributes getAttributes();
 }

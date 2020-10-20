@@ -27,46 +27,55 @@ import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.internal.ClientStreamListener.RpcProgress;
+
 import java.util.concurrent.Executor;
 
 /**
  * A client transport that creates streams that will immediately fail when started.
+ * 支持失败的客户端 Transport，客户端启动时创建的流会立即失败
  */
 class FailingClientTransport implements ClientTransport {
-  @VisibleForTesting
-  final Status error;
-  private final RpcProgress rpcProgress;
 
-  FailingClientTransport(Status error, RpcProgress rpcProgress) {
-    Preconditions.checkArgument(!error.isOk(), "error must not be OK");
-    this.error = error;
-    this.rpcProgress = rpcProgress;
-  }
+    @VisibleForTesting
+    final Status error;
 
-  @Override
-  public ClientStream newStream(
-      MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
-    return new FailingClientStream(error, rpcProgress);
-  }
+    private final RpcProgress rpcProgress;
 
-  @Override
-  public void ping(final PingCallback callback, Executor executor) {
-    executor.execute(new Runnable() {
-        @Override public void run() {
-          callback.onFailure(error.asException());
-        }
-      });
-  }
+    /**
+     * 构建失败的 Transport
+     */
+    FailingClientTransport(Status error, RpcProgress rpcProgress) {
+        Preconditions.checkArgument(!error.isOk(), "error must not be OK");
+        this.error = error;
+        this.rpcProgress = rpcProgress;
+    }
 
-  @Override
-  public ListenableFuture<SocketStats> getStats() {
-    SettableFuture<SocketStats> ret = SettableFuture.create();
-    ret.set(null);
-    return ret;
-  }
+    @Override
+    public ClientStream newStream(MethodDescriptor<?, ?> method,
+                                  Metadata headers,
+                                  CallOptions callOptions) {
+        return new FailingClientStream(error, rpcProgress);
+    }
 
-  @Override
-  public InternalLogId getLogId() {
-    throw new UnsupportedOperationException("Not a real transport");
-  }
+    @Override
+    public void ping(final PingCallback callback, Executor executor) {
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                callback.onFailure(error.asException());
+            }
+        });
+    }
+
+    @Override
+    public ListenableFuture<SocketStats> getStats() {
+        SettableFuture<SocketStats> ret = SettableFuture.create();
+        ret.set(null);
+        return ret;
+    }
+
+    @Override
+    public InternalLogId getLogId() {
+        throw new UnsupportedOperationException("Not a real transport");
+    }
 }

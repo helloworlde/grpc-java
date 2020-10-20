@@ -25,54 +25,94 @@ import io.grpc.InternalLogId;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
+
 import java.util.concurrent.Executor;
 
+/**
+ * 支持生命周期管理的，基于连接的代理 Transport
+ */
 abstract class ForwardingConnectionClientTransport implements ConnectionClientTransport {
-  @Override
-  public Runnable start(Listener listener) {
-    return delegate().start(listener);
-  }
 
-  @Override
-  public void shutdown(Status status) {
-    delegate().shutdown(status);
-  }
+    /**
+     * 开始一个 Transport
+     *
+     * @param listener non-{@code null} listener of transport events
+     *                 非空的 Transport 事件监听器
+     */
+    @Override
+    public Runnable start(Listener listener) {
+        return delegate().start(listener);
+    }
 
-  @Override
-  public void shutdownNow(Status status) {
-    delegate().shutdownNow(status);
-  }
+    /**
+     * 关闭 Transport
+     */
+    @Override
+    public void shutdown(Status status) {
+        delegate().shutdown(status);
+    }
 
-  @Override
-  public ClientStream newStream(
-      MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions) {
-    return delegate().newStream(method, headers, callOptions);
-  }
+    /**
+     * 立即关闭 Transport
+     */
+    @Override
+    public void shutdownNow(Status status) {
+        delegate().shutdownNow(status);
+    }
 
-  @Override
-  public void ping(PingCallback callback, Executor executor) {
-    delegate().ping(callback, executor);
-  }
+    /**
+     * 创建新的流
+     *
+     * @param method      the descriptor of the remote method to be called for this stream.
+     *                    这个流被调用的远程方法的描述
+     * @param headers     to send at the beginning of the call
+     *                    在调用开始会被发送的信息
+     * @param callOptions runtime options of the call
+     *                    调用执行时的选项
+     */
+    @Override
+    public ClientStream newStream(MethodDescriptor<?, ?> method,
+                                  Metadata headers,
+                                  CallOptions callOptions) {
+        return delegate().newStream(method, headers, callOptions);
+    }
 
-  @Override
-  public InternalLogId getLogId() {
-    return delegate().getLogId();
-  }
+    /**
+     * ping 远程端点
+     */
+    @Override
+    public void ping(PingCallback callback, Executor executor) {
+        delegate().ping(callback, executor);
+    }
 
-  @Override
-  public Attributes getAttributes() {
-    return delegate().getAttributes();
-  }
+    @Override
+    public InternalLogId getLogId() {
+        return delegate().getLogId();
+    }
 
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
-  }
+    /**
+     * 获取 Transport 属性
+     */
+    @Override
+    public Attributes getAttributes() {
+        return delegate().getAttributes();
+    }
 
-  @Override
-  public ListenableFuture<SocketStats> getStats() {
-    return delegate().getStats();
-  }
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
+    }
 
-  protected abstract ConnectionClientTransport delegate();
+    /**
+     * 获取 Transport 分析
+     */
+    @Override
+    public ListenableFuture<SocketStats> getStats() {
+        return delegate().getStats();
+    }
+
+    /**
+     * 代理的 Transport
+     */
+    protected abstract ConnectionClientTransport delegate();
 }
