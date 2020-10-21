@@ -16,14 +16,6 @@
 
 package io.grpc.netty;
 
-import static com.google.common.base.Preconditions.checkState;
-import static io.grpc.internal.GrpcUtil.CONTENT_TYPE_KEY;
-import static io.grpc.internal.TransportFrameUtil.toHttp2Headers;
-import static io.grpc.internal.TransportFrameUtil.toRawSerializedHeaders;
-import static io.netty.channel.ChannelOption.SO_LINGER;
-import static io.netty.channel.ChannelOption.SO_TIMEOUT;
-import static io.netty.util.CharsetUtil.UTF_8;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import io.grpc.InternalChannelz;
@@ -51,6 +43,9 @@ import io.netty.handler.codec.http2.Http2Headers;
 import io.netty.util.AsciiString;
 import io.netty.util.NettyRuntime;
 import io.netty.util.concurrent.DefaultThreadFactory;
+
+import javax.annotation.CheckReturnValue;
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.nio.channels.ClosedChannelException;
@@ -61,8 +56,14 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.CheckReturnValue;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkState;
+import static io.grpc.internal.GrpcUtil.CONTENT_TYPE_KEY;
+import static io.grpc.internal.TransportFrameUtil.toHttp2Headers;
+import static io.grpc.internal.TransportFrameUtil.toRawSerializedHeaders;
+import static io.netty.channel.ChannelOption.SO_LINGER;
+import static io.netty.channel.ChannelOption.SO_TIMEOUT;
+import static io.netty.util.CharsetUtil.UTF_8;
 
 /**
  * Common utility methods.
@@ -251,6 +252,12 @@ class Utils {
     return GrpcHttp2OutboundHeaders.serverResponseTrailers(toHttp2Headers(trailers));
   }
 
+  /**
+   * 将异常转换为状态
+   *
+   * @param t 异常
+   * @return 状态
+   */
   public static Status statusFromThrowable(Throwable t) {
     Status s = Status.fromThrowable(t);
     if (s.getCode() != Status.Code.UNKNOWN) {

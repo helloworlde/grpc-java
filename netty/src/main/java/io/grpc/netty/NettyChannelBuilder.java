@@ -377,6 +377,7 @@ public final class NettyChannelBuilder
   /**
    * This class is meant to be overriden with a custom implementation of
    * {@link #createSocketAddress}.  The default implementation is a no-op.
+   * 这个类意味着可以使用自定义的实现重写 createSocketAddress，默认模样实现
    *
    * @since 1.16.0
    */
@@ -386,16 +387,20 @@ public final class NettyChannelBuilder
     /**
      * Called by gRPC to pick local socket to bind to.  This may be called multiple times.
      * Subclasses are expected to override this method.
+     * 由 gRPC 选择绑定本地的 socket 时调用，可能会被调用多次，希望子类重写这个方法
      *
      * @param remoteAddress the remote address to connect to.
-     * @param attrs the Attributes present on the {@link io.grpc.EquivalentAddressGroup} associated
-     *        with the address.
+     *                      需要连接的远程地址
+     * @param attrs         the Attributes present on the {@link io.grpc.EquivalentAddressGroup} associated
+     *                      with the address.
+     *                      与地址关联的 EquivalentAddressGroup 的属性
      * @return a {@link SocketAddress} suitable for binding, or else {@code null}.
+     * 返回绑定的 SocketAddress ，或者 null
      * @since 1.16.0
      */
     @Nullable
-    public SocketAddress createSocketAddress(
-        SocketAddress remoteAddress, @EquivalentAddressGroup.Attr Attributes attrs) {
+    public SocketAddress createSocketAddress(SocketAddress remoteAddress,
+                                             @EquivalentAddressGroup.Attr Attributes attrs) {
       return null;
     }
   }
@@ -532,9 +537,11 @@ public final class NettyChannelBuilder
 
   /**
    * Creates Netty transports. Exposed for internal use, as it should be private.
+   * 创建 Netty Transport，用于内部使用，所以是 private 的
    */
   @CheckReturnValue
   private static final class NettyTransportFactory implements ClientTransportFactory {
+
     private final ProtocolNegotiator protocolNegotiator;
     private final ChannelFactory<? extends Channel> channelFactory;
     private final Map<ChannelOption<?>, ?> channelOptions;
@@ -554,12 +561,19 @@ public final class NettyChannelBuilder
     private boolean closed;
 
     NettyTransportFactory(ProtocolNegotiator protocolNegotiator,
-        ChannelFactory<? extends Channel> channelFactory,
-        Map<ChannelOption<?>, ?> channelOptions, ObjectPool<? extends EventLoopGroup> groupPool,
-        boolean autoFlowControl, int flowControlWindow, int maxMessageSize, int maxHeaderListSize,
-        long keepAliveTimeNanos, long keepAliveTimeoutNanos, boolean keepAliveWithoutCalls,
-        TransportTracer.Factory transportTracerFactory, LocalSocketPicker localSocketPicker,
-        boolean useGetForSafeMethods) {
+                          ChannelFactory<? extends Channel> channelFactory,
+                          Map<ChannelOption<?>, ?> channelOptions,
+                          ObjectPool<? extends EventLoopGroup> groupPool,
+                          boolean autoFlowControl,
+                          int flowControlWindow,
+                          int maxMessageSize,
+                          int maxHeaderListSize,
+                          long keepAliveTimeNanos,
+                          long keepAliveTimeoutNanos,
+                          boolean keepAliveWithoutCalls,
+                          TransportTracer.Factory transportTracerFactory,
+                          LocalSocketPicker localSocketPicker,
+                          boolean useGetForSafeMethods) {
       this.protocolNegotiator = checkNotNull(protocolNegotiator, "protocolNegotiator");
       this.channelFactory = channelFactory;
       this.channelOptions = new HashMap<ChannelOption<?>, Object>(channelOptions);
@@ -573,8 +587,7 @@ public final class NettyChannelBuilder
       this.keepAliveTimeoutNanos = keepAliveTimeoutNanos;
       this.keepAliveWithoutCalls = keepAliveWithoutCalls;
       this.transportTracerFactory = transportTracerFactory;
-      this.localSocketPicker =
-          localSocketPicker != null ? localSocketPicker : new LocalSocketPicker();
+      this.localSocketPicker = localSocketPicker != null ? localSocketPicker : new LocalSocketPicker();
       this.useGetForSafeMethods = useGetForSafeMethods;
     }
 
@@ -597,6 +610,7 @@ public final class NettyChannelBuilder
       ProtocolNegotiator localNegotiator = protocolNegotiator;
       // 获取地址
       HttpConnectProxiedSocketAddress proxiedAddr = options.getHttpConnectProxiedSocketAddress();
+      // 如果是代理的地址，则配置代理信息
       if (proxiedAddr != null) {
         serverAddress = proxiedAddr.getTargetAddress();
         localNegotiator = ProtocolNegotiators.httpProxy(proxiedAddr.getProxyAddress(),
@@ -616,8 +630,7 @@ public final class NettyChannelBuilder
 
       // TODO(carl-mastrangelo): Pass channelLogger in.
       // 构建 Netty 的 Transport
-      NettyClientTransport transport = new NettyClientTransport(
-              serverAddress,
+      NettyClientTransport transport = new NettyClientTransport(serverAddress,
               channelFactory,
               channelOptions,
               group,
@@ -645,6 +658,9 @@ public final class NettyChannelBuilder
       return group;
     }
 
+    /**
+     * 关闭 Transport
+     */
     @Override
     public void close() {
       if (closed) {

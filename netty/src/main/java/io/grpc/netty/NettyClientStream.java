@@ -218,9 +218,11 @@ class NettyClientStream extends AbstractClientStream {
     }
   }
 
-  /** This should only called from the transport thread. */
-  public abstract static class TransportState extends Http2ClientStreamTransportState
-      implements StreamIdHolder {
+  /**
+   * This should only called from the transport thread.
+   * 仅应该由 Transport 的线程调用
+   */
+  public abstract static class TransportState extends Http2ClientStreamTransportState implements StreamIdHolder {
     private static final int NON_EXISTENT_ID = -1;
 
     private final String methodName;
@@ -230,13 +232,12 @@ class NettyClientStream extends AbstractClientStream {
     private Http2Stream http2Stream;
     private Tag tag;
 
-    public TransportState(
-        NettyClientHandler handler,
-        EventLoop eventLoop,
-        int maxMessageSize,
-        StatsTraceContext statsTraceCtx,
-        TransportTracer transportTracer,
-        String methodName) {
+    public TransportState(NettyClientHandler handler,
+                          EventLoop eventLoop,
+                          int maxMessageSize,
+                          StatsTraceContext statsTraceCtx,
+                          TransportTracer transportTracer,
+                          String methodName) {
       super(maxMessageSize, statsTraceCtx, transportTracer);
       this.methodName = checkNotNull(methodName, "methodName");
       this.handler = checkNotNull(handler, "handler");

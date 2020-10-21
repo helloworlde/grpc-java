@@ -435,9 +435,10 @@ public final class GrpcUtil {
 
   /**
    * Gets the User-Agent string for the gRPC transport.
+   * 根据 Transport 名称获取 userAgent
    */
-  public static String getGrpcUserAgent(
-      String transportName, @Nullable String applicationUserAgent) {
+  public static String getGrpcUserAgent(String transportName,
+                                        @Nullable String applicationUserAgent) {
     StringBuilder builder = new StringBuilder();
     if (applicationUserAgent != null) {
       builder.append(applicationUserAgent);
