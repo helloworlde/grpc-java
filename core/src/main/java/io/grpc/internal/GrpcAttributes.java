@@ -23,24 +23,28 @@ import io.grpc.SecurityLevel;
 
 /**
  * Special attributes that are only useful to gRPC.
+ * 仅对 gRPC 有用的特殊的属性
  */
 public final class GrpcAttributes {
-  /**
-   * The security level of the transport.  If it's not present, {@link SecurityLevel#NONE} should be
-   * assumed.
-   */
-  @Grpc.TransportAttr
-  public static final Attributes.Key<SecurityLevel> ATTR_SECURITY_LEVEL =
-      Attributes.Key.create("io.grpc.internal.GrpcAttributes.securityLevel");
+    /**
+     * The security level of the transport.  If it's not present, {@link SecurityLevel#NONE} should be
+     * assumed.
+     * Transport 的安全级别，如果没有，则应该设置为 SecurityLevel#NONE
+     */
+    @Grpc.TransportAttr
+    public static final Attributes.Key<SecurityLevel> ATTR_SECURITY_LEVEL = Attributes.Key.create("io.grpc.internal.GrpcAttributes.securityLevel");
 
-  /**
-   * Attribute key for the attributes of the {@link EquivalentAddressGroup} ({@link
-   * EquivalentAddressGroup#getAttributes}) that the transport's server address is from.  This is a
-   * client-side-only transport attribute, and available right after the transport is started.
-   */
-  @Grpc.TransportAttr
-  public static final Attributes.Key<Attributes> ATTR_CLIENT_EAG_ATTRS =
-      Attributes.Key.create("io.grpc.internal.GrpcAttributes.clientEagAttrs");
+    /**
+     * Attribute key for the attributes of the {@link EquivalentAddressGroup} ({@link
+     * EquivalentAddressGroup#getAttributes}) that the transport's server address is from.  This is a
+     * client-side-only transport attribute, and available right after the transport is started.
+     * <p>
+     * EquivalentAddressGroup 的属性的 key，属性来自于 EquivalentAddressGroup#getAttributes，仅用于客户端 Transport 的属性，
+     * 当 Transport 开始后可用
+     */
+    @Grpc.TransportAttr
+    public static final Attributes.Key<Attributes> ATTR_CLIENT_EAG_ATTRS = Attributes.Key.create("io.grpc.internal.GrpcAttributes.clientEagAttrs");
 
-  private GrpcAttributes() {}
+    private GrpcAttributes() {
+    }
 }

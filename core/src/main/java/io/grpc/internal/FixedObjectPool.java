@@ -20,21 +20,22 @@ import com.google.common.base.Preconditions;
 
 /**
  * An object pool that always returns the same instance and does nothing when returning the object.
+ * 不做任何附加操作的对象池
  */
 public final class FixedObjectPool<T> implements ObjectPool<T> {
-  private final T object;
+    private final T object;
 
-  public FixedObjectPool(T object) {
-    this.object = Preconditions.checkNotNull(object, "object");
-  }
+    public FixedObjectPool(T object) {
+        this.object = Preconditions.checkNotNull(object, "object");
+    }
 
-  @Override
-  public T getObject() {
-    return object;
-  }
+    @Override
+    public T getObject() {
+        return object;
+    }
 
-  @Override
-  public T returnObject(Object returned) {
-    return null;
-  }
+    @Override
+    public T returnObject(Object returned) {
+        return null;
+    }
 }
