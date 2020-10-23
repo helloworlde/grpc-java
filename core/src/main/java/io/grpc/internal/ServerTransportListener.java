@@ -22,28 +22,36 @@ import io.grpc.Metadata;
 /**
  * A observer of a server-side transport for stream creation events. Notifications must occur from
  * the transport thread.
+ * Server 端的用于监听流创建事件的监听器，必须通过 Transport 的线程池通知
  */
 public interface ServerTransportListener {
-  /**
-   * Called when a new stream was created by the remote client.
-   *
-   * @param stream the newly created stream.
-   * @param method the fully qualified method name being called on the server.
-   * @param headers containing metadata for the call.
-   */
-  void streamCreated(ServerStream stream, String method, Metadata headers);
+    /**
+     * Called when a new stream was created by the remote client.
+     * 当远程的客户端创建新的流时被调用
+     *
+     * @param stream  the newly created stream.
+     *                新创建的流
+     * @param method  the fully qualified method name being called on the server.
+     *                被调用的方法限定名
+     * @param headers containing metadata for the call.
+     *                调用的元信息
+     */
+    void streamCreated(ServerStream stream, String method, Metadata headers);
 
-  /**
-   * The transport has finished all handshakes and is ready to process streams.
-   *
-   * @param attributes transport attributes
-   *
-   * @return the effective transport attributes that is used as the basis of call attributes
-   */
-  Attributes transportReady(Attributes attributes);
+    /**
+     * The transport has finished all handshakes and is ready to process streams.
+     * 当 Transport 完成所有的握手准备接收流量时调用
+     *
+     * @param attributes transport attributes
+     *                   Transport 的属性
+     * @return the effective transport attributes that is used as the basis of call attributes
+     * 用于调用属性的有效的 Transport 的属性
+     */
+    Attributes transportReady(Attributes attributes);
 
-  /**
-   * The transport completed shutting down. All resources have been released.
-   */
-  void transportTerminated();
+    /**
+     * The transport completed shutting down. All resources have been released.
+     * 当 Transport 完成关闭时调用，所有的资源都被释放
+     */
+    void transportTerminated();
 }
