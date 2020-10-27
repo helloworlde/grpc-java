@@ -16,59 +16,63 @@
 
 package io.grpc.inprocess;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import java.net.SocketAddress;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Custom SocketAddress class for {@link InProcessTransport}.
+ * 用于 InProgressTransport 的自定义的 SocketAddress
  */
 public final class InProcessSocketAddress extends SocketAddress {
-  private static final long serialVersionUID = -2803441206326023474L;
 
-  private final String name;
+    private static final long serialVersionUID = -2803441206326023474L;
 
-  /**
-   * @param name - The name of the inprocess channel or server.
-   * @since 1.0.0
-   */
-  public InProcessSocketAddress(String name) {
-    this.name = checkNotNull(name, "name");
-  }
+    private final String name;
 
-  /**
-   * Gets the name of the inprocess channel or server.
-   *
-   * @since 1.0.0
-   */
-  public String getName() {
-    return name;
-  }
-
-  /**
-   * @since 1.14.0
-   */
-  @Override
-  public String toString() {
-    return name;
-  }
-
-  /**
-   * @since 1.15.0
-   */
-  @Override
-  public int hashCode() {
-    return name.hashCode();
-  }
-
-  /**
-   * @since 1.15.0
-   */
-  @Override
-  public boolean equals(Object obj) {
-    if (!(obj instanceof InProcessSocketAddress)) {
-      return false;
+    /**
+     * @param name - The name of the inprocess channel or server.
+     *             InProcess 的 Channel 或者 server 的名称
+     * @since 1.0.0
+     */
+    public InProcessSocketAddress(String name) {
+        this.name = checkNotNull(name, "name");
     }
-    return name.equals(((InProcessSocketAddress) obj).name);
-  }
+
+    /**
+     * Gets the name of the inprocess channel or server.
+     * 获取  InProcess 的 Channel 或 Server 的名称
+     *
+     * @since 1.0.0
+     */
+    public String getName() {
+        return name;
+    }
+
+    /**
+     * @since 1.14.0
+     */
+    @Override
+    public String toString() {
+        return name;
+    }
+
+    /**
+     * @since 1.15.0
+     */
+    @Override
+    public int hashCode() {
+        return name.hashCode();
+    }
+
+    /**
+     * @since 1.15.0
+     */
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof InProcessSocketAddress)) {
+            return false;
+        }
+        return name.equals(((InProcessSocketAddress) obj).name);
+    }
 }

@@ -18,22 +18,26 @@ package io.grpc;
 
 /**
  * The level of security guarantee in communications.
+ * 连接的安全保证级别
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/4692")
 public enum SecurityLevel {
-  /**
-   * No security guarantee.
-   */
-  NONE,
+    /**
+     * No security guarantee.
+     * 没有安全保证
+     */
+    NONE,
 
-  /**
-   * The other party is authenticated and the data is not tampered with.
-   */
-  INTEGRITY,
+    /**
+     * The other party is authenticated and the data is not tampered with.
+     * 对方已通过身份验证，并且数据未被篡改
+     */
+    INTEGRITY,
 
-  /**
-   * In addition to {@code INTEGRITY}, the data is only visible to the intended communication
-   * parties.
-   */
-  PRIVACY_AND_INTEGRITY
+    /**
+     * In addition to {@code INTEGRITY}, the data is only visible to the intended communication
+     * parties.
+     * 在 INTEGRITY 的基础上，该数据仅对预期的通信方可见
+     */
+    PRIVACY_AND_INTEGRITY
 }
