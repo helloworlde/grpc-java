@@ -296,8 +296,15 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
         };
     }
 
+    /**
+     * 向 Server 端发送 Ping
+     *
+     * @param callback ping 回调
+     * @param executor 执行回调的线程池
+     */
     @Override
     public synchronized void ping(final PingCallback callback, Executor executor) {
+        // 如果是关闭中，则执行失败的回调
         if (terminated) {
             final Status shutdownStatus = this.shutdownStatus;
             executor.execute(new Runnable() {
@@ -307,6 +314,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                 }
             });
         } else {
+            // 执行成功的回调
             executor.execute(new Runnable() {
                 @Override
                 public void run() {
@@ -316,6 +324,11 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
         }
     }
 
+    /**
+     * 关闭 ClientStream
+     *
+     * @param reason 关闭状态
+     */
     @Override
     public synchronized void shutdown(Status reason) {
         // Can be called multiple times: once for ManagedClientTransport, once for ServerTransport.
@@ -329,11 +342,19 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
         }
     }
 
+    /**
+     * Server 端关闭
+     */
     @Override
     public synchronized void shutdown() {
         shutdown(Status.UNAVAILABLE.withDescription("InProcessTransport shutdown by the server-side"));
     }
 
+    /**
+     * 客户端立即关闭
+     *
+     * @param reason 关闭状态
+     */
     @Override
     public void shutdownNow(Status reason) {
         checkNotNull(reason, "reason");
@@ -345,6 +366,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
             }
             streamsCopy = new ArrayList<>(streams);
         }
+        // 遍历所有的流并取消
         for (InProcessStream stream : streamsCopy) {
             stream.clientStream.cancel(reason);
         }
@@ -373,6 +395,9 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
         return serverScheduler;
     }
 
+    /**
+     * 获取统计信息
+     */
     @Override
     public ListenableFuture<SocketStats> getStats() {
         SettableFuture<SocketStats> ret = SettableFuture.create();
@@ -426,17 +451,28 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
         return (int) size;
     }
 
+    /**
+     * 进程内的流
+     */
     private class InProcessStream {
+
+        // 客户端流
         private final InProcessClientStream clientStream;
+        // 服务端流
         private final InProcessServerStream serverStream;
+        // 调用参数
         private final CallOptions callOptions;
+        // 请求头
         private final Metadata headers;
+        // 方法描述
         private final MethodDescriptor<?, ?> method;
+        // 服务名称
         private volatile String authority;
 
-        private InProcessStream(
-                MethodDescriptor<?, ?> method, Metadata headers, CallOptions callOptions,
-                String authority) {
+        private InProcessStream(MethodDescriptor<?, ?> method,
+                                Metadata headers,
+                                CallOptions callOptions,
+                                String authority) {
             this.method = checkNotNull(method, "method");
             this.headers = checkNotNull(headers, "headers");
             this.callOptions = checkNotNull(callOptions, "callOptions");
@@ -446,12 +482,16 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
         }
 
         // Can be called multiple times due to races on both client and server closing at same time.
+        // 关闭流，可能多次调用，因为客户端和服务端可能会同时关闭
         private void streamClosed() {
             synchronized (InProcessTransport.this) {
+                // 移除流
                 boolean justRemovedAnElement = streams.remove(this);
+                // 如果不是 LoadBalancer 用于自己的 Channel，则修改使用中状态
                 if (GrpcUtil.shouldBeCountedForInUse(callOptions)) {
                     inUseState.updateObjectInUse(this, false);
                 }
+                // 如果流是空的，且移除流成功，其是关闭中则通知 Transport 终止
                 if (streams.isEmpty() && justRemovedAnElement) {
                     if (shutdown) {
                         notifyTerminated();
@@ -934,25 +974,31 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
     /**
      * Returns a new status with the same code and description.
      * If includeCauseWithStatus is true, cause is also included.
+     * 如果 includeCauseWithStatus 是 true，则返回一个编码和描述相同的新的状态，包含异常
      *
      * <p>For InProcess transport to behave in the same way as the other transports,
      * when exchanging statuses between client and server and vice versa,
      * the cause should be excluded from the status.
      * For easier debugging, the status may be optionally included.
+     * <p>
+     * 为了使 InProcess 传输的行为方式与其他传输相同，在客户端和服务器之间交换状态（反之亦然）时，原因应从状态中排除
+     * 为了便于调试，可以选择包含状态
      */
     private static Status cleanStatus(Status status, boolean includeCauseWithStatus) {
         if (status == null) {
             return null;
         }
-        Status clientStatus = Status
-                .fromCodeValue(status.getCode().value())
-                .withDescription(status.getDescription());
+        Status clientStatus = Status.fromCodeValue(status.getCode().value()).withDescription(status.getDescription());
+
         if (includeCauseWithStatus) {
             clientStatus = clientStatus.withCause(status.getCause());
         }
         return clientStatus;
     }
 
+    /**
+     * gRPC 消息解码生产者
+     */
     private static class SingleMessageProducer implements StreamListener.MessageProducer {
         private InputStream message;
 

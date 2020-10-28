@@ -254,13 +254,18 @@ public final class GrpcUtil {
    * RPCs created on the Channel returned by {@link io.grpc.LoadBalancer.Subchannel#asChannel}
    * will have this option with value {@code true}.  They will be treated differently from
    * the ones created by application.
+   * <p>
+   * 如果是 LoadBalancer.Subchannel#asChannel 返回的 Channel 上创建的流，这个值会返回 true，和
+   * 应用创建的流的处理方式不一样
    */
   public static final CallOptions.Key<Boolean> CALL_OPTIONS_RPC_OWNED_BY_BALANCER =
-      CallOptions.Key.create("io.grpc.internal.CALL_OPTIONS_RPC_OWNED_BY_BALANCER");
+          CallOptions.Key.create("io.grpc.internal.CALL_OPTIONS_RPC_OWNED_BY_BALANCER");
 
   /**
    * Returns true if an RPC with the given properties should be counted when calculating the
    * in-use state of a transport.
+   * 在统计 Transport 的数据时，如果请求的属性是应当被计算在使用中，则返回 true
+   * 即不统计 LoadBalancer 用于自己的请求的 Channel
    */
   public static boolean shouldBeCountedForInUse(CallOptions callOptions) {
     return !Boolean.TRUE.equals(callOptions.getOption(CALL_OPTIONS_RPC_OWNED_BY_BALANCER));
