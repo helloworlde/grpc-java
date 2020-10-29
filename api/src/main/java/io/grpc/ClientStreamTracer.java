@@ -16,11 +16,11 @@
 
 package io.grpc;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.MoreObjects;
-import io.grpc.Grpc;
+
 import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * {@link StreamTracer} for the client-side.
@@ -42,9 +42,11 @@ public abstract class ClientStreamTracer extends StreamTracer {
 
   /**
    * Trailing metadata has been received from the server.
+   * 从 server 端接收到的尾元数据
    *
    * @param trailers the mutable trailing metadata.  Modifications to it will be seen by
    *                 interceptors and the application.
+   *                 可变的尾元数据，修改可以被拦截器和服务知道
    * @since 1.17.0
    */
   public void inboundTrailers(Metadata trailers) {

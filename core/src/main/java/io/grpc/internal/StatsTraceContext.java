@@ -126,6 +126,7 @@ public final class StatsTraceContext {
 
   /**
    * See {@link ClientStreamTracer#inboundTrailers}.  For client-side only.
+   * 从 server 端接收到的尾元数据，仅用于客户端
    *
    * <p>Called from abstract stream implementations.
    */
@@ -163,6 +164,7 @@ public final class StatsTraceContext {
   /**
    * See {@link StreamTracer#streamClosed}. This may be called multiple times, and only the first
    * value will be taken.
+   * 流关闭，可能会被调用多次，只有第一次的状态会被使用
    *
    * <p>Called from abstract stream implementations.
    */

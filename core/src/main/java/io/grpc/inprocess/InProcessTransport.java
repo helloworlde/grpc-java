@@ -500,42 +500,75 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
             }
         }
 
+        /**
+         * InProcess server 流的实现
+         */
         private class InProcessServerStream implements ServerStream {
             final StatsTraceContext statsTraceCtx;
+
             @GuardedBy("this")
             private ClientStreamListener clientStreamListener;
+
             @GuardedBy("this")
             private int clientRequested;
+
             @GuardedBy("this")
-            private ArrayDeque<StreamListener.MessageProducer> clientReceiveQueue =
-                    new ArrayDeque<>();
+            private ArrayDeque<StreamListener.MessageProducer> clientReceiveQueue = new ArrayDeque<>();
+
             @GuardedBy("this")
             private Status clientNotifyStatus;
+
             @GuardedBy("this")
             private Metadata clientNotifyTrailers;
+
             // Only is intended to prevent double-close when client cancels.
             @GuardedBy("this")
             private boolean closed;
+
             @GuardedBy("this")
             private int outboundSeqNo;
 
+            /**
+             * 通过方法和 header 构建流
+             *
+             * @param method  方法
+             * @param headers header
+             */
             InProcessServerStream(MethodDescriptor<?, ?> method, Metadata headers) {
-                statsTraceCtx = StatsTraceContext.newServerContext(
-                        serverStreamTracerFactories, method.getFullMethodName(), headers);
+                statsTraceCtx = StatsTraceContext.newServerContext(serverStreamTracerFactories, method.getFullMethodName(), headers);
             }
 
+
+            /**
+             * 设置客户端流监听器
+             *
+             * @param listener 监听器
+             */
             private synchronized void setListener(ClientStreamListener listener) {
                 clientStreamListener = listener;
             }
 
+            /**
+             * 设置服务端流监听器
+             *
+             * @param serverStreamListener 监听器
+             */
             @Override
             public void setListener(ServerStreamListener serverStreamListener) {
                 clientStream.setListener(serverStreamListener);
             }
 
+            /**
+             * Client 发送指定数量的消息
+             *
+             * @param numMessages the requested number of messages to be delivered to the listener.
+             *                    要发送给监听器的消息的数量
+             */
             @Override
             public void request(int numMessages) {
+                // 通知 server 接收消息
                 boolean onReady = clientStream.serverRequested(numMessages);
+                // 如果是第一次 ready，且没有关闭，则调用 Client 流监听器通知 ready
                 if (onReady) {
                     synchronized (this) {
                         if (!closed) {
@@ -549,39 +582,62 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
 
             /**
              * Client requested more messages.
+             * 客户端发送更多的消息
              *
              * @return whether onReady should be called on the server
              */
             private synchronized boolean clientRequested(int numMessages) {
+                // 如果是关闭的状态，则返回 false
                 if (closed) {
                     return false;
                 }
+                // 如果有未发送的消息，则发送
                 boolean previouslyReady = clientRequested > 0;
                 clientRequested += numMessages;
                 while (clientRequested > 0 && !clientReceiveQueue.isEmpty()) {
                     clientRequested--;
                     clientStreamListener.messagesAvailable(clientReceiveQueue.poll());
                 }
+
                 // Attempt being reentrant-safe
+                // 再次检测是否关闭
                 if (closed) {
                     return false;
                 }
+
+                // 如果所有的消息都发送完了，则关闭客户端流，更新统计
                 if (clientReceiveQueue.isEmpty() && clientNotifyStatus != null) {
                     closed = true;
+                    // 从 server 端接收到的尾元数据
                     clientStream.statsTraceCtx.clientInboundTrailers(clientNotifyTrailers);
+                    // 流关闭
                     clientStream.statsTraceCtx.streamClosed(clientNotifyStatus);
+                    // 通知客户端流监听器关闭
                     clientStreamListener.closed(clientNotifyStatus, clientNotifyTrailers);
                 }
+                // 返回 ready 的状态
                 boolean nowReady = clientRequested > 0;
                 return !previouslyReady && nowReady;
             }
 
+            /**
+             * 客户端取消流
+             *
+             * @param status 取消状态
+             */
             private void clientCancelled(Status status) {
                 internalCancel(status);
             }
 
+            /**
+             * 写入消息
+             *
+             * @param message stream containing the serialized message to be sent
+             *                流包含需要发送的序列化的消息
+             */
             @Override
             public synchronized void writeMessage(InputStream message) {
+                // 如果关闭则返回
                 if (closed) {
                     return;
                 }
@@ -702,14 +758,25 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                 streamClosed();
             }
 
+            /**
+             * 取消客户端流
+             *
+             * @param clientStatus 客户端状态
+             * @return 取消结果
+             */
             private synchronized boolean internalCancel(Status clientStatus) {
+                // 如果是关闭状态，则返回 false
                 if (closed) {
                     return false;
                 }
                 closed = true;
+
                 StreamListener.MessageProducer producer;
+
+                // 从队列中获取消息
                 while ((producer = clientReceiveQueue.poll()) != null) {
                     InputStream message;
+                    // 遍历并关闭
                     while ((message = producer.next()) != null) {
                         try {
                             message.close();
@@ -718,6 +785,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                         }
                     }
                 }
+                // 关闭统计和监听器
                 clientStream.statsTraceCtx.streamClosed(clientStatus);
                 clientStreamListener.closed(clientStatus, new Metadata());
                 return true;
@@ -761,21 +829,31 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
             }
         }
 
+        /**
+         * InProcess 客户端流
+         */
         private class InProcessClientStream implements ClientStream {
+
             final StatsTraceContext statsTraceCtx;
+
             final CallOptions callOptions;
+
             @GuardedBy("this")
             private ServerStreamListener serverStreamListener;
+
             @GuardedBy("this")
             private int serverRequested;
+
             @GuardedBy("this")
-            private ArrayDeque<StreamListener.MessageProducer> serverReceiveQueue =
-                    new ArrayDeque<>();
+            private ArrayDeque<StreamListener.MessageProducer> serverReceiveQueue = new ArrayDeque<>();
+
             @GuardedBy("this")
             private boolean serverNotifyHalfClose;
+
             // Only is intended to prevent double-close when server closes.
             @GuardedBy("this")
             private boolean closed;
+
             @GuardedBy("this")
             private int outboundSeqNo;
 
@@ -804,23 +882,31 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
 
             /**
              * Client requested more messages.
+             * 客户端请求消息
              *
              * @return whether onReady should be called on the server
+             * 返回是否应该在服务端调用 onReady
              */
             private synchronized boolean serverRequested(int numMessages) {
+                // 如果已经是关闭的，则返回false
                 if (closed) {
                     return false;
                 }
+
                 boolean previouslyReady = serverRequested > 0;
                 serverRequested += numMessages;
+                // 如果有消息，则通知 server
                 while (serverRequested > 0 && !serverReceiveQueue.isEmpty()) {
                     serverRequested--;
                     serverStreamListener.messagesAvailable(serverReceiveQueue.poll());
                 }
+
+                // 如果接受队列为空，或者 server 通知半关闭，则调用半关闭
                 if (serverReceiveQueue.isEmpty() && serverNotifyHalfClose) {
                     serverNotifyHalfClose = false;
                     serverStreamListener.halfClosed();
                 }
+                // 当之前的状态不是 ready，且新的状态是 ready 时返回 true
                 boolean nowReady = serverRequested > 0;
                 return !previouslyReady && nowReady;
             }

@@ -28,6 +28,7 @@ import javax.annotation.concurrent.ThreadSafe;
 public abstract class StreamTracer {
   /**
    * Stream is closed.  This will be called exactly once.
+   * 流关闭，只调用一次
    */
   public void streamClosed(Status status) {
   }
