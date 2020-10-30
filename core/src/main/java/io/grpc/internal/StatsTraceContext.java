@@ -104,8 +104,11 @@ public final class StatsTraceContext {
 
   /**
    * See {@link ClientStreamTracer#outboundHeaders}.  For client-side only.
+   * <p>
+   * 将 Header 发送给 Socket，仅用于客户端
    *
    * <p>Transport-specific, thus should be called by transport implementations.
+   * 应该只由 Transport 实现调用
    */
   public void clientOutboundHeaders() {
     for (StreamTracer tracer : tracers) {
@@ -178,6 +181,7 @@ public final class StatsTraceContext {
 
   /**
    * See {@link StreamTracer#outboundMessage(int)}.
+   * 传送给流的出站消息
    *
    * <p>Called from {@link io.grpc.internal.Framer}.
    */
@@ -189,8 +193,10 @@ public final class StatsTraceContext {
 
   /**
    * See {@link StreamTracer#inboundMessage(int)}.
+   * 流接收到的入栈消息
    *
    * <p>Called from {@link io.grpc.internal.MessageDeframer}.
+   * 通过 MessageDeframer 调用
    */
   public void inboundMessage(int seqNo) {
     for (StreamTracer tracer : tracers) {
@@ -200,8 +206,10 @@ public final class StatsTraceContext {
 
   /**
    * See {@link StreamTracer#outboundMessageSent}.
+   * 将已经被序列化的出站消息发送给 Transport
    *
    * <p>Called from {@link io.grpc.internal.Framer}.
+   * 由 Framer 调用
    */
   public void outboundMessageSent(int seqNo, long optionalWireSize, long optionalUncompressedSize) {
     for (StreamTracer tracer : tracers) {
@@ -211,8 +219,10 @@ public final class StatsTraceContext {
 
   /**
    * See {@link StreamTracer#inboundMessageRead}.
+   * 流接收到的入栈消息
    *
    * <p>Called from {@link io.grpc.internal.MessageDeframer}.
+   * 由 MessageDeframer 调用
    */
   public void inboundMessageRead(int seqNo, long optionalWireSize, long optionalUncompressedSize) {
     for (StreamTracer tracer : tracers) {

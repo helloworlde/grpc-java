@@ -30,6 +30,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 public abstract class ClientStreamTracer extends StreamTracer {
   /**
    * Headers has been sent to the socket.
+   * 将 Header 发送给 Socket
    */
   public void outboundHeaders() {
   }

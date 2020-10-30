@@ -641,24 +641,37 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                 if (closed) {
                     return;
                 }
+                // 添加出站统计信息
                 statsTraceCtx.outboundMessage(outboundSeqNo);
                 statsTraceCtx.outboundMessageSent(outboundSeqNo, -1, -1);
+                // 添加入站消息统计
                 clientStream.statsTraceCtx.inboundMessage(outboundSeqNo);
                 clientStream.statsTraceCtx.inboundMessageRead(outboundSeqNo, -1, -1);
                 outboundSeqNo++;
+
+                // gRPC 消息解码生产者
                 StreamListener.MessageProducer producer = new SingleMessageProducer(message);
+                // 如果还有未发送的消息，则通过 producer 发送
                 if (clientRequested > 0) {
                     clientRequested--;
                     clientStreamListener.messagesAvailable(producer);
                 } else {
+                    // 如果没有消息，则将 producer 添加到队列中
                     clientReceiveQueue.add(producer);
                 }
             }
 
+            /**
+             * 将所有消息发送给远程端点
+             */
             @Override
             public void flush() {
             }
 
+
+            /**
+             * 返回 Transport 是否 ready
+             */
             @Override
             public synchronized boolean isReady() {
                 if (closed) {
@@ -667,20 +680,25 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                 return clientRequested > 0;
             }
 
+
+            /**
+             * 将自定义的 Metadata 作为 Header 写入到发送给 Client 的响应中
+             *
+             * @param headers to send to client.
+             */
             @Override
             public void writeHeaders(Metadata headers) {
+                // 如果最大 Metadata 大小限制有效
                 if (clientMaxInboundMetadataSize != Integer.MAX_VALUE) {
+                    // 计算 metadata 的消息
                     int metadataSize = metadataSize(headers);
+                    // 如果 metadata 的大小超过限制，则分别从客户端和服务端关闭流
                     if (metadataSize > clientMaxInboundMetadataSize) {
                         Status serverStatus = Status.CANCELLED.withDescription("Client cancelled the RPC");
                         clientStream.serverClosed(serverStatus, serverStatus);
                         // Other transports provide very little information in this case. We go ahead and make a
                         // Status, which may need to be updated if statuscodes.md is updated.
-                        Status failedStatus = Status.RESOURCE_EXHAUSTED.withDescription(
-                                String.format(
-                                        "Response header metadata larger than %d: %d",
-                                        clientMaxInboundMetadataSize,
-                                        metadataSize));
+                        Status failedStatus = Status.RESOURCE_EXHAUSTED.withDescription(String.format("Response header metadata larger than %d: %d", clientMaxInboundMetadataSize, metadataSize));
                         notifyClientClose(failedStatus, new Metadata());
                         return;
                     }
@@ -691,43 +709,57 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                         return;
                     }
 
+                    // 触发 Client header 已被读取
                     clientStream.statsTraceCtx.clientInboundHeaders();
                     clientStreamListener.headersRead(headers);
                 }
             }
 
+            /**
+             * 关闭读和写的流，OK 状态表示正常终止，其他的状态都是非正常的
+             *
+             * @param status   details of the closure
+             *                 关闭的状态
+             * @param trailers an additional block of metadata to pass to the client on stream closure.
+             */
             @Override
             public void close(Status status, Metadata trailers) {
                 // clientStream.serverClosed must happen before clientStreamListener.closed, otherwise
                 // clientStreamListener.closed can trigger clientStream.cancel (see code in
                 // ClientCalls.blockingUnaryCall), which may race with clientStream.serverClosed as both are
                 // calling internalCancel().
+                //  Server 端正常关闭流，clientStream.serverClosed 必须先于 clientStreamListener.closed 调用，
+                // 否则，clientStreamListener.closed 可以监听到 clientStream.cancel，可能会导致 clientStream.serverClosed
+                // 也会调用 internalCancel()
                 clientStream.serverClosed(Status.OK, status);
 
+                // 如果客户端接收 Metadata 大小限制有效
                 if (clientMaxInboundMetadataSize != Integer.MAX_VALUE) {
+                    // 计算状态描述和 metadata 的大小
                     int statusSize = status.getDescription() == null ? 0 : status.getDescription().length();
                     // Go ahead and throw in the status description's length, since that could be very long.
                     int metadataSize = metadataSize(trailers) + statusSize;
+                    // 如果超过了限制，则将状态改为 RESOURCE_EXHAUSTED
                     if (metadataSize > clientMaxInboundMetadataSize) {
                         // Override the status for the client, but not the server. Transports do not guarantee
                         // notifying the server of the failure.
 
                         // Other transports provide very little information in this case. We go ahead and make a
                         // Status, which may need to be updated if statuscodes.md is updated.
+                        // 覆盖 Client 的状态，不覆盖 server 的，Transport 不能保证通知 server 失败
                         status = Status.RESOURCE_EXHAUSTED.withDescription(
-                                String.format(
-                                        "Response header metadata larger than %d: %d",
-                                        clientMaxInboundMetadataSize,
-                                        metadataSize));
+                                String.format("Response header metadata larger than %d: %d", clientMaxInboundMetadataSize, metadataSize));
                         trailers = new Metadata();
                     }
                 }
 
+                // 通知客户端关闭
                 notifyClientClose(status, trailers);
             }
 
             /**
              * clientStream.serverClosed() must be called before this method
+             * 通知客户端流关闭，在调用这个方法之前必须先调用 clientStream.serverClosed()
              */
             private void notifyClientClose(Status status, Metadata trailers) {
                 Status clientStatus = cleanStatus(status, includeCauseWithStatus);
@@ -739,6 +771,7 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                         closed = true;
                         clientStream.statsTraceCtx.clientInboundTrailers(trailers);
                         clientStream.statsTraceCtx.streamClosed(clientStatus);
+                        // 调用监听器
                         clientStreamListener.closed(clientStatus, trailers);
                     } else {
                         clientNotifyStatus = clientStatus;
@@ -746,15 +779,24 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                     }
                 }
 
+                // 关闭流
                 streamClosed();
             }
 
+            /**
+             * server 端取消流，通常是超时的情况下，这个方法可能在任意线程内被多次调用
+             *
+             * @param status 取消状态
+             */
             @Override
             public void cancel(Status status) {
+                // 取消 client 流，如果流已关闭，则返回
                 if (!internalCancel(Status.CANCELLED.withDescription("server cancelled stream"))) {
                     return;
                 }
+                // 关闭 server 端的流
                 clientStream.serverClosed(status, status);
+                // 终止流
                 streamClosed();
             }
 
@@ -866,9 +908,15 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                 this.serverStreamListener = listener;
             }
 
+            /**
+             * 通过 StreamListener#messagesAvailable 从调用中请求最多给定数量的消息
+             *
+             * @param numMessages the requested number of messages to be delivered to the listener.
+             */
             @Override
             public void request(int numMessages) {
                 boolean onReady = serverStream.clientRequested(numMessages);
+                // 如果 ready 了，则通知监听器 ready 事件
                 if (onReady) {
                     synchronized (this) {
                         if (!closed) {
@@ -911,25 +959,43 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                 return !previouslyReady && nowReady;
             }
 
+            /**
+             * 关闭流
+             *
+             * @param serverListenerStatus server  监听器状态
+             * @param serverTracerStatus   server 统计状态
+             */
             private void serverClosed(Status serverListenerStatus, Status serverTracerStatus) {
                 internalCancel(serverListenerStatus, serverTracerStatus);
             }
 
+            /**
+             * 将消息写入远程端点
+             *
+             * @param message stream containing the serialized message to be sent
+             */
             @Override
             public synchronized void writeMessage(InputStream message) {
                 if (closed) {
                     return;
                 }
+
+                // 添加出站统计信息
                 statsTraceCtx.outboundMessage(outboundSeqNo);
                 statsTraceCtx.outboundMessageSent(outboundSeqNo, -1, -1);
+                // 添加入站消息统计
                 serverStream.statsTraceCtx.inboundMessage(outboundSeqNo);
                 serverStream.statsTraceCtx.inboundMessageRead(outboundSeqNo, -1, -1);
                 outboundSeqNo++;
+
+                // gRPC 消息解码生产者
                 StreamListener.MessageProducer producer = new SingleMessageProducer(message);
+                // 如果还有未发送的消息，则通过 producer 发送
                 if (serverRequested > 0) {
                     serverRequested--;
                     serverStreamListener.messagesAvailable(producer);
                 } else {
+                    // 如果没有消息，则将 producer 添加到队列中
                     serverReceiveQueue.add(producer);
                 }
             }
@@ -947,6 +1013,12 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
             }
 
             // Must be thread-safe for shutdownNow()
+
+            /**
+             * 客户端取消流
+             *
+             * @param reason must be non-OK
+             */
             @Override
             public void cancel(Status reason) {
                 Status serverStatus = cleanStatus(reason, includeCauseWithStatus);
@@ -957,13 +1029,20 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                 streamClosed();
             }
 
-            private synchronized boolean internalCancel(
-                    Status serverListenerStatus, Status serverTracerStatus) {
+            /**
+             * 取消流
+             *
+             * @param serverListenerStatus 监听器状态
+             * @param serverTracerStatus   统计状态
+             */
+            private synchronized boolean internalCancel(Status serverListenerStatus, Status serverTracerStatus) {
+                // 修改关闭状态
                 if (closed) {
                     return false;
                 }
                 closed = true;
 
+                // 如果有未发送的消息，则关闭
                 StreamListener.MessageProducer producer;
                 while ((producer = serverReceiveQueue.poll()) != null) {
                     InputStream message;
@@ -975,16 +1054,21 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                         }
                     }
                 }
+                // 统计关闭和监听器关闭
                 serverStream.statsTraceCtx.streamClosed(serverTracerStatus);
                 serverStreamListener.closed(serverListenerStatus);
                 return true;
             }
 
+            /**
+             * 流半关闭
+             */
             @Override
             public synchronized void halfClose() {
                 if (closed) {
                     return;
                 }
+                // 如果接收队列空了，则半关闭
                 if (serverReceiveQueue.isEmpty()) {
                     serverStreamListener.halfClosed();
                 } else {
@@ -1001,16 +1085,27 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
                 InProcessStream.this.authority = string;
             }
 
+
+            /**
+             * 开始一个流
+             *
+             * @param listener non-{@code null} listener of stream events
+             *                 流监听器
+             */
             @Override
             public void start(ClientStreamListener listener) {
+                // 设置监听器
                 serverStream.setListener(listener);
 
                 synchronized (InProcessTransport.this) {
+                    // 发送 Header 给 Socket 
                     statsTraceCtx.clientOutboundHeaders();
                     streams.add(InProcessTransport.InProcessStream.this);
+                    // 更新 Transport 使用中状态
                     if (GrpcUtil.shouldBeCountedForInUse(callOptions)) {
                         inUseState.updateObjectInUse(InProcessTransport.InProcessStream.this, true);
                     }
+                    // 通知监听器流创建事件
                     serverTransportListener.streamCreated(serverStream, method.getFullMethodName(), headers);
                 }
             }
@@ -1044,6 +1139,11 @@ final class InProcessTransport implements ServerTransport, ConnectionClientTrans
             public void setMaxOutboundMessageSize(int maxSize) {
             }
 
+            /**
+             * 设置过期时间
+             *
+             * @param deadline 过期时间
+             */
             @Override
             public void setDeadline(Deadline deadline) {
                 headers.discardAll(TIMEOUT_KEY);
