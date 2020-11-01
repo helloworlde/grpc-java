@@ -58,36 +58,49 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
     /**
      * A sink for outbound operations, separated from the stream simply to avoid name
      * collisions/confusion. Only called from application thread.
+     * 用于出站操作的槽，只用于分离流，避免名称混乱，只在应用线程内调用
      */
     protected interface Sink {
         /**
          * Sends the request headers to the remote end point.
+         * 将请求头发送给远程端点
          *
          * @param metadata the metadata to be sent
+         *                 发送的元数据
          * @param payload  the payload needs to be sent in the headers if not null. Should only be used
          *                 when sending an unary GET request
+         *                 当 header 不为空时需要发送的数据，仅用于发送一元的 GET 请求
          */
         void writeHeaders(Metadata metadata, @Nullable byte[] payload);
 
         /**
          * Sends an outbound frame to the remote end point.
+         * 将出站帧发送给远程端点
          *
          * @param frame       a buffer containing the chunk of data to be sent, or {@code null} if {@code
          *                    endOfStream} with no data to send
+         *                    包含大块的要发送的数据的缓冲，如果是在流的末尾，没有数据发送的时候是 null
          * @param endOfStream {@code true} if this is the last frame; {@code flush} is guaranteed to be
          *                    {@code true} if this is {@code true}
+         *                    如果是最后一帧，则是 true；如果是 true，则会调用 flush
          * @param flush       {@code true} if more data may not be arriving soon
+         *                    如果后续数据不能很快到达，则是 true
          * @Param numMessages the number of messages this series of frames represents, must be >= 0.
+         * 这组帧代表的消息数量，必须大于等于0
          */
-        void writeFrame(
-                @Nullable WritableBuffer frame, boolean endOfStream, boolean flush, int numMessages);
+        void writeFrame(@Nullable WritableBuffer frame,
+                        boolean endOfStream,
+                        boolean flush,
+                        int numMessages);
 
         /**
          * Tears down the stream, typically in the event of a timeout. This method may be called
          * multiple times and from any thread.
+         * 关闭流，通常是在超时的情况下，这个方法可能会被不同的线程多次调用
          *
          * <p>This is a clone of {@link ClientStream#cancel(Status)};
          * {@link AbstractClientStream#cancel} delegates to this method.
+         * 这是  ClientStream#cancel(Status) 方法的克隆，代理了 AbstractClientStream#cancel 方法
          */
         void cancel(Status status);
     }
@@ -101,56 +114,79 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
      * Whether cancel() has been called. This is not strictly necessary, but removes the delay between
      * cancel() being called and isReady() beginning to return false, since cancel is commonly
      * processed asynchronously.
+     * cancel 是否调用了，不是严格需要的，但是消除了 cancel 和 isReady 之间的延迟，尽管 cancel 通常是异步处理的
      */
     private volatile boolean cancelled;
 
-    protected AbstractClientStream(
-            WritableBufferAllocator bufferAllocator,
-            StatsTraceContext statsTraceCtx,
-            TransportTracer transportTracer,
-            Metadata headers,
-            CallOptions callOptions,
-            boolean useGet) {
+    protected AbstractClientStream(WritableBufferAllocator bufferAllocator,
+                                   StatsTraceContext statsTraceCtx,
+                                   TransportTracer transportTracer,
+                                   Metadata headers,
+                                   CallOptions callOptions,
+                                   boolean useGet) {
         checkNotNull(headers, "headers");
+
         this.transportTracer = checkNotNull(transportTracer, "transportTracer");
         this.shouldBeCountedForInUse = GrpcUtil.shouldBeCountedForInUse(callOptions);
         this.useGet = useGet;
+        // 如果不是 GET 方法，则使用 MessageFramer，并设置 header
         if (!useGet) {
             framer = new MessageFramer(this, bufferAllocator, statsTraceCtx);
             this.headers = headers;
         } else {
+            // 如果是 GET 方法则用 GetFramer
             framer = new GetFramer(headers, statsTraceCtx);
         }
     }
 
+    /**
+     * 设置请求过期时间
+     *
+     * @param deadline 过期时间
+     */
     @Override
     public void setDeadline(Deadline deadline) {
+        // 取消所有的过期时间
         headers.discardAll(TIMEOUT_KEY);
+        // 计算过期时间，设置到 Header 里
         long effectiveTimeout = max(0, deadline.timeRemaining(TimeUnit.NANOSECONDS));
         headers.put(TIMEOUT_KEY, effectiveTimeout);
     }
 
+    /**
+     * 设置最大出站字节数
+     */
     @Override
     public void setMaxOutboundMessageSize(int maxSize) {
         framer.setMaxOutboundMessageSize(maxSize);
     }
 
+    /**
+     * 设置最大入站字节数
+     */
     @Override
     public void setMaxInboundMessageSize(int maxSize) {
         transportState().setMaxInboundMessageSize(maxSize);
     }
 
+    /**
+     * 开启整个流的解压，允许客户端流使用 GzipInflatingBuffer 解压传入的 GZIP 压缩流
+     */
     @Override
     public final void setFullStreamDecompression(boolean fullStreamDecompression) {
         transportState().setFullStreamDecompression(fullStreamDecompression);
     }
 
+    /**
+     * 设置注册表以查找framer的解压器
+     */
     @Override
     public final void setDecompressorRegistry(DecompressorRegistry decompressorRegistry) {
         transportState().setDecompressorRegistry(decompressorRegistry);
     }
 
     /**
+     * 记录这个流对应的 Transport 的状态
      * {@inheritDoc}
      */
     @Override
@@ -164,6 +200,7 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
     @Override
     public final void start(ClientStreamListener listener) {
         transportState().setListener(listener);
+        // 如果不是 GET 请求，则发送 Header
         if (!useGet) {
             abstractClientStreamSink().writeHeaders(headers, null);
             headers = null;
@@ -173,9 +210,13 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
     /**
      * Sink for transport to be called to perform outbound operations. Each stream must have its own
      * unique sink.
+     * 用于 Transport 出站操作的槽，每个流必须有自己唯一的槽
      */
     protected abstract Sink abstractClientStreamSink();
 
+    /**
+     * 用于发送消息的 framer
+     */
     @Override
     protected final Framer framer() {
         return framer;
@@ -184,6 +225,7 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
     /**
      * Returns true if this stream should be counted when determining the in-use state of the
      * transport.
+     * 当统计使用中状态时返回流是否应该被统计
      */
     public final boolean shouldBeCountedForInUse() {
         return shouldBeCountedForInUse;
@@ -194,9 +236,13 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
      *
      * @param frame       a non-empty buffer to deliver or {@code null} if the framer is being
      *                    closed and there is no data to deliver.
+     *                    用于传递的非空的 buffer，如果 framer 已经被关闭，或者没有数据传递，则是 null
      * @param endOfStream whether the frame is the last one for the GRPC stream
+     *                    是否是 gRPC 流的最后一帧
      * @param flush       {@code true} if more data may not be arriving soon
+     *                    如果没有更多的数据，则使用 flush
      * @param numMessages the number of messages that this series of frames represents
+     *                    代表当前帧代表的消息的数量
      */
     @Override
     public final void deliverFrame(WritableBuffer frame,
@@ -220,6 +266,11 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
         }
     }
 
+    /**
+     * 取消流
+     *
+     * @param reason must be non-OK
+     */
     @Override
     public final void cancel(Status reason) {
         Preconditions.checkArgument(!reason.isOk(), "Should not cancel with OK status");
@@ -227,17 +278,26 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
         abstractClientStreamSink().cancel(reason);
     }
 
+    /**
+     * 返回流是否 ready
+     */
     @Override
     public final boolean isReady() {
         return super.isReady() && !cancelled;
     }
 
+    /**
+     * 设置超时观察器
+     */
     @Override
     public final void appendTimeoutInsight(InsightBuilder insight) {
         Attributes attrs = getAttributes();
         insight.appendKeyValue("remote_addr", attrs.get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR));
     }
 
+    /**
+     * 获取 Transport 跟踪器
+     */
     protected TransportTracer getTransportTracer() {
         return transportTracer;
     }
