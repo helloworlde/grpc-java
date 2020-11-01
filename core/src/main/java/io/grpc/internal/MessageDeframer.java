@@ -16,21 +16,22 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.Codec;
 import io.grpc.Decompressor;
 import io.grpc.Status;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.NotThreadSafe;
 import java.io.Closeable;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.zip.DataFormatException;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.NotThreadSafe;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Deframer for GRPC frames.
@@ -61,8 +62,10 @@ public class MessageDeframer implements Closeable, Deframer {
 
     /**
      * Called to deliver the next complete message.
+     * 调用以传递下一条完整消息
      *
      * @param producer single message producer wrapping the message.
+     *                 包装消息的单个生产者
      */
     void messagesAvailable(StreamListener.MessageProducer producer);
 
