@@ -557,38 +557,55 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
         }
     }
 
+    /**
+     * 用于 GET 请求的 Framer
+     */
     private class GetFramer implements Framer {
         private Metadata headers;
         private boolean closed;
         private final StatsTraceContext statsTraceCtx;
         private byte[] payload;
 
+        /***
+         * 通过 Header 和 Trace 上下文构建 Framer
+         */
         public GetFramer(Metadata headers, StatsTraceContext statsTraceCtx) {
             this.headers = checkNotNull(headers, "headers");
             this.statsTraceCtx = checkNotNull(statsTraceCtx, "statsTraceCtx");
         }
 
+        /**
+         * 写入负载
+         *
+         * @param message contains the message to be written out. It will be completely consumed.
+         *                需要写入的消息
+         */
         @SuppressWarnings("BetaApi") // ByteStreams is not Beta in v27
         @Override
         public void writePayload(InputStream message) {
             checkState(payload == null, "writePayload should not be called multiple times");
             try {
+                // 将流转换为字节
                 payload = ByteStreams.toByteArray(message);
             } catch (java.io.IOException ex) {
                 throw new RuntimeException(ex);
             }
+            // 记录统计数据
             statsTraceCtx.outboundMessage(0);
             statsTraceCtx.outboundMessageSent(0, payload.length, payload.length);
             statsTraceCtx.outboundUncompressedSize(payload.length);
             // NB(zhangkun83): this is not accurate, because the underlying transport will probably encode
             // it using e.g., base64.  However, we are not supposed to know such detail here.
+            // 统计并不准确，因为 Transport 可能会编码，然而并不应该关心这里的细节
             //
             // We don't want to move this line to where the encoding happens either, because we'd better
             // contain the message stats reporting in Framer as suggested in StatsTraceContext.
             // Scattering the reporting sites increases the risk of mis-counting or double-counting.
+            // 也不想将这个统计移动到编码的地方，因为更想统计中包含消息的状态，将统计分散在各处会增加遗漏和多次统计的风险
             //
             // Because the payload is usually very small, people shouldn't care about the size difference
             // caused by encoding.
+            // 因为负载通常很小，不应该关心编码导致的统计大小误差
             statsTraceCtx.outboundWireSize(payload.length);
         }
 
@@ -603,12 +620,12 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
 
         /**
          * Closes, with flush.
+         * 关闭并清空缓冲的流
          */
         @Override
         public void close() {
             closed = true;
-            checkState(payload != null,
-                    "Lack of request message. GET request is only supported for unary requests");
+            checkState(payload != null, "Lack of request message. GET request is only supported for unary requests");
             abstractClientStreamSink().writeHeaders(headers, payload);
             payload = null;
             headers = null;
@@ -616,6 +633,7 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
 
         /**
          * Closes, without flush.
+         * 关闭但是不清空缓冲
          */
         @Override
         public void dispose() {
