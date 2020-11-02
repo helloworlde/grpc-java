@@ -55,8 +55,10 @@ public class MessageDeframer implements Closeable, Deframer {
      * Called when the given number of bytes has been read from the input source of the deframer.
      * This is typically used to indicate to the underlying transport that more data can be
      * accepted.
+     * 当给定数量的字节被 deframer 从输入源中读取的时候调用， 通常表明有可以读取更多的数据
      *
      * @param numBytes the number of bytes read from the deframer's input source.
+     *                 deframer 从输入源读取的字节数量
      */
     void bytesRead(int numBytes);
 

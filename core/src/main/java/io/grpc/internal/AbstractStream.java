@@ -353,6 +353,9 @@ public abstract class AbstractStream implements Stream {
          * connection flow control (i.e., MAX_CONCURRENT_STREAMS). It may call the listener's {@link
          * StreamListener#onReady()} handler if appropriate. This must be called from the transport
          * thread, since the listener may be called back directly.
+         * <p>
+         * 当流的 header 传递给流控的任意连接时的事件处理器，在适当的时候会调用 StreamListener#onReady()，
+         * 因为可能直接回调监听器，必须从 Transport 的线程中调用
          */
         protected void onStreamAllocated() {
             checkState(listener() != null);

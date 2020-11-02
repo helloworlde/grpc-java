@@ -22,8 +22,9 @@ import io.grpc.InternalMetadata;
 import io.grpc.InternalStatus;
 import io.grpc.Metadata;
 import io.grpc.Status;
-import java.nio.charset.Charset;
+
 import javax.annotation.Nullable;
+import java.nio.charset.Charset;
 
 /**
  * Base implementation for client streams using HTTP2 as the transport.
@@ -74,9 +75,9 @@ public abstract class Http2ClientStreamTransportState extends AbstractClientStre
   /**
    * Called to process a failure in HTTP/2 processing. It should notify the transport to cancel the
    * stream and call {@code transportReportStatus()}.
+   * 当 HTTP2 处理失败的时候调用，应当通知 Transport 取消流，并调用 transportReportStatus()
    */
-  protected abstract void http2ProcessingFailed(
-      Status status, boolean stopDelivery, Metadata trailers);
+  protected abstract void http2ProcessingFailed(Status status, boolean stopDelivery, Metadata trailers);
 
   /**
    * Called by subclasses whenever {@code Headers} are received from the transport.

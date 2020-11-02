@@ -109,6 +109,7 @@ public final class MethodDescriptor<ReqT, RespT> {
     /**
      * Returns {@code true} for {@code UNARY} and {@code SERVER_STREAMING}, which do not permit the
      * client to stream.
+     * 如果是 UNARY 或者 SERVER_STREAMING 类型的不允许客户端流式传输的请求，则返回 true，
      *
      * @since 1.0.0
      */

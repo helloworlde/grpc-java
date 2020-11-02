@@ -204,12 +204,15 @@ class Utils {
     return seq.toString().getBytes(UTF_8);
   }
 
+  /**
+   * 将 gRPC 的 header 转为 Netty Http 2 的 Header
+   */
   public static Http2Headers convertClientHeaders(Metadata headers,
-      AsciiString scheme,
-      AsciiString defaultPath,
-      AsciiString authority,
-      AsciiString method,
-      AsciiString userAgent) {
+                                                  AsciiString scheme,
+                                                  AsciiString defaultPath,
+                                                  AsciiString authority,
+                                                  AsciiString method,
+                                                  AsciiString userAgent) {
     Preconditions.checkNotNull(defaultPath, "defaultPath");
     Preconditions.checkNotNull(authority, "authority");
     Preconditions.checkNotNull(method, "method");
@@ -220,12 +223,12 @@ class Utils {
     headers.discardAll(GrpcUtil.USER_AGENT_KEY);
 
     return GrpcHttp2OutboundHeaders.clientRequestHeaders(
-        toHttp2Headers(headers),
-        authority,
-        defaultPath,
-        method,
-        scheme,
-        userAgent);
+            toHttp2Headers(headers),
+            authority,
+            defaultPath,
+            method,
+            scheme,
+            userAgent);
   }
 
   public static Http2Headers convertServerHeaders(Metadata headers) {

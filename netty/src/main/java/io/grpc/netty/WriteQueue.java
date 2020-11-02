@@ -24,6 +24,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelPromise;
 import io.perfmark.Link;
 import io.perfmark.PerfMark;
+
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -39,6 +40,7 @@ class WriteQueue {
 
   /**
    * {@link Runnable} used to schedule work onto the tail of the event loop.
+   * 用于在 event loop 结尾调用的 flush 任务
    */
   private final Runnable later = new Runnable() {
     @Override
@@ -58,31 +60,40 @@ class WriteQueue {
 
   /**
    * Schedule a flush on the channel.
+   * 在 Channel 上调度一个 flush 任务
    */
   void scheduleFlush() {
     if (scheduled.compareAndSet(false, true)) {
       // Add the queue to the tail of the event loop so writes will be executed immediately
       // inside the event loop. Note DO NOT do channel.write outside the event loop as
       // it will not wake up immediately without a flush.
+      // 将flush 任务添加到 event loop 的尾部，会在 event loop 中理解执行写入；注意不要在 event loop
+      // 之外执行 channel.write，因为不执行 flush 是不会立即唤醒
       channel.eventLoop().execute(later);
     }
   }
 
   /**
    * Enqueue a write command on the channel.
+   * 将写入指令添加到 Channel 的队列中
    *
    * @param command a write to be executed on the channel.
-   * @param flush true if a flush of the write should be schedule, false if a later call to
-   *              enqueue will schedule the flush.
+   *                Channel 执行的写入指令
+   * @param flush   true if a flush of the write should be schedule, false if a later call to
+   *                enqueue will schedule the flush.
+   *                如果是 true，则应当调度执行清空，如果是 false，则后会在后续的请求中调度
    */
   @CanIgnoreReturnValue
   ChannelFuture enqueue(QueuedCommand command, boolean flush) {
     // Detect erroneous code that tries to reuse command objects.
     Preconditions.checkArgument(command.promise() == null, "promise must not be set on command");
 
+    // 创建 Channel Promise
     ChannelPromise promise = channel.newPromise();
     command.promise(promise);
+    // 将指定添加到队列中
     queue.add(command);
+    // 如果需要 flush，则调度 flush 任务
     if (flush) {
       scheduleFlush();
     }

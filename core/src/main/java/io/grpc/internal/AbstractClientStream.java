@@ -85,8 +85,8 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
          *                    如果是最后一帧，则是 true；如果是 true，则会调用 flush
          * @param flush       {@code true} if more data may not be arriving soon
          *                    如果后续数据不能很快到达，则是 true
-         * @Param numMessages the number of messages this series of frames represents, must be >= 0.
-         * 这组帧代表的消息数量，必须大于等于0
+         * @param numMessages the number of messages this series of frames represents, must be >= 0.
+         *                    这组帧代表的消息数量，必须大于等于0
          */
         void writeFrame(@Nullable WritableBuffer frame,
                         boolean endOfStream,
