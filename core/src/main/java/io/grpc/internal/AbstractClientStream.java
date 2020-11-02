@@ -304,15 +304,18 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
 
     /**
      * This should only called from the transport thread.
+     * Transport 中的流状态，仅应当被 Transport 线程调用
      */
     protected abstract static class TransportState extends AbstractStream.TransportState {
+        private final StatsTraceContext statsTraceCtx;
         /**
          * Whether listener.closed() has been called.
+         * listener.closed() 是否被调用
          */
-        private final StatsTraceContext statsTraceCtx;
         private boolean listenerClosed;
         private ClientStreamListener listener;
         private boolean fullStreamDecompression;
+        // 解压缩器注册中心
         private DecompressorRegistry decompressorRegistry = DecompressorRegistry.getDefaultInstance();
 
         private boolean deframerClosed = false;
@@ -320,53 +323,69 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
 
         /**
          * Whether the client has half-closed the stream.
+         * 客户端是否半关闭流
          */
         private volatile boolean outboundClosed;
 
         /**
          * Whether the stream is closed from the transport's perspective. This can differ from {@link
          * #listenerClosed} because there may still be messages buffered to deliver to the application.
+         * 从 Transport 角度看流是否关闭，和 listenerClosed 的结果可能不同，因为依然有需要投递的缓冲消息
          */
         private boolean statusReported;
         /**
          * True if the status reported (set via {@link #transportReportStatus}) is OK.
+         * 如果 transportReportStatus 是 OK 则是 true
          */
         private boolean statusReportedIsOk;
 
-        protected TransportState(
-                int maxMessageSize,
-                StatsTraceContext statsTraceCtx,
-                TransportTracer transportTracer) {
+        protected TransportState(int maxMessageSize,
+                                 StatsTraceContext statsTraceCtx,
+                                 TransportTracer transportTracer) {
             super(maxMessageSize, statsTraceCtx, transportTracer);
             this.statsTraceCtx = checkNotNull(statsTraceCtx, "statsTraceCtx");
         }
 
+        /**
+         * 整个流是否都压缩
+         */
         private void setFullStreamDecompression(boolean fullStreamDecompression) {
             this.fullStreamDecompression = fullStreamDecompression;
         }
 
+        /**
+         * 设置流解压缩注册器
+         */
         private void setDecompressorRegistry(DecompressorRegistry decompressorRegistry) {
             checkState(this.listener == null, "Already called start");
-            this.decompressorRegistry =
-                    checkNotNull(decompressorRegistry, "decompressorRegistry");
+            this.decompressorRegistry = checkNotNull(decompressorRegistry, "decompressorRegistry");
         }
 
+        /**
+         * 设置客户端流监听器
+         */
         @VisibleForTesting
         public final void setListener(ClientStreamListener listener) {
             checkState(this.listener == null, "Already called setListener");
             this.listener = checkNotNull(listener, "listener");
         }
 
+        /**
+         * 当 deframer 关闭时调用
+         *
+         * @param hasPartialMessage whether the deframer contained an incomplete message at closing.
+         *                          Deframer 关闭时是否有未完成的流
+         */
         @Override
         public void deframerClosed(boolean hasPartialMessage) {
             checkState(statusReported, "status should have been reported on deframer closed");
             deframerClosed = true;
+
+            // 如果 Transport 状态是 OK，且还有未完成的流，则返回错误的状态
             if (statusReportedIsOk && hasPartialMessage) {
-                transportReportStatus(
-                        Status.INTERNAL.withDescription("Encountered end-of-stream mid-frame"),
-                        true,
-                        new Metadata());
+                transportReportStatus(Status.INTERNAL.withDescription("Encountered end-of-stream mid-frame"), true, new Metadata());
             }
+
             if (deframerClosedTask != null) {
                 deframerClosedTask.run();
                 deframerClosedTask = null;
@@ -480,16 +499,22 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
         /**
          * Report stream closure with status to the application layer if not already reported. This
          * method must be called from the transport thread.
+         * 如果在流关闭时状态还没有上报到应用层，则上报，这个方法必须由 Transport 的线程调用
          *
          * @param status       the new status to set
+         *                     需要设置的新的状态
          * @param stopDelivery if {@code true}, interrupts any further delivery of inbound messages that
          *                     may already be queued up in the deframer. If {@code false}, the listener will be
          *                     notified immediately after all currently completed messages in the deframer have been
          *                     delivered to the application.
+         *                     如果是 true，打断后续的已经在 Deframer 队列中的入站消息；如果是 false，当所有的 Deframer 中的消息
+         *                     都投递到应用后会由监听器通知
          * @param trailers     new instance of {@code Trailers}, either empty or those returned by the
          *                     server
+         *                     元数据的实例，由服务端返回，或者是空的
          */
-        public final void transportReportStatus(final Status status, boolean stopDelivery,
+        public final void transportReportStatus(final Status status,
+                                                boolean stopDelivery,
                                                 final Metadata trailers) {
             transportReportStatus(status, RpcProgress.PROCESSED, stopDelivery, trailers);
         }
@@ -497,59 +522,73 @@ public abstract class AbstractClientStream extends AbstractStream implements Cli
         /**
          * Report stream closure with status to the application layer if not already reported. This
          * method must be called from the transport thread.
+         * 如果在流关闭时状态还没有上报到应用层，则上报，这个方法必须由 Transport 的线程调用
          *
          * @param status       the new status to set
+         *                     需要设置的新的状态
          * @param rpcProgress  RPC progress that the
          *                     {@link ClientStreamListener#closed(Status, RpcProgress, Metadata)}
          *                     will receive
+         *                     ClientStreamListener#closed 方法将接收到的请求的状态
          * @param stopDelivery if {@code true}, interrupts any further delivery of inbound messages that
          *                     may already be queued up in the deframer and overrides any previously queued status.
          *                     If {@code false}, the listener will be notified immediately after all currently
          *                     completed messages in the deframer have been delivered to the application.
+         *                     如果是 true，打断后续的已经在 Deframer 队列中的入站消息；如果是 false，当所有的 Deframer 中的消息
+         *                     都投递到应用后会由监听器通知
          * @param trailers     new instance of {@code Trailers}, either empty or those returned by the
          *                     server
+         *                     元数据的实例，由服务端返回，或者是空的
          */
-        public final void transportReportStatus(
-                final Status status,
-                final RpcProgress rpcProgress,
-                boolean stopDelivery,
-                final Metadata trailers) {
+        public final void transportReportStatus(final Status status,
+                                                final RpcProgress rpcProgress,
+                                                boolean stopDelivery,
+                                                final Metadata trailers) {
             checkNotNull(status, "status");
             checkNotNull(trailers, "trailers");
+
             // If stopDelivery, we continue in case previous invocation is waiting for stall
+            // 如果是停止投递，如果之前的调用在等待，则继续
             if (statusReported && !stopDelivery) {
                 return;
             }
             statusReported = true;
             statusReportedIsOk = status.isOk();
+            // 通知当流的状态不可以再使用
             onStreamDeallocated();
 
+            // 如果解帧器已经关闭，则关闭监听器
             if (deframerClosed) {
                 deframerClosedTask = null;
                 closeListener(status, rpcProgress, trailers);
             } else {
-                deframerClosedTask =
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                closeListener(status, rpcProgress, trailers);
-                            }
-                        };
+                // 如果解帧器没有关闭，则创建关闭监听器任务
+                deframerClosedTask = new Runnable() {
+                    @Override
+                    public void run() {
+                        closeListener(status, rpcProgress, trailers);
+                    }
+                };
+                // 关闭 Deframer
                 closeDeframer(stopDelivery);
             }
         }
 
         /**
          * Closes the listener if not previously closed.
+         * 如果没有关闭则关闭监听器
          *
          * @throws IllegalStateException if the call has not yet been started.
          */
-        private void closeListener(
-                Status status, RpcProgress rpcProgress, Metadata trailers) {
+        private void closeListener(Status status, RpcProgress rpcProgress, Metadata trailers) {
+            // 如果没有关闭，则更新关闭状态
             if (!listenerClosed) {
                 listenerClosed = true;
+                // 关闭统计
                 statsTraceCtx.streamClosed(status);
+                // 关监听器
                 listener().closed(status, rpcProgress, trailers);
+                // 如果 Transport 的统计没有关闭，则上报 OK 状态
                 if (getTransportTracer() != null) {
                     getTransportTracer().reportStreamClosed(status.isOk());
                 }

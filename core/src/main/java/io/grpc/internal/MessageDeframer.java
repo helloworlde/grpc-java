@@ -71,8 +71,10 @@ public class MessageDeframer implements Closeable, Deframer {
 
     /**
      * Called when the deframer closes.
+     * 当 deframer 关闭时调用
      *
      * @param hasPartialMessage whether the deframer contained an incomplete message at closing.
+     *                          Deframer 关闭时是否有未完成的流
      */
     void deframerClosed(boolean hasPartialMessage);
 
