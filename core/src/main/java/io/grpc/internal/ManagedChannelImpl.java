@@ -659,8 +659,8 @@ final class ManagedChannelImpl extends ManagedChannel implements
          * 创建流
          *
          * @param tracerFactory 跟踪的线程工厂
-         * @param newHeaders 新的 header
-         * @return
+         * @param newHeaders    新的 header
+         * @return 创建的客户端流
          */
         @Override
         ClientStream newSubstream(ClientStreamTracer.Factory tracerFactory, Metadata newHeaders) {
