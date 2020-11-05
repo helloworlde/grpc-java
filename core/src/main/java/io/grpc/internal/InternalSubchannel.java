@@ -834,16 +834,20 @@ final class InternalSubchannel implements InternalInstrumented<ChannelStats>, Tr
             // 然后调用 io.grpc.netty.NettyClientTransport.newStream
             final ClientStream streamDelegate = super.newStream(method, headers, callOptions);
 
-            // 返回 ForwardingClientStream 包装后的 ClientStream
+            // 返回 ForwardingClientStream 包装后的 ClientStream，用于统计
             return new ForwardingClientStream() {
                 @Override
                 protected ClientStream delegate() {
                     return streamDelegate;
                 }
 
+                /**
+                 * 开始流
+                 */
                 @Override
                 public void start(final ClientStreamListener listener) {
                     callTracer.reportCallStarted();
+                    // 创建用于统计的监听器
                     super.start(new ForwardingClientStreamListener() {
                         @Override
                         protected ClientStreamListener delegate() {
