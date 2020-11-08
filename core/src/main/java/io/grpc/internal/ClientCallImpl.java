@@ -809,6 +809,10 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
       }
     }
 
+    /**
+     * 当从远程端点接收到消息时调用
+     * @param producer supplier of deframed messages. 解帧后的消息内容
+     */
     @Override
     public void messagesAvailable(final MessageProducer producer) {
       PerfMark.startTask("ClientStreamListener.messagesAvailable", tag);
@@ -839,6 +843,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
             InputStream message;
             while ((message = producer.next()) != null) {
               try {
+                // 将消息流解析为响应对象，并传递给 Future
                 observer.onMessage(method.parseResponse(message));
               } catch (Throwable t) {
                 GrpcUtil.closeQuietly(message);
@@ -848,8 +853,7 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
             }
           } catch (Throwable t) {
             GrpcUtil.closeQuietly(producer);
-            Status status =
-                Status.CANCELLED.withCause(t).withDescription("Failed to read message.");
+            Status status = Status.CANCELLED.withCause(t).withDescription("Failed to read message.");
             stream.cancel(status);
             close(status, new Metadata());
           }

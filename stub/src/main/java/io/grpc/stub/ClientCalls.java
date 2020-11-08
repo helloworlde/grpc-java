@@ -234,13 +234,14 @@ public final class ClientCalls {
   /**
    * Returns the result of calling {@link Future#get()} interruptibly on a task known not to throw a
    * checked exception.
+   * 返回 Future#get 获取到的结果
    *
    * <p>If interrupted, the interrupt is restored before throwing an exception..
+   * 如果是被中断，则中断在引发异常之前恢复
    *
-   * @throws java.util.concurrent.CancellationException
-   *     if {@code get} throws a {@code CancellationException}.
-   * @throws io.grpc.StatusRuntimeException if {@code get} throws an {@link ExecutionException}
-   *     or an {@link InterruptedException}.
+   * @throws java.util.concurrent.CancellationException if {@code get} throws a {@code CancellationException}.
+   * @throws io.grpc.StatusRuntimeException             if {@code get} throws an {@link ExecutionException}
+   *                                                    or an {@link InterruptedException}.
    */
   private static <V> V getUnchecked(Future<V> future) {
     try {
@@ -248,9 +249,9 @@ public final class ClientCalls {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw Status.CANCELLED
-          .withDescription("Thread interrupted")
-          .withCause(e)
-          .asRuntimeException();
+              .withDescription("Thread interrupted")
+              .withCause(e)
+              .asRuntimeException();
     } catch (ExecutionException e) {
       throw toStatusRuntimeException(e.getCause());
     }
@@ -362,6 +363,9 @@ public final class ClientCalls {
     responseListener.onStart();
   }
 
+  /**
+   * 可启动的监听器
+   */
   private abstract static class StartableListener<T> extends ClientCall.Listener<T> {
     abstract void onStart();
   }
@@ -536,7 +540,7 @@ public final class ClientCalls {
     /**
      * 使用 GrpcFuture 初始化 UnaryStreamToFuture
      *
-     * @param responseFuture
+     * @param responseFuture 返回结果的 Future
      */
     UnaryStreamToFuture(GrpcFuture<RespT> responseFuture) {
       this.responseFuture = responseFuture;
@@ -550,19 +554,19 @@ public final class ClientCalls {
     public void onMessage(RespT value) {
       if (this.value != null) {
         throw Status.INTERNAL.withDescription("More than one value received for unary call")
-            .asRuntimeException();
+                             .asRuntimeException();
       }
       this.value = value;
     }
 
     @Override
     public void onClose(Status status, Metadata trailers) {
+      // 监听关闭事件
       if (status.isOk()) {
         if (value == null) {
           // No value received so mark the future as an error
-          responseFuture.setException(
-              Status.INTERNAL.withDescription("No value received for unary call")
-                  .asRuntimeException(trailers));
+          responseFuture.setException(Status.INTERNAL.withDescription("No value received for unary call")
+                                                     .asRuntimeException(trailers));
         }
         responseFuture.set(value);
       } else {
