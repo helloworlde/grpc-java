@@ -48,22 +48,28 @@ public class MessageFramer implements Framer {
   /**
    * Sink implemented by the transport layer to receive frames and forward them to their
    * destination.
+   * Transport 层实现的 Sink，用于接收帧，转发给目标地址
    */
   public interface Sink {
     /**
      * Delivers a frame via the transport.
      * 将 framer 传递给 Transport
-     * @param frame a non-empty buffer to deliver or {@code null} if the framer is being
-     *              closed and there is no data to deliver.
+     *
+     * @param frame       a non-empty buffer to deliver or {@code null} if the framer is being
+     *                    closed and there is no data to deliver.
+     *                    用于发送的非空的 buffer，如果 framer 已经关闭没有数据需要传输，则是 null
      * @param endOfStream whether the frame is the last one for the GRPC stream
-     * @param flush {@code true} if more data may not be arriving soon
+     *                    当前的帧是否是 gRPC 流的最后一帧
+     * @param flush       {@code true} if more data may not be arriving soon
+     *                    是否不会再发送数据
      * @param numMessages the number of messages that this series of frames represents
+     *                    一系列帧代表的消息数量
      */
     void deliverFrame(
-        @Nullable WritableBuffer frame,
-        boolean endOfStream,
-        boolean flush,
-        int numMessages);
+            @Nullable WritableBuffer frame,
+            boolean endOfStream,
+            boolean flush,
+            int numMessages);
   }
 
   private static final int HEADER_LENGTH = 5;

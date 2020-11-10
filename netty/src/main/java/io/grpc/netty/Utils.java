@@ -231,6 +231,9 @@ class Utils {
             userAgent);
   }
 
+  /**
+   * 将 Metadata 转为 Http2 的 Header
+   */
   public static Http2Headers convertServerHeaders(Metadata headers) {
     // Discard any application supplied duplicates of the reserved headers
     headers.discardAll(CONTENT_TYPE_KEY);

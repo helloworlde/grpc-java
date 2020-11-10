@@ -35,6 +35,13 @@ final class SendResponseHeadersCommand extends WriteQueue.AbstractQueuedCommand 
     this.status = status;
   }
 
+  /**
+   * 创建发送 Header 的指令
+   *
+   * @param stream  流持有者
+   * @param headers 请求头
+   * @return 发送指令
+   */
   static SendResponseHeadersCommand createHeaders(StreamIdHolder stream, Http2Headers headers) {
     return new SendResponseHeadersCommand(stream, headers, null);
   }

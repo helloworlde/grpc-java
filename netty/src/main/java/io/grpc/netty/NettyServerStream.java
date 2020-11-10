@@ -16,8 +16,6 @@
 
 package io.grpc.netty;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.Preconditions;
 import io.grpc.Attributes;
 import io.grpc.Metadata;
@@ -36,8 +34,11 @@ import io.netty.handler.codec.http2.Http2Stream;
 import io.perfmark.Link;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
+
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Server stream for a Netty HTTP2 transport. Must only be called from the sending application
@@ -92,15 +93,17 @@ class NettyServerStream extends AbstractServerStream {
   }
 
   private class Sink implements AbstractServerStream.Sink {
+    /**
+     * 发送 Header 信息给客户端
+     */
     @Override
     public void writeHeaders(Metadata headers) {
       PerfMark.startTask("NettyServerStream$Sink.writeHeaders");
       try {
+        // 将写入 header 的指令添加到队列中
         writeQueue.enqueue(
-            SendResponseHeadersCommand.createHeaders(
-                transportState(),
-                Utils.convertServerHeaders(headers)),
-            true);
+                SendResponseHeadersCommand.createHeaders(transportState(), Utils.convertServerHeaders(headers)),
+                true);
       } finally {
         PerfMark.stopTask("NettyServerStream$Sink.writeHeaders");
       }
