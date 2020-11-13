@@ -515,6 +515,8 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
      * limit is exceeded. The implementation may only estimate the buffer size being used rather than
      * count the exact physical memory allocated. It does not have any effect if retry is disabled by
      * the client.
+     * 设置用于重试的每一个 gRPC 请求的缓冲区字节限制，如果缓冲区被耗尽，则不能重试，实现可能仅估计正在使用的缓冲区大小，
+     * 而不计算分配的确切物理内存，如果客户端禁用了重试则没有任何效果
      *
      * <p>This method may not work as expected for the current release because retry is not fully
      * implemented yet.
@@ -532,6 +534,7 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
      * Disables the retry and hedging mechanism provided by the gRPC library. This is designed for the
      * case when users have their own retry implementation and want to avoid their own retry taking
      * place simultaneously with the gRPC library layer retry.
+     * 禁用重试和对冲机制，用于用户有自己的重试实现取代 gRPC 的重试的场景
      *
      * @return this
      * @since 1.11.0
@@ -543,6 +546,7 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
 
     /**
      * Enables the retry and hedging mechanism provided by the gRPC library.
+     * 启用重试和对冲机制
      *
      * <p>For the current release, this method may have a side effect that disables Census stats and
      * tracing.
@@ -558,6 +562,7 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
     /**
      * Sets the BinaryLog object that this channel should log to. The channel does not take
      * ownership of the object, and users are responsible for calling {@link BinaryLog#close()}.
+     * 设置记录 Channel 的二进制日志，这个对象不被 Channel 所有，需要用户调用关闭
      *
      * @param binaryLog the object to provide logging.
      * @return this
@@ -571,6 +576,7 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
     /**
      * Sets the maximum number of channel trace events to keep in the tracer for each channel or
      * subchannel. If set to 0, channel tracing is effectively disabled.
+     * 设置 Channel 或 Subchannel 保存的最大的事件数量，如果设置为0，则 Channel 的追踪是被关闭的
      *
      * @return this
      * @since 1.13.0
@@ -584,6 +590,7 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
      * Sets the proxy detector to be used in addresses name resolution. If <code>null</code> is passed
      * the default proxy detector will be used.  For how proxies work in gRPC, please refer to the
      * documentation on {@link ProxyDetector}.
+     * 设置用于地址名称解析的代理探测器，如果设置为 null，则会使用默认的
      *
      * @return this
      * @since 1.19.0
@@ -598,7 +605,8 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
      * the name resolver provides no service config or if the channel disables lookup service config
      * from name resolver (see {@link #disableServiceConfigLookUp()}). The argument
      * {@code serviceConfig} is a nested map representing a Json object in the most natural way:
-     *
+     * 提供 Channel 的服务配置，如果命名解析没有提供服务配置或者通过 disableServiceConfigLookUp 关闭了配置查找，
+     * 则会使用默认的配置，参数是一个代表 JSON 对象的嵌套的 Map
      *        <table border="1">
      *          <tr>
      *            <td>Json entry</td><td>Java Type</td>
@@ -624,6 +632,7 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
      *        </table>
      *
      * <p>If null is passed, then there will be no default service config.
+     * 如果传入 null，则不会有默认配置
      *
      * @return this
      * @throws IllegalArgumentException When the given serviceConfig is invalid or the current version
@@ -638,6 +647,7 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
 
     /**
      * Disables service config look-up from the naming system, which is enabled by default.
+     * 关闭命名解析的服务配置查找，默认是开启的
      *
      * @return this
      * @since 1.20.0
@@ -649,6 +659,7 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
 
     /**
      * Builds a channel using the given parameters.
+     * 根据所给的参数构建 Channel
      *
      * @since 1.0.0
      */
@@ -656,6 +667,7 @@ public abstract class ManagedChannelBuilder<T extends ManagedChannelBuilder<T>> 
 
     /**
      * Returns the correctly typed version of the builder.
+     * 返回 Builder 正确类型的实例
      */
     private T thisT() {
         @SuppressWarnings("unchecked")
