@@ -505,14 +505,14 @@ public final class GrpcUtil {
   /**
    * Verify {@code authority} is valid for use with gRPC. The syntax must be valid and it must not
    * include userinfo.
+   * 检查服务名称是否有效，格式必须是有效的且不能包含用户信息
    *
    * @return the {@code authority} provided
    */
   public static String checkAuthority(String authority) {
     URI uri = authorityToUri(authority);
     checkArgument(uri.getHost() != null, "No host in authority '%s'", authority);
-    checkArgument(uri.getUserInfo() == null,
-        "Userinfo must not be present on authority: '%s'", authority);
+    checkArgument(uri.getUserInfo() == null, "Userinfo must not be present on authority: '%s'", authority);
     return authority;
   }
 
