@@ -20,22 +20,26 @@ import io.grpc.ExperimentalApi;
 
 /**
  * Identifies the negotiation used for starting up HTTP/2.
+ * 标识用于使用 HTTP2 的协商
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/1784")
 public enum NegotiationType {
-  /**
-   * Uses TLS ALPN/NPN negotiation, assumes an SSL connection.
-   */
-  TLS,
+    /**
+     * Uses TLS ALPN/NPN negotiation, assumes an SSL connection.
+     * 使用 TLS ALPN/NPN 协商，假定使用 SSL 连接
+     */
+    TLS,
 
-  /**
-   * Use the HTTP UPGRADE protocol for a plaintext (non-SSL) upgrade from HTTP/1.1 to HTTP/2.
-   */
-  PLAINTEXT_UPGRADE,
+    /**
+     * Use the HTTP UPGRADE protocol for a plaintext (non-SSL) upgrade from HTTP/1.1 to HTTP/2.
+     * 将 plaintext 协议从 HTTP/1.1 升级到 HTTP/2 协议
+     */
+    PLAINTEXT_UPGRADE,
 
-  /**
-   * Just assume the connection is plaintext (non-SSL) and the remote endpoint supports HTTP/2
-   * directly without an upgrade.
-   */
-  PLAINTEXT
+    /**
+     * Just assume the connection is plaintext (non-SSL) and the remote endpoint supports HTTP/2
+     * directly without an upgrade.
+     * 使用 PLAINTEXT 并且假定远程端点支持 HTTP/2 而不需要升级
+     */
+    PLAINTEXT
 }

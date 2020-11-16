@@ -53,8 +53,10 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * The base class for channel builders.
+ * Channel 构建器的基类
  *
  * @param <T> The concrete type of this builder.
+ *            构建器的正确类型
  */
 public abstract class AbstractManagedChannelImplBuilder<T extends AbstractManagedChannelImplBuilder<T>>
         extends ManagedChannelBuilder<T> {
@@ -642,7 +644,7 @@ public abstract class AbstractManagedChannelImplBuilder<T extends AbstractManage
     public ManagedChannel build() {
         return new ManagedChannelOrphanWrapper(new ManagedChannelImpl(
                 this,
-                //
+                // 构建 Transport 工厂
                 buildTransportFactory(),
                 new ExponentialBackoffPolicy.Provider(),
                 // 线程池
