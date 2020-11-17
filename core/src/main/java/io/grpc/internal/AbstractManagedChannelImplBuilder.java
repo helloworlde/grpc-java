@@ -748,6 +748,7 @@ public abstract class AbstractManagedChannelImplBuilder<T extends AbstractManage
      * 返回命名解析工厂
      */
     NameResolver.Factory getNameResolverFactory() {
+        // 如果没有覆盖服务名称，则使用这个 nameResolverFactory，否则使用 OverrideAuthorityNameResolverFactory
         if (authorityOverride == null) {
             return nameResolverFactory;
         } else {
