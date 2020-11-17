@@ -16,9 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.MoreObjects.firstNonNull;
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import io.grpc.Attributes;
 import io.grpc.CallCredentials;
 import io.grpc.CallCredentials.RequestInfo;
@@ -28,94 +25,109 @@ import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
 import io.grpc.SecurityLevel;
 import io.grpc.Status;
+
 import java.net.SocketAddress;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 
+import static com.google.common.base.MoreObjects.firstNonNull;
+import static com.google.common.base.Preconditions.checkNotNull;
+
+/**
+ * 支持鉴权的代理的 TransportFactory
+ */
 final class CallCredentialsApplyingTransportFactory implements ClientTransportFactory {
-  private final ClientTransportFactory delegate;
-  private final Executor appExecutor;
 
-  CallCredentialsApplyingTransportFactory(
-      ClientTransportFactory delegate, Executor appExecutor) {
-    this.delegate = checkNotNull(delegate, "delegate");
-    this.appExecutor = checkNotNull(appExecutor, "appExecutor");
-  }
+    private final ClientTransportFactory delegate;
+    private final Executor appExecutor;
 
-  @Override
-  public ConnectionClientTransport newClientTransport(
-      SocketAddress serverAddress, ClientTransportOptions options, ChannelLogger channelLogger) {
-    return new CallCredentialsApplyingTransport(
-        delegate.newClientTransport(serverAddress, options, channelLogger), options.getAuthority());
-  }
+    CallCredentialsApplyingTransportFactory(ClientTransportFactory delegate, Executor appExecutor) {
+        this.delegate = checkNotNull(delegate, "delegate");
+        this.appExecutor = checkNotNull(appExecutor, "appExecutor");
+    }
 
-  @Override
-  public ScheduledExecutorService getScheduledExecutorService() {
-    return delegate.getScheduledExecutorService();
-  }
-
-  @Override
-  public void close() {
-    delegate.close();
-  }
-
-  private class CallCredentialsApplyingTransport extends ForwardingConnectionClientTransport {
-    private final ConnectionClientTransport delegate;
-    private final String authority;
-
-    CallCredentialsApplyingTransport(ConnectionClientTransport delegate, String authority) {
-      this.delegate = checkNotNull(delegate, "delegate");
-      this.authority = checkNotNull(authority, "authority");
+    /**
+     * 创建支持鉴权的 Transport
+     */
+    @Override
+    public ConnectionClientTransport newClientTransport(SocketAddress serverAddress,
+                                                        ClientTransportOptions options,
+                                                        ChannelLogger channelLogger) {
+        return new CallCredentialsApplyingTransport(delegate.newClientTransport(serverAddress, options, channelLogger),
+                options.getAuthority());
     }
 
     @Override
-    protected ConnectionClientTransport delegate() {
-      return delegate;
+    public ScheduledExecutorService getScheduledExecutorService() {
+        return delegate.getScheduledExecutorService();
     }
 
     @Override
-    @SuppressWarnings("deprecation")
-    public ClientStream newStream(
-        final MethodDescriptor<?, ?> method, Metadata headers, final CallOptions callOptions) {
-      CallCredentials creds = callOptions.getCredentials();
-      if (creds != null) {
-        MetadataApplierImpl applier = new MetadataApplierImpl(
-            delegate, method, headers, callOptions);
-        RequestInfo requestInfo = new RequestInfo() {
-            @Override
-            public MethodDescriptor<?, ?> getMethodDescriptor() {
-              return method;
-            }
+    public void close() {
+        delegate.close();
+    }
 
-            @Override
-            public SecurityLevel getSecurityLevel() {
-              return firstNonNull(
-                  delegate.getAttributes().get(GrpcAttributes.ATTR_SECURITY_LEVEL),
-                  SecurityLevel.NONE);
-            }
+    /**
+     * 支持鉴权的代理的 Transport
+     */
+    private class CallCredentialsApplyingTransport extends ForwardingConnectionClientTransport {
+        private final ConnectionClientTransport delegate;
+        private final String authority;
 
-            @Override
-            public String getAuthority() {
-              return firstNonNull(callOptions.getAuthority(), authority);
-            }
-
-            @Override
-            public Attributes getTransportAttrs() {
-              return delegate.getAttributes();
-            }
-          };
-        try {
-          creds.applyRequestMetadata(
-              requestInfo, firstNonNull(callOptions.getExecutor(), appExecutor), applier);
-        } catch (Throwable t) {
-          applier.fail(Status.UNAUTHENTICATED
-              .withDescription("Credentials should use fail() instead of throwing exceptions")
-              .withCause(t));
+        CallCredentialsApplyingTransport(ConnectionClientTransport delegate, String authority) {
+            this.delegate = checkNotNull(delegate, "delegate");
+            this.authority = checkNotNull(authority, "authority");
         }
-        return applier.returnStream();
-      } else {
-        return delegate.newStream(method, headers, callOptions);
-      }
+
+        @Override
+        protected ConnectionClientTransport delegate() {
+            return delegate;
+        }
+
+        @Override
+        @SuppressWarnings("deprecation")
+        public ClientStream newStream(final MethodDescriptor<?, ?> method,
+                                      Metadata headers,
+                                      final CallOptions callOptions) {
+            // 如果有鉴权信息
+            CallCredentials creds = callOptions.getCredentials();
+            if (creds != null) {
+                MetadataApplierImpl applier = new MetadataApplierImpl(delegate, method, headers, callOptions);
+
+                RequestInfo requestInfo = new RequestInfo() {
+                    @Override
+                    public MethodDescriptor<?, ?> getMethodDescriptor() {
+                        return method;
+                    }
+
+                    @Override
+                    public SecurityLevel getSecurityLevel() {
+                        return firstNonNull(delegate.getAttributes().get(GrpcAttributes.ATTR_SECURITY_LEVEL),
+                                SecurityLevel.NONE);
+                    }
+
+                    @Override
+                    public String getAuthority() {
+                        return firstNonNull(callOptions.getAuthority(), authority);
+                    }
+
+                    @Override
+                    public Attributes getTransportAttrs() {
+                        return delegate.getAttributes();
+                    }
+                };
+                // 构建用于鉴权的请求
+                try {
+                    creds.applyRequestMetadata(requestInfo, firstNonNull(callOptions.getExecutor(), appExecutor), applier);
+                } catch (Throwable t) {
+                    applier.fail(Status.UNAUTHENTICATED
+                            .withDescription("Credentials should use fail() instead of throwing exceptions")
+                            .withCause(t));
+                }
+                return applier.returnStream();
+            } else {
+                return delegate.newStream(method, headers, callOptions);
+            }
+        }
     }
-  }
 }
