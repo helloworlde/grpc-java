@@ -55,6 +55,7 @@ public final class ServerMethodDefinition<ReqT, RespT> {
 
     /**
      * The {@code MethodDescriptor} for this method.
+     * 获取方法描述
      */
     public MethodDescriptor<ReqT, RespT> getMethodDescriptor() {
         return method;
@@ -62,6 +63,7 @@ public final class ServerMethodDefinition<ReqT, RespT> {
 
     /**
      * Handler for incoming calls.
+     * 返回方法处理器
      */
     public ServerCallHandler<ReqT, RespT> getServerCallHandler() {
         return handler;
