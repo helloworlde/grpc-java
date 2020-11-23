@@ -16,17 +16,18 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Stopwatch;
 import com.google.common.util.concurrent.MoreExecutors;
 import io.grpc.Status;
+
+import javax.annotation.concurrent.GuardedBy;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import javax.annotation.concurrent.GuardedBy;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Manages keepalive pings.
@@ -234,6 +235,7 @@ public class KeepAliveManager {
 
   /**
    * Bumps keepalive time to 10 seconds if the specified value was smaller than that.
+   * 如果设置的值小于 10s，将值设置为 10s
    */
   public static long clampKeepAliveTimeInNanos(long keepAliveTimeInNanos) {
     return Math.max(keepAliveTimeInNanos, MIN_KEEPALIVE_TIME_NANOS);
@@ -241,6 +243,7 @@ public class KeepAliveManager {
 
   /**
    * Bumps keepalive timeout to 10 milliseconds if the specified value was smaller than that.
+   * 如果设置的值小于 10ms 则会被设置为 10ms
    */
   public static long clampKeepAliveTimeoutInNanos(long keepAliveTimeoutInNanos) {
     return Math.max(keepAliveTimeoutInNanos, MIN_KEEPALIVE_TIMEOUT_NANOS);
