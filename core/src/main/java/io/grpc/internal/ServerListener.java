@@ -22,7 +22,7 @@ package io.grpc.internal;
  * <p>
  * ServerTransport 事件监听器，监听器没有保证线程安全，所以停止必须在外部正确同步
  */
-public interface ServerListener {
+public interface  ServerListener {
 
     /**
      * Called upon the establishment of a new client connection.
