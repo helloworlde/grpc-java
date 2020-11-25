@@ -16,9 +16,6 @@
 
 package io.grpc.stub;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import io.grpc.Metadata;
@@ -26,6 +23,9 @@ import io.grpc.MethodDescriptor;
 import io.grpc.ServerCall;
 import io.grpc.ServerCallHandler;
 import io.grpc.Status;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Utility functions for adapting {@link ServerCallHandler}s to application service implementation,
@@ -119,17 +119,25 @@ public final class ServerCalls {
       this.method = method;
     }
 
+    /**
+     * 处理请求
+     *
+     * @param call    object for responding to the remote client.
+     *                用于响应远程客户端的对象
+     * @param headers 请求头
+     * @return 监听器
+     */
     @Override
     public ServerCall.Listener<ReqT> startCall(ServerCall<ReqT, RespT> call, Metadata headers) {
-      Preconditions.checkArgument(
-          call.getMethodDescriptor().getType().clientSendsOneMessage(),
-          "asyncUnaryRequestCall is only for clientSendsOneMessage methods");
-      ServerCallStreamObserverImpl<ReqT, RespT> responseObserver =
-          new ServerCallStreamObserverImpl<>(call);
+      // 检查类型是否是单次请求的类型
+      Preconditions.checkArgument(call.getMethodDescriptor().getType().clientSendsOneMessage(), "asyncUnaryRequestCall is only for clientSendsOneMessage methods");
+      // 创建响应处理器
+      ServerCallStreamObserverImpl<ReqT, RespT> responseObserver = new ServerCallStreamObserverImpl<>(call);
       // We expect only 1 request, but we ask for 2 requests here so that if a misbehaving client
       // sends more than 1 requests, ServerCall will catch it. Note that disabling auto
       // inbound flow control has no effect on unary calls.
       call.request(2);
+      // 返回监听器
       return new UnaryServerCallListener(responseObserver, call);
     }
 

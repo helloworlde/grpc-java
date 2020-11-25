@@ -179,18 +179,24 @@ public final class Deadline implements Comparable<Deadline> {
 
   /**
    * Schedule a task to be run when the deadline expires.
+   * 提交一个超时后会执行的任务
    *
    * <p>Note if this deadline was created with a custom {@link Ticker}, the {@code scheduler}'s
    * underlying clock should be synchronized with that Ticker.  Otherwise the task won't be run at
    * the expected point of time.
+   * 如果使用自定义的 Ticker 创建 deadline，线程池的锁应当对其同步，除非不需要在指定的时间执行
    *
-   * @param task to run on expiration
+   * @param task      to run on expiration
+   *                  超时取消的任务
    * @param scheduler used to execute the task
+   *                  线程池
    * @return {@link ScheduledFuture} which can be used to cancel execution of the task
+   * 可以用于取消超时的 Future
    */
   public ScheduledFuture<?> runOnExpiration(Runnable task, ScheduledExecutorService scheduler) {
     checkNotNull(task, "task");
     checkNotNull(scheduler, "scheduler");
+    // 根据超时时间计算，提交延时任务
     return scheduler.schedule(task, deadlineNanos - ticker.nanoTime(), TimeUnit.NANOSECONDS);
   }
 

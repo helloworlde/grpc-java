@@ -578,6 +578,9 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
         }
 
 
+        /**
+         * 流创建事件
+         */
         @Override
         public void streamCreated(ServerStream stream, String methodName, Metadata headers) {
             Tag tag = PerfMark.createTag(methodName, stream.streamId());
@@ -589,47 +592,51 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
             }
         }
 
-        private void streamCreatedInternal(
-                final ServerStream stream, final String methodName, final Metadata headers, final Tag tag) {
+        private void streamCreatedInternal(final ServerStream stream,
+                                           final String methodName,
+                                           final Metadata headers,
+                                           final Tag tag) {
             final Executor wrappedExecutor;
             // This is a performance optimization that avoids the synchronization and queuing overhead
             // that comes with SerializingExecutor.
+            // 这是一种性能优化，避免了 SerializingExecutor 附带的同步和排队开销
+            // 如果是 directExecutor，则使用 SerializeReentrantCallsDirectExecutor，会使用当前线程直接执行
             if (executor == directExecutor()) {
                 wrappedExecutor = new SerializeReentrantCallsDirectExecutor();
                 stream.optimizeForDirectExecutor();
             } else {
+                // 否则使用指定的 Executor 执行
                 wrappedExecutor = new SerializingExecutor(executor);
             }
 
+            // 如果 header 中包含消息编码的 key， 则根据 encode 类型查找相应的解压器
             if (headers.containsKey(MESSAGE_ENCODING_KEY)) {
                 String encoding = headers.get(MESSAGE_ENCODING_KEY);
+                // 根据 encode 类型查找解压器
                 Decompressor decompressor = decompressorRegistry.lookupDecompressor(encoding);
                 if (decompressor == null) {
                     stream.setListener(NOOP_LISTENER);
-                    stream.close(
-                            Status.UNIMPLEMENTED.withDescription(
-                                    String.format("Can't find decompressor for %s", encoding)),
-                            new Metadata());
+                    stream.close(Status.UNIMPLEMENTED.withDescription(String.format("Can't find decompressor for %s", encoding)), new Metadata());
                     return;
                 }
                 stream.setDecompressor(decompressor);
             }
 
-            final StatsTraceContext statsTraceCtx = Preconditions.checkNotNull(
-                    stream.statsTraceContext(), "statsTraceCtx not present from stream");
+            final StatsTraceContext statsTraceCtx = Preconditions.checkNotNull(stream.statsTraceContext(), "statsTraceCtx not present from stream");
 
+            // 创建可以取消的上下文
             final Context.CancellableContext context = createContext(headers, statsTraceCtx);
 
             final Link link = PerfMark.linkOut();
 
-            final JumpToApplicationThreadServerStreamListener jumpListener
-                    = new JumpToApplicationThreadServerStreamListener(
-                    wrappedExecutor, executor, stream, context, tag);
+            // 将回调调度到应用程序的执行程序上
+            final JumpToApplicationThreadServerStreamListener jumpListener = new JumpToApplicationThreadServerStreamListener(wrappedExecutor, executor, stream, context, tag);
             stream.setListener(jumpListener);
             // Run in wrappedExecutor so jumpListener.setListener() is called before any callbacks
             // are delivered, including any errors. Callbacks can still be triggered, but they will be
             // queued.
 
+            // 流创建任务处理
             final class StreamCreated extends ContextRunnable {
                 StreamCreated() {
                     super(context);
@@ -649,13 +656,15 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
                 private void runInternal() {
                     ServerStreamListener listener = NOOP_LISTENER;
                     try {
+                        // 根据方法名称获取方法定义
                         ServerMethodDefinition<?, ?> method = registry.lookupMethod(methodName);
+                        // 如果没有则从回退的方法注册器中查找
                         if (method == null) {
                             method = fallbackRegistry.lookupMethod(methodName, stream.getAuthority());
                         }
+                        // 如果没有则方法不存在，返回 UNIMPLEMENTED，关闭流，取消上下文
                         if (method == null) {
-                            Status status = Status.UNIMPLEMENTED.withDescription(
-                                    "Method not found: " + methodName);
+                            Status status = Status.UNIMPLEMENTED.withDescription("Method not found: " + methodName);
                             // TODO(zhangkun83): this error may be recorded by the tracer, and if it's kept in
                             // memory as a map whose key is the method name, this would allow a misbehaving
                             // client to blow up the server in-memory stats storage by sending large number of
@@ -665,6 +674,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
                             context.cancel(null);
                             return;
                         }
+                        // 如果方法存在，则开始调用
                         listener = startCall(stream, methodName, method, headers, context, statsTraceCtx, tag);
                     } catch (Throwable t) {
                         stream.close(Status.fromThrowable(t), new Metadata());
@@ -696,61 +706,81 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
             wrappedExecutor.execute(new StreamCreated());
         }
 
-        private Context.CancellableContext createContext(
-                Metadata headers, StatsTraceContext statsTraceCtx) {
+        /**
+         * 创建可以取消的上下文
+         */
+        private Context.CancellableContext createContext(Metadata headers,
+                                                         StatsTraceContext statsTraceCtx) {
+            // 从 Header 中获取超时配置
             Long timeoutNanos = headers.get(TIMEOUT_KEY);
 
-            Context baseContext =
-                    statsTraceCtx
-                            .serverFilterContext(rootContext)
-                            .withValue(io.grpc.InternalServer.SERVER_CONTEXT_KEY, ServerImpl.this);
+            Context baseContext = statsTraceCtx.serverFilterContext(rootContext)
+                                               .withValue(io.grpc.InternalServer.SERVER_CONTEXT_KEY, ServerImpl.this);
 
+            // 如果没有设置超时，则直接创建可取消的上下文
             if (timeoutNanos == null) {
                 return baseContext.withCancellation();
             }
 
-            Context.CancellableContext context =
-                    baseContext.withDeadline(
-                            Deadline.after(timeoutNanos, NANOSECONDS, ticker),
-                            transport.getScheduledExecutorService());
+            // 如果有设置超时，则根据超时创建可取消的上下文
+            Context.CancellableContext context = baseContext.withDeadline(Deadline.after(timeoutNanos, NANOSECONDS, ticker), transport.getScheduledExecutorService());
 
             return context;
         }
 
         /**
          * Never returns {@code null}.
+         * 开始处理请求
          */
-        private <ReqT, RespT> ServerStreamListener startCall(ServerStream stream, String fullMethodName,
-                                                             ServerMethodDefinition<ReqT, RespT> methodDef, Metadata headers,
-                                                             Context.CancellableContext context, StatsTraceContext statsTraceCtx, Tag tag) {
+        private <ReqT, RespT> ServerStreamListener startCall(ServerStream stream,
+                                                             String fullMethodName,
+                                                             ServerMethodDefinition<ReqT, RespT> methodDef,
+                                                             Metadata headers,
+                                                             Context.CancellableContext context,
+                                                             StatsTraceContext statsTraceCtx,
+                                                             Tag tag) {
             // TODO(ejona86): should we update fullMethodName to have the canonical path of the method?
-            statsTraceCtx.serverCallStarted(
-                    new ServerCallInfoImpl<>(
-                            methodDef.getMethodDescriptor(), // notify with original method descriptor
-                            stream.getAttributes(),
-                            stream.getAuthority()));
+            // 记录开始处理请求
+            statsTraceCtx.serverCallStarted(new ServerCallInfoImpl<>(methodDef.getMethodDescriptor(), // notify with original method descriptor
+                    stream.getAttributes(),
+                    stream.getAuthority()));
+
+            // 从方法描述获取调用处理器
             ServerCallHandler<ReqT, RespT> handler = methodDef.getServerCallHandler();
+            // 遍历拦截器，为处理器添加拦截器
             for (ServerInterceptor interceptor : interceptors) {
                 handler = InternalServerInterceptors.interceptCallHandler(interceptor, handler);
             }
+            // 使用添加了拦截器后的处理器创建新的方法定义
             ServerMethodDefinition<ReqT, RespT> interceptedDef = methodDef.withServerCallHandler(handler);
 
             // 如果 binlog 不为空，即需要记录binlog，则添加请求监听器和方法处理器记录 binlog
             ServerMethodDefinition<?, ?> wMethodDef = binlog == null ? interceptedDef : binlog.wrapMethodDefinition(interceptedDef);
 
+            // 处理封装后的调用
             return startWrappedCall(fullMethodName, wMethodDef, stream, headers, context, tag);
         }
 
-        private <WReqT, WRespT> ServerStreamListener startWrappedCall(
-                String fullMethodName,
-                ServerMethodDefinition<WReqT, WRespT> methodDef,
-                ServerStream stream,
-                Metadata headers,
-                Context.CancellableContext context,
-                Tag tag) {
+        /**
+         * 开始处理请求
+         *
+         * @param fullMethodName 方法名称
+         * @param methodDef      方法定义
+         * @param stream         请求
+         * @param headers        请求头
+         * @param context        可取消的上下午我
+         * @param tag            用于性能记录的 tag
+         * @return 流监听器
+         */
+        private <WReqT, WRespT> ServerStreamListener startWrappedCall(String fullMethodName,
+                                                                      ServerMethodDefinition<WReqT, WRespT> methodDef,
+                                                                      ServerStream stream,
+                                                                      Metadata headers,
+                                                                      Context.CancellableContext context,
+                                                                      Tag tag) {
 
-            ServerCallImpl<WReqT, WRespT> call = new ServerCallImpl<>(
-                    stream,
+            // 创建请求处理器
+            ServerCallImpl<WReqT, WRespT> call = new ServerCallImpl<>(stream,
                     methodDef.getMethodDescriptor(),
                     headers,
                     context,
@@ -759,12 +789,13 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
                     serverCallTracer,
                     tag);
 
-            ServerCall.Listener<WReqT> listener =
-                    methodDef.getServerCallHandler().startCall(call, headers);
+            // 调用方法处理器，真正调用实现逻辑的方法
+            ServerCall.Listener<WReqT> listener = methodDef.getServerCallHandler().startCall(call, headers);
             if (listener == null) {
-                throw new NullPointerException(
-                        "startCall() returned a null listener for method " + fullMethodName);
+                throw new NullPointerException("startCall() returned a null listener for method " + fullMethodName);
             }
+
+            // 根据调用监听器创建新的流监听器
             return call.newServerStreamListener(listener);
         }
     }
@@ -774,6 +805,9 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
         return logId;
     }
 
+    /**
+     * 获取统计数据
+     */
     @Override
     public ListenableFuture<ServerStats> getStats() {
         ServerStats.Builder builder = new ServerStats.Builder();
@@ -839,6 +873,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
     /**
      * Dispatches callbacks onto an application-provided executor and correctly propagates
      * exceptions.
+     * 将回调调度到应用程序提供的执行程序上，并正确传播异常
      */
     @VisibleForTesting
     static final class JumpToApplicationThreadServerStreamListener implements ServerStreamListener {
@@ -851,7 +886,10 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
         private ServerStreamListener listener;
 
         public JumpToApplicationThreadServerStreamListener(Executor executor,
-                                                           Executor cancelExecutor, ServerStream stream, Context.CancellableContext context, Tag tag) {
+                                                           Executor cancelExecutor,
+                                                           ServerStream stream,
+                                                           Context.CancellableContext context,
+                                                           Tag tag) {
             this.callExecutor = executor;
             this.cancelExecutor = cancelExecutor;
             this.stream = stream;
@@ -861,6 +899,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
         /**
          * This call MUST be serialized on callExecutor to avoid races.
+         * 此调用必须在callExecutor上进行序列化，以避免发生争用
          */
         private ServerStreamListener getListener() {
             if (listener == null) {

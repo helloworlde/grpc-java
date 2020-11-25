@@ -232,6 +232,9 @@ public class Context {
    * CancellableContext#cancel(Throwable)} or {@link CancellableContext#detachAndCancel(Context,
    * Throwable)} are called at a later point, in order to allow this context to be garbage
    * collected.
+   * 创建一个新的 Context，这个 Context 可以独立取消，也可以通过父 Context 级联取消，调用者必须确保在之后调用了
+   * CancellableContext#cancel(Throwable) 或 CancellableContext#detachAndCancel(Context, Throwable) 方法，
+   * 以保证 Context 可以被垃圾回收
    *
    * <p>Sample usage:
    * <pre>
@@ -290,6 +293,8 @@ public class Context {
    * the returned context prior to the deadline just as for {@link #withCancellation()}. If the unit
    * of work completes before the deadline, the context should be explicitly cancelled to allow
    * it to be garbage collected.
+   * 创建一个当超时时可以取消的上下文，返回的上下文可以通过父 Context 级联取消，调用者可以在超时之前主动取消，
+   * 如果在超时之前完成，上下文也应当被取消，以便垃圾回收
    *
    * <p>Sample usage:
    * <pre>
@@ -312,14 +317,18 @@ public class Context {
   public CancellableContext withDeadline(Deadline newDeadline, ScheduledExecutorService scheduler) {
     checkNotNull(newDeadline, "deadline");
     checkNotNull(scheduler, "scheduler");
+    // 获取关联的过期时间
     Deadline existingDeadline = getDeadline();
     boolean scheduleDeadlineCancellation = true;
+    // 如果已经存在过期时间，且小于等于新的过期时间，则使用已经存在的 deadline
     if (existingDeadline != null && existingDeadline.compareTo(newDeadline) <= 0) {
       // The new deadline won't have an effect, so ignore it
       newDeadline = existingDeadline;
       scheduleDeadlineCancellation = false;
     }
+    // 根据 deadline 创建新的可取消的上下文
     CancellableContext newCtx = new CancellableContext(this, newDeadline);
+    // 如果使用的是新设置的 deadline
     if (scheduleDeadlineCancellation) {
       newCtx.setUpDeadlineCancellation(newDeadline, scheduler);
     }
@@ -500,7 +509,9 @@ public class Context {
 
   /**
    * A context may have an associated {@link Deadline} at which it will be automatically cancelled.
+   *
    * @return A {@link io.grpc.Deadline} or {@code null} if no deadline is set.
+   * 上下文可能有一个关联的用于自动取消的过期时间，如果有则返回，没有则返回 null
    */
   public Deadline getDeadline() {
     if (cancellableAncestor == null) {
@@ -703,12 +714,17 @@ public class Context {
       this.uncancellableSurrogate = new Context(this, keyValueEntries);
     }
 
+    /**
+     * 设置新的 deadline 和执行器
+     */
     private void setUpDeadlineCancellation(Deadline deadline, ScheduledExecutorService scheduler) {
+      // 如果 deadline 没有过期，则创建新的取消任务，并提交
       if (!deadline.isExpired()) {
         final class CancelOnExpiration implements Runnable {
           @Override
           public void run() {
             try {
+              //  取消上下文，通知监听器
               cancel(new TimeoutException("context timed out"));
             } catch (Throwable t) {
               log.log(Level.SEVERE, "Cancel threw an exception, which should not happen", t);
@@ -717,10 +733,12 @@ public class Context {
         }
 
         synchronized (this) {
+          // 执行取消的任务
           pendingDeadline = deadline.runOnExpiration(new CancelOnExpiration(), scheduler);
         }
       } else {
         // Cancel immediately if the deadline is already expired.
+        // 如果已经超时了则立即取消
         cancel(new TimeoutException("context timed out"));
       }
     }
@@ -816,71 +834,82 @@ public class Context {
       return uncancellableSurrogate.isCurrent();
     }
 
-    /**
-     * Cancel this context and optionally provide a cause (can be {@code null}) for the
-     * cancellation. This will trigger notification of listeners. It is safe to call this method
-     * multiple times. Only the first call will have any effect.
-     *
-     * <p>Calling {@code cancel(null)} is the same as calling {@link #close}.
-     *
-     * @return {@code true} if this context cancelled the context and notified listeners,
-     *    {@code false} if the context was already cancelled.
-     */
-    @CanIgnoreReturnValue
-    public boolean cancel(Throwable cause) {
-      boolean triggeredCancel = false;
-      synchronized (this) {
-        if (!cancelled) {
-          cancelled = true;
-          if (pendingDeadline != null) {
-            // If we have a scheduled cancellation pending attempt to cancel it.
-            pendingDeadline.cancel(false);
-            pendingDeadline = null;
+      /**
+       * Cancel this context and optionally provide a cause (can be {@code null}) for the
+       * cancellation. This will trigger notification of listeners. It is safe to call this method
+       * multiple times. Only the first call will have any effect.
+       * 取消此上下文，并有选择的提供原因，会触发监听器的通知，这个方法调用多次是安全的，只有第一次调用会生效
+       *
+       * <p>Calling {@code cancel(null)} is the same as calling {@link #close}.
+       * 调用 cancel 和调用 close 是一样的
+       *
+       * @return {@code true} if this context cancelled the context and notified listeners,
+       * {@code false} if the context was already cancelled.
+       * 如果取消了上下文并且通知了监听器，则返回 true，如果上下文已经取消了，则返回 false
+       */
+      @CanIgnoreReturnValue
+      public boolean cancel(Throwable cause) {
+          boolean triggeredCancel = false;
+          synchronized (this) {
+              // 如果没有取消，则取消，并修改状态
+              if (!cancelled) {
+                  cancelled = true;
+                  // 如果有等待取消的任务，则取消
+                  if (pendingDeadline != null) {
+                      // If we have a scheduled cancellation pending attempt to cancel it.
+                      pendingDeadline.cancel(false);
+                      pendingDeadline = null;
+                  }
+                  this.cancellationCause = cause;
+                  triggeredCancel = true;
+              }
           }
-          this.cancellationCause = cause;
-          triggeredCancel = true;
-        }
+          // 如果取消成功了，则通知监听器
+          if (triggeredCancel) {
+              notifyAndClearListeners();
+          }
+          return triggeredCancel;
       }
-      if (triggeredCancel) {
-        notifyAndClearListeners();
-      }
-      return triggeredCancel;
-    }
 
-    /**
-     * Notify all listeners that this context has been cancelled and immediately release
-     * any reference to them so that they may be garbage collected.
-     */
-    private void notifyAndClearListeners() {
-      ArrayList<ExecutableListener> tmpListeners;
-      CancellationListener tmpParentListener;
-      synchronized (this) {
-        if (listeners == null) {
-          return;
-        }
-        tmpParentListener = parentListener;
-        parentListener = null;
-        tmpListeners = listeners;
-        listeners = null;
+      /**
+       * Notify all listeners that this context has been cancelled and immediately release
+       * any reference to them so that they may be garbage collected.
+       * 通知所有的监听器上下文已经被取消了，应当立即释放对其引用一遍进行垃圾回收
+       */
+      private void notifyAndClearListeners() {
+          ArrayList<ExecutableListener> tmpListeners;
+          CancellationListener tmpParentListener;
+          synchronized (this) {
+              // 如果没有监听器则返回
+              if (listeners == null) {
+                  return;
+              }
+              tmpParentListener = parentListener;
+              parentListener = null;
+              tmpListeners = listeners;
+              listeners = null;
+          }
+          // Deliver events to this context listeners before we notify child contexts. We do this
+          // to cancel higher level units of work before child units. This allows for a better error
+          // handling paradigm where the higher level unit of work knows it is cancelled and so can
+          // ignore errors that bubble up as a result of cancellation of lower level units.
+          // 在取消之前先通知事件，优先通知当前上下文
+          for (ExecutableListener tmpListener : tmpListeners) {
+              if (tmpListener.context == this) {
+                  tmpListener.deliver();
+              }
+          }
+          // 通知其他的上下文
+          for (ExecutableListener tmpListener : tmpListeners) {
+              if (!(tmpListener.context == this)) {
+                  tmpListener.deliver();
+              }
+          }
+          // 移除引用的监听器
+          if (cancellableAncestor != null) {
+              cancellableAncestor.removeListener(tmpParentListener);
+          }
       }
-      // Deliver events to this context listeners before we notify child contexts. We do this
-      // to cancel higher level units of work before child units. This allows for a better error
-      // handling paradigm where the higher level unit of work knows it is cancelled and so can
-      // ignore errors that bubble up as a result of cancellation of lower level units.
-      for (ExecutableListener tmpListener : tmpListeners) {
-        if (tmpListener.context == this) {
-          tmpListener.deliver();
-        }
-      }
-      for (ExecutableListener tmpListener : tmpListeners) {
-        if (!(tmpListener.context == this)) {
-          tmpListener.deliver();
-        }
-      }
-      if (cancellableAncestor != null) {
-        cancellableAncestor.removeListener(tmpParentListener);
-      }
-    }
 
     @Override
     int listenerCount() {

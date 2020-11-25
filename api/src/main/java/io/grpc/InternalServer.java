@@ -20,12 +20,13 @@ package io.grpc;
  * Internal accessor for getting the {@link Server} instance inside server RPC {@link Context}.
  * This is intended for usage internal to the gRPC team. If you think you need to use
  * this, contact the gRPC team first.
+ * 从请求上下文中获取 Server 实例
  */
 @Internal
 public class InternalServer {
-  public static final Context.Key<Server> SERVER_CONTEXT_KEY = Server.SERVER_CONTEXT_KEY;
+    public static final Context.Key<Server> SERVER_CONTEXT_KEY = Server.SERVER_CONTEXT_KEY;
 
-  // Prevent instantiation.
-  private InternalServer() {
-  }
+    // Prevent instantiation.
+    private InternalServer() {
+    }
 }

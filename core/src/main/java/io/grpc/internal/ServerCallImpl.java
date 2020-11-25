@@ -16,13 +16,6 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static io.grpc.internal.GrpcUtil.ACCEPT_ENCODING_SPLITTER;
-import static io.grpc.internal.GrpcUtil.MESSAGE_ACCEPT_ENCODING_KEY;
-import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Throwables;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -39,10 +32,23 @@ import io.grpc.ServerCall;
 import io.grpc.Status;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
+
 import java.io.InputStream;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
+import static io.grpc.internal.GrpcUtil.ACCEPT_ENCODING_SPLITTER;
+import static io.grpc.internal.GrpcUtil.MESSAGE_ACCEPT_ENCODING_KEY;
+import static io.grpc.internal.GrpcUtil.MESSAGE_ENCODING_KEY;
+
+/**
+ * 调用处理器
+ * @param <ReqT>
+ * @param <RespT>
+ */
 final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
 
   private static final Logger log = Logger.getLogger(ServerCallImpl.class.getName());
@@ -68,10 +74,14 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
   private Compressor compressor;
   private boolean messageSent;
 
-  ServerCallImpl(ServerStream stream, MethodDescriptor<ReqT, RespT> method,
-      Metadata inboundHeaders, Context.CancellableContext context,
-      DecompressorRegistry decompressorRegistry, CompressorRegistry compressorRegistry,
-      CallTracer serverCallTracer, Tag tag) {
+  ServerCallImpl(ServerStream stream,
+                 MethodDescriptor<ReqT, RespT> method,
+                 Metadata inboundHeaders,
+                 Context.CancellableContext context,
+                 DecompressorRegistry decompressorRegistry,
+                 CompressorRegistry compressorRegistry,
+                 CallTracer serverCallTracer,
+                 Tag tag) {
     this.stream = stream;
     this.method = method;
     this.context = context;

@@ -77,6 +77,7 @@ public final class GrpcUtil {
 
   /**
    * {@link io.grpc.Metadata.Key} for the timeout header.
+   *  超时配置的 header
    */
   public static final Metadata.Key<Long> TIMEOUT_KEY =
           Metadata.Key.of(GrpcUtil.TIMEOUT, new TimeoutMarshaller());

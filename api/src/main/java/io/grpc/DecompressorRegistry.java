@@ -16,10 +16,10 @@
 
 package io.grpc;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.base.Joiner;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.ThreadSafe;
 import java.nio.charset.Charset;
 import java.util.Collections;
 import java.util.HashSet;
@@ -27,8 +27,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.ThreadSafe;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Encloses classes related to the compression and decompression of messages.
@@ -127,10 +128,12 @@ public final class DecompressorRegistry {
   /**
    * Returns a decompressor for the given message encoding, or {@code null} if none has been
    * registered.
+   * 根据所给的消息编码，查找解压器，如果没有则返回 null
    *
    * <p>This ignores whether the compressor is advertised.  According to the spec, if we know how
    * to process this encoding, we attempt to, regardless of whether or not it is part of the
    * encodings sent to the remote host.
+   * 忽略了是否有压缩器，根据规格，如果知道怎么处理压缩，无论它是否是发送给远程主机的编码的一部分，都会尝试
    */
   @Nullable
   public Decompressor lookupDecompressor(String messageEncoding) {
