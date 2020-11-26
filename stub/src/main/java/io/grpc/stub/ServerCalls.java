@@ -30,440 +30,489 @@ import static com.google.common.base.Preconditions.checkState;
 /**
  * Utility functions for adapting {@link ServerCallHandler}s to application service implementation,
  * meant to be used by the generated code.
+ * 适配 ServerCallHandler 和方法实现的工具，打算由生成的代码使用
  */
 public final class ServerCalls {
 
-  @VisibleForTesting
-  static final String TOO_MANY_REQUESTS = "Too many requests";
-  @VisibleForTesting
-  static final String MISSING_REQUEST = "Half-closed without a request";
+    @VisibleForTesting
+    static final String TOO_MANY_REQUESTS = "Too many requests";
 
-  private ServerCalls() {
-  }
+    @VisibleForTesting
+    static final String MISSING_REQUEST = "Half-closed without a request";
 
-  /**
-   * Creates a {@link ServerCallHandler} for a unary call method of the service.
-   *
-   * @param method an adaptor to the actual method on the service implementation.
-   */
-  public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncUnaryCall(
-      UnaryMethod<ReqT, RespT> method) {
-    return new UnaryServerCallHandler<>(method);
-  }
-
-  /**
-   * Creates a {@link ServerCallHandler} for a server streaming method of the service.
-   *
-   * @param method an adaptor to the actual method on the service implementation.
-   */
-  public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncServerStreamingCall(
-      ServerStreamingMethod<ReqT, RespT> method) {
-    return new UnaryServerCallHandler<>(method);
-  }
-
-  /**
-   * Creates a {@link ServerCallHandler} for a client streaming method of the service.
-   *
-   * @param method an adaptor to the actual method on the service implementation.
-   */
-  public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncClientStreamingCall(
-      ClientStreamingMethod<ReqT, RespT> method) {
-    return new StreamingServerCallHandler<>(method);
-  }
-
-  /**
-   * Creates a {@link ServerCallHandler} for a bidi streaming method of the service.
-   *
-   * @param method an adaptor to the actual method on the service implementation.
-   */
-  public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncBidiStreamingCall(
-      BidiStreamingMethod<ReqT, RespT> method) {
-    return new StreamingServerCallHandler<>(method);
-  }
-
-  /**
-   * Adaptor to a unary call method.
-   */
-  public interface UnaryMethod<ReqT, RespT> extends UnaryRequestMethod<ReqT, RespT> {
-    @Override void invoke(ReqT request, StreamObserver<RespT> responseObserver);
-  }
-
-  /**
-   * Adaptor to a server streaming method.
-   */
-  public interface ServerStreamingMethod<ReqT, RespT> extends UnaryRequestMethod<ReqT, RespT> {
-    @Override void invoke(ReqT request, StreamObserver<RespT> responseObserver);
-  }
-
-  /**
-   * Adaptor to a client streaming method.
-   */
-  public interface ClientStreamingMethod<ReqT, RespT> extends StreamingRequestMethod<ReqT, RespT> {
-    @Override StreamObserver<ReqT> invoke(StreamObserver<RespT> responseObserver);
-  }
-
-  /**
-   * Adaptor to a bidirectional streaming method.
-   */
-  public interface BidiStreamingMethod<ReqT, RespT> extends StreamingRequestMethod<ReqT, RespT> {
-    @Override StreamObserver<ReqT> invoke(StreamObserver<RespT> responseObserver);
-  }
-
-  private static final class UnaryServerCallHandler<ReqT, RespT>
-      implements ServerCallHandler<ReqT, RespT> {
-
-    private final UnaryRequestMethod<ReqT, RespT> method;
-
-    // Non private to avoid synthetic class
-    UnaryServerCallHandler(UnaryRequestMethod<ReqT, RespT> method) {
-      this.method = method;
+    private ServerCalls() {
     }
 
     /**
-     * 处理请求
+     * Creates a {@link ServerCallHandler} for a unary call method of the service.
+     * 为 UNARY 的方法创建一个处理器
      *
-     * @param call    object for responding to the remote client.
-     *                用于响应远程客户端的对象
-     * @param headers 请求头
-     * @return 监听器
+     * @param method an adaptor to the actual method on the service implementation.
+     *               真正的方法实现的适配器
      */
-    @Override
-    public ServerCall.Listener<ReqT> startCall(ServerCall<ReqT, RespT> call, Metadata headers) {
-      // 检查类型是否是单次请求的类型
-      Preconditions.checkArgument(call.getMethodDescriptor().getType().clientSendsOneMessage(), "asyncUnaryRequestCall is only for clientSendsOneMessage methods");
-      // 创建响应处理器
-      ServerCallStreamObserverImpl<ReqT, RespT> responseObserver = new ServerCallStreamObserverImpl<>(call);
-      // We expect only 1 request, but we ask for 2 requests here so that if a misbehaving client
-      // sends more than 1 requests, ServerCall will catch it. Note that disabling auto
-      // inbound flow control has no effect on unary calls.
-      call.request(2);
-      // 返回监听器
-      return new UnaryServerCallListener(responseObserver, call);
+    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncUnaryCall(UnaryMethod<ReqT, RespT> method) {
+        return new UnaryServerCallHandler<>(method);
     }
 
-    private final class UnaryServerCallListener extends ServerCall.Listener<ReqT> {
-      private final ServerCall<ReqT, RespT> call;
-      private final ServerCallStreamObserverImpl<ReqT, RespT> responseObserver;
-      private boolean canInvoke = true;
-      private boolean wasReady;
-      private ReqT request;
-
-      // Non private to avoid synthetic class
-      UnaryServerCallListener(
-          ServerCallStreamObserverImpl<ReqT, RespT> responseObserver,
-          ServerCall<ReqT, RespT> call) {
-        this.call = call;
-        this.responseObserver = responseObserver;
-      }
-
-      @Override
-      public void onMessage(ReqT request) {
-        if (this.request != null) {
-          // Safe to close the call, because the application has not yet been invoked
-          call.close(
-              Status.INTERNAL.withDescription(TOO_MANY_REQUESTS),
-              new Metadata());
-          canInvoke = false;
-          return;
-        }
-
-        // We delay calling method.invoke() until onHalfClose() to make sure the client
-        // half-closes.
-        this.request = request;
-      }
-
-      @Override
-      public void onHalfClose() {
-        if (!canInvoke) {
-          return;
-        }
-        if (request == null) {
-          // Safe to close the call, because the application has not yet been invoked
-          call.close(
-              Status.INTERNAL.withDescription(MISSING_REQUEST),
-              new Metadata());
-          return;
-        }
-
-        method.invoke(request, responseObserver);
-        request = null;
-        responseObserver.freeze();
-        if (wasReady) {
-          // Since we are calling invoke in halfClose we have missed the onReady
-          // event from the transport so recover it here.
-          onReady();
-        }
-      }
-
-      @Override
-      public void onCancel() {
-        responseObserver.cancelled = true;
-        if (responseObserver.onCancelHandler != null) {
-          responseObserver.onCancelHandler.run();
-        }
-      }
-
-      @Override
-      public void onReady() {
-        wasReady = true;
-        if (responseObserver.onReadyHandler != null) {
-          responseObserver.onReadyHandler.run();
-        }
-      }
-    }
-  }
-
-  private static final class StreamingServerCallHandler<ReqT, RespT>
-      implements ServerCallHandler<ReqT, RespT> {
-
-    private final StreamingRequestMethod<ReqT, RespT> method;
-
-    // Non private to avoid synthetic class
-    StreamingServerCallHandler(StreamingRequestMethod<ReqT, RespT> method) {
-      this.method = method;
-    }
-
-    @Override
-    public ServerCall.Listener<ReqT> startCall(ServerCall<ReqT, RespT> call, Metadata headers) {
-      ServerCallStreamObserverImpl<ReqT, RespT> responseObserver =
-          new ServerCallStreamObserverImpl<>(call);
-      StreamObserver<ReqT> requestObserver = method.invoke(responseObserver);
-      responseObserver.freeze();
-      if (responseObserver.autoRequestEnabled) {
-        call.request(1);
-      }
-      return new StreamingServerCallListener(requestObserver, responseObserver, call);
-    }
-
-    private final class StreamingServerCallListener extends ServerCall.Listener<ReqT> {
-
-      private final StreamObserver<ReqT> requestObserver;
-      private final ServerCallStreamObserverImpl<ReqT, RespT> responseObserver;
-      private final ServerCall<ReqT, RespT> call;
-      private boolean halfClosed = false;
-
-      // Non private to avoid synthetic class
-      StreamingServerCallListener(
-          StreamObserver<ReqT> requestObserver,
-          ServerCallStreamObserverImpl<ReqT, RespT> responseObserver,
-          ServerCall<ReqT, RespT> call) {
-        this.requestObserver = requestObserver;
-        this.responseObserver = responseObserver;
-        this.call = call;
-      }
-
-      @Override
-      public void onMessage(ReqT request) {
-        requestObserver.onNext(request);
-
-        // Request delivery of the next inbound message.
-        if (responseObserver.autoRequestEnabled) {
-          call.request(1);
-        }
-      }
-
-      @Override
-      public void onHalfClose() {
-        halfClosed = true;
-        requestObserver.onCompleted();
-      }
-
-      @Override
-      public void onCancel() {
-        responseObserver.cancelled = true;
-        if (responseObserver.onCancelHandler != null) {
-          responseObserver.onCancelHandler.run();
-        }
-        if (!halfClosed) {
-          requestObserver.onError(
-              Status.CANCELLED
-                  .withDescription("cancelled before receiving half close")
-                  .asRuntimeException());
-        }
-      }
-
-      @Override
-      public void onReady() {
-        if (responseObserver.onReadyHandler != null) {
-          responseObserver.onReadyHandler.run();
-        }
-      }
-    }
-  }
-
-  private interface UnaryRequestMethod<ReqT, RespT> {
     /**
-     * The provided {@code responseObserver} will extend {@link ServerCallStreamObserver}.
+     * Creates a {@link ServerCallHandler} for a server streaming method of the service.
+     *
+     * @param method an adaptor to the actual method on the service implementation.
      */
-    void invoke(ReqT request, StreamObserver<RespT> responseObserver);
-  }
+    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncServerStreamingCall(
+            ServerStreamingMethod<ReqT, RespT> method) {
+        return new UnaryServerCallHandler<>(method);
+    }
 
-  private interface StreamingRequestMethod<ReqT, RespT> {
     /**
-     * The provided {@code responseObserver} will extend {@link ServerCallStreamObserver}.
+     * Creates a {@link ServerCallHandler} for a client streaming method of the service.
+     *
+     * @param method an adaptor to the actual method on the service implementation.
      */
-    StreamObserver<ReqT> invoke(StreamObserver<RespT> responseObserver);
-  }
-
-  private static final class ServerCallStreamObserverImpl<ReqT, RespT>
-      extends ServerCallStreamObserver<RespT> {
-    final ServerCall<ReqT, RespT> call;
-    volatile boolean cancelled;
-    private boolean frozen;
-    private boolean autoRequestEnabled = true;
-    private boolean sentHeaders;
-    private Runnable onReadyHandler;
-    private Runnable onCancelHandler;
-    private boolean aborted = false;
-    private boolean completed = false;
-
-    // Non private to avoid synthetic class
-    ServerCallStreamObserverImpl(ServerCall<ReqT, RespT> call) {
-      this.call = call;
+    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncClientStreamingCall(
+            ClientStreamingMethod<ReqT, RespT> method) {
+        return new StreamingServerCallHandler<>(method);
     }
 
-    private void freeze() {
-      this.frozen = true;
+    /**
+     * Creates a {@link ServerCallHandler} for a bidi streaming method of the service.
+     *
+     * @param method an adaptor to the actual method on the service implementation.
+     */
+    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncBidiStreamingCall(
+            BidiStreamingMethod<ReqT, RespT> method) {
+        return new StreamingServerCallHandler<>(method);
     }
 
-    @Override
-    public void setMessageCompression(boolean enable) {
-      call.setMessageCompression(enable);
+    /**
+     * Adaptor to a unary call method.
+     * unary 调用方法的适配器
+     */
+    public interface UnaryMethod<ReqT, RespT> extends UnaryRequestMethod<ReqT, RespT> {
+        @Override
+        void invoke(ReqT request, StreamObserver<RespT> responseObserver);
     }
 
-    @Override
-    public void setCompression(String compression) {
-      call.setCompression(compression);
+    /**
+     * Adaptor to a server streaming method.
+     */
+    public interface ServerStreamingMethod<ReqT, RespT> extends UnaryRequestMethod<ReqT, RespT> {
+        @Override
+        void invoke(ReqT request, StreamObserver<RespT> responseObserver);
     }
 
-    @Override
-    public void onNext(RespT response) {
-      if (cancelled) {
-        if (onCancelHandler == null) {
-          throw Status.CANCELLED.withDescription("call already cancelled").asRuntimeException();
+    /**
+     * Adaptor to a client streaming method.
+     */
+    public interface ClientStreamingMethod<ReqT, RespT> extends StreamingRequestMethod<ReqT, RespT> {
+        @Override
+        StreamObserver<ReqT> invoke(StreamObserver<RespT> responseObserver);
+    }
+
+    /**
+     * Adaptor to a bidirectional streaming method.
+     */
+    public interface BidiStreamingMethod<ReqT, RespT> extends StreamingRequestMethod<ReqT, RespT> {
+        @Override
+        StreamObserver<ReqT> invoke(StreamObserver<RespT> responseObserver);
+    }
+
+    /**
+     * Unary 调用处理器
+     */
+    private static final class UnaryServerCallHandler<ReqT, RespT> implements ServerCallHandler<ReqT, RespT> {
+
+        // Unary 方法
+        private final UnaryRequestMethod<ReqT, RespT> method;
+
+        // Non private to avoid synthetic class
+        UnaryServerCallHandler(UnaryRequestMethod<ReqT, RespT> method) {
+            this.method = method;
         }
-        return;
-      }
-      checkState(!aborted, "Stream was terminated by error, no further calls are allowed");
-      checkState(!completed, "Stream is already completed, no further calls are allowed");
-      if (!sentHeaders) {
-        call.sendHeaders(new Metadata());
-        sentHeaders = true;
-      }
-      call.sendMessage(response);
-    }
 
-    @Override
-    public void onError(Throwable t) {
-      Metadata metadata = Status.trailersFromThrowable(t);
-      if (metadata == null) {
-        metadata = new Metadata();
-      }
-      call.close(Status.fromThrowable(t), metadata);
-      aborted = true;
-    }
-
-    @Override
-    public void onCompleted() {
-      if (cancelled) {
-        if (onCancelHandler == null) {
-          throw Status.CANCELLED.withDescription("call already cancelled").asRuntimeException();
+        /**
+         * 处理请求
+         *
+         * @param call    object for responding to the remote client.
+         *                用于响应远程客户端的对象
+         * @param headers 请求头
+         * @return 监听器
+         */
+        @Override
+        public ServerCall.Listener<ReqT> startCall(ServerCall<ReqT, RespT> call, Metadata headers) {
+            // 检查类型是否是单次请求的类型
+            Preconditions.checkArgument(call.getMethodDescriptor().getType().clientSendsOneMessage(), "asyncUnaryRequestCall is only for clientSendsOneMessage methods");
+            // 创建响应处理器
+            ServerCallStreamObserverImpl<ReqT, RespT> responseObserver = new ServerCallStreamObserverImpl<>(call);
+            // We expect only 1 request, but we ask for 2 requests here so that if a misbehaving client
+            // sends more than 1 requests, ServerCall will catch it. Note that disabling auto
+            // inbound flow control has no effect on unary calls.
+            call.request(2);
+            // 返回监听器
+            return new UnaryServerCallListener(responseObserver, call);
         }
-      } else {
-        call.close(Status.OK, new Metadata());
-        completed = true;
-      }
+
+        /**
+         * Unary 调用监听器
+         */
+        private final class UnaryServerCallListener extends ServerCall.Listener<ReqT> {
+
+            // 调用
+            private final ServerCall<ReqT, RespT> call;
+            // 响应观察器
+            private final ServerCallStreamObserverImpl<ReqT, RespT> responseObserver;
+            // 是否能调用
+            private boolean canInvoke = true;
+            // Transport 是否 ready
+            private boolean wasReady;
+            // 请求
+            private ReqT request;
+
+            // Non private to avoid synthetic class
+            UnaryServerCallListener(ServerCallStreamObserverImpl<ReqT, RespT> responseObserver,
+                                    ServerCall<ReqT, RespT> call) {
+                this.call = call;
+                this.responseObserver = responseObserver;
+            }
+
+            /**
+             * 接收新的消息
+             */
+            @Override
+            public void onMessage(ReqT request) {
+                // 如果已经接收到了一个请求，则返回错误
+                if (this.request != null) {
+                    // Safe to close the call, because the application has not yet been invoked
+                    call.close(Status.INTERNAL.withDescription(TOO_MANY_REQUESTS), new Metadata());
+                    canInvoke = false;
+                    return;
+                }
+
+                // We delay calling method.invoke() until onHalfClose() to make sure the client
+                // half-closes.
+                // 延迟执行调用 method.invoke() 直到 onHalfClose() 以确保客户端执行了半关闭
+                this.request = request;
+            }
+
+            /**
+             * 半关闭
+             */
+            @Override
+            public void onHalfClose() {
+                // 如果不能调用则直接返回
+                if (!canInvoke) {
+                    return;
+                }
+
+                // 如果请求是 null，则返回错我
+                if (request == null) {
+                    // Safe to close the call, because the application has not yet been invoked
+                    call.close(Status.INTERNAL.withDescription(MISSING_REQUEST), new Metadata());
+                    return;
+                }
+
+                // 执行方法调用
+                method.invoke(request, responseObserver);
+                // 处理了请求之后将请求置为 null
+                request = null;
+                // 冻结响应
+                responseObserver.freeze();
+                // 判断是否 ready
+                if (wasReady) {
+                    // Since we are calling invoke in halfClose we have missed the onReady
+                    // event from the transport so recover it here.
+                    // 因为在 halfClose 中调用，错过了来自 Transport 的 onReady 事件，从这里恢复
+                    // 即在 ready 之后用于执行 onReadyHandler
+                    onReady();
+                }
+            }
+
+            /**
+             * 处理取消事件
+             */
+            @Override
+            public void onCancel() {
+                responseObserver.cancelled = true;
+                if (responseObserver.onCancelHandler != null) {
+                    responseObserver.onCancelHandler.run();
+                }
+            }
+
+            /**
+             * 处理 ready 事件
+             */
+            @Override
+            public void onReady() {
+                // 将 ready 状态变为 true
+                wasReady = true;
+                // 如果响应有 readyHandler，则执行
+                if (responseObserver.onReadyHandler != null) {
+                    responseObserver.onReadyHandler.run();
+                }
+            }
+        }
     }
 
-    @Override
-    public boolean isReady() {
-      return call.isReady();
+    private static final class StreamingServerCallHandler<ReqT, RespT>
+            implements ServerCallHandler<ReqT, RespT> {
+
+        private final StreamingRequestMethod<ReqT, RespT> method;
+
+        // Non private to avoid synthetic class
+        StreamingServerCallHandler(StreamingRequestMethod<ReqT, RespT> method) {
+            this.method = method;
+        }
+
+        @Override
+        public ServerCall.Listener<ReqT> startCall(ServerCall<ReqT, RespT> call, Metadata headers) {
+            ServerCallStreamObserverImpl<ReqT, RespT> responseObserver =
+                    new ServerCallStreamObserverImpl<>(call);
+            StreamObserver<ReqT> requestObserver = method.invoke(responseObserver);
+            responseObserver.freeze();
+            if (responseObserver.autoRequestEnabled) {
+                call.request(1);
+            }
+            return new StreamingServerCallListener(requestObserver, responseObserver, call);
+        }
+
+        private final class StreamingServerCallListener extends ServerCall.Listener<ReqT> {
+
+            private final StreamObserver<ReqT> requestObserver;
+            private final ServerCallStreamObserverImpl<ReqT, RespT> responseObserver;
+            private final ServerCall<ReqT, RespT> call;
+            private boolean halfClosed = false;
+
+            // Non private to avoid synthetic class
+            StreamingServerCallListener(
+                    StreamObserver<ReqT> requestObserver,
+                    ServerCallStreamObserverImpl<ReqT, RespT> responseObserver,
+                    ServerCall<ReqT, RespT> call) {
+                this.requestObserver = requestObserver;
+                this.responseObserver = responseObserver;
+                this.call = call;
+            }
+
+            @Override
+            public void onMessage(ReqT request) {
+                requestObserver.onNext(request);
+
+                // Request delivery of the next inbound message.
+                if (responseObserver.autoRequestEnabled) {
+                    call.request(1);
+                }
+            }
+
+            @Override
+            public void onHalfClose() {
+                halfClosed = true;
+                requestObserver.onCompleted();
+            }
+
+            @Override
+            public void onCancel() {
+                responseObserver.cancelled = true;
+                if (responseObserver.onCancelHandler != null) {
+                    responseObserver.onCancelHandler.run();
+                }
+                if (!halfClosed) {
+                    requestObserver.onError(
+                            Status.CANCELLED
+                                    .withDescription("cancelled before receiving half close")
+                                    .asRuntimeException());
+                }
+            }
+
+            @Override
+            public void onReady() {
+                if (responseObserver.onReadyHandler != null) {
+                    responseObserver.onReadyHandler.run();
+                }
+            }
+        }
     }
 
-    @Override
-    public void setOnReadyHandler(Runnable r) {
-      checkState(!frozen, "Cannot alter onReadyHandler after initialization. May only be called "
-          + "during the initial call to the application, before the service returns its "
-          + "StreamObserver");
-      this.onReadyHandler = r;
+    /**
+     * Unary 调用方法适配器
+     */
+    private interface UnaryRequestMethod<ReqT, RespT> {
+        /**
+         * The provided {@code responseObserver} will extend {@link ServerCallStreamObserver}.
+         * 提供的 responseObserver 会继承 ServerCallStreamObserver
+         */
+        void invoke(ReqT request, StreamObserver<RespT> responseObserver);
     }
 
-    @Override
-    public boolean isCancelled() {
-      return call.isCancelled();
+    private interface StreamingRequestMethod<ReqT, RespT> {
+        /**
+         * The provided {@code responseObserver} will extend {@link ServerCallStreamObserver}.
+         */
+        StreamObserver<ReqT> invoke(StreamObserver<RespT> responseObserver);
     }
 
-    @Override
-    public void setOnCancelHandler(Runnable onCancelHandler) {
-      checkState(!frozen, "Cannot alter onCancelHandler after initialization. May only be called "
-          + "during the initial call to the application, before the service returns its "
-          + "StreamObserver");
-      this.onCancelHandler = onCancelHandler;
+    private static final class ServerCallStreamObserverImpl<ReqT, RespT>
+            extends ServerCallStreamObserver<RespT> {
+        final ServerCall<ReqT, RespT> call;
+        volatile boolean cancelled;
+        private boolean frozen;
+        private boolean autoRequestEnabled = true;
+        private boolean sentHeaders;
+        private Runnable onReadyHandler;
+        private Runnable onCancelHandler;
+        private boolean aborted = false;
+        private boolean completed = false;
+
+        // Non private to avoid synthetic class
+        ServerCallStreamObserverImpl(ServerCall<ReqT, RespT> call) {
+            this.call = call;
+        }
+
+        private void freeze() {
+            this.frozen = true;
+        }
+
+        @Override
+        public void setMessageCompression(boolean enable) {
+            call.setMessageCompression(enable);
+        }
+
+        @Override
+        public void setCompression(String compression) {
+            call.setCompression(compression);
+        }
+
+        @Override
+        public void onNext(RespT response) {
+            if (cancelled) {
+                if (onCancelHandler == null) {
+                    throw Status.CANCELLED.withDescription("call already cancelled").asRuntimeException();
+                }
+                return;
+            }
+            checkState(!aborted, "Stream was terminated by error, no further calls are allowed");
+            checkState(!completed, "Stream is already completed, no further calls are allowed");
+            if (!sentHeaders) {
+                call.sendHeaders(new Metadata());
+                sentHeaders = true;
+            }
+            call.sendMessage(response);
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            Metadata metadata = Status.trailersFromThrowable(t);
+            if (metadata == null) {
+                metadata = new Metadata();
+            }
+            call.close(Status.fromThrowable(t), metadata);
+            aborted = true;
+        }
+
+        @Override
+        public void onCompleted() {
+            if (cancelled) {
+                if (onCancelHandler == null) {
+                    throw Status.CANCELLED.withDescription("call already cancelled").asRuntimeException();
+                }
+            } else {
+                call.close(Status.OK, new Metadata());
+                completed = true;
+            }
+        }
+
+        @Override
+        public boolean isReady() {
+            return call.isReady();
+        }
+
+        /**
+         * 设置 ready 事件回调任务
+         */
+        @Override
+        public void setOnReadyHandler(Runnable r) {
+            // 在被冻结之后不能再设置，因为请求已经被处理
+            checkState(!frozen, "Cannot alter onReadyHandler after initialization. May only be called "
+                    + "during the initial call to the application, before the service returns its "
+                    + "StreamObserver");
+            this.onReadyHandler = r;
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return call.isCancelled();
+        }
+
+        @Override
+        public void setOnCancelHandler(Runnable onCancelHandler) {
+            checkState(!frozen, "Cannot alter onCancelHandler after initialization. May only be called "
+                    + "during the initial call to the application, before the service returns its "
+                    + "StreamObserver");
+            this.onCancelHandler = onCancelHandler;
+        }
+
+        @Deprecated
+        @Override
+        public void disableAutoInboundFlowControl() {
+            disableAutoRequest();
+        }
+
+        @Override
+        public void disableAutoRequest() {
+            checkState(!frozen, "Cannot disable auto flow control after initialization");
+            autoRequestEnabled = false;
+        }
+
+        @Override
+        public void request(int count) {
+            call.request(count);
+        }
     }
 
-    @Deprecated
-    @Override
-    public void disableAutoInboundFlowControl() {
-      disableAutoRequest();
+    /**
+     * Sets unimplemented status for method on given response stream for unary call.
+     * 为 unary 调用设置 UNIMPLEMENTED 状态的响应
+     *
+     * @param methodDescriptor of method for which error will be thrown.
+     *                         方法
+     * @param responseObserver on which error will be set.
+     *                         响应
+     */
+    public static void asyncUnimplementedUnaryCall(MethodDescriptor<?, ?> methodDescriptor,
+                                                   StreamObserver<?> responseObserver) {
+        checkNotNull(methodDescriptor, "methodDescriptor");
+        checkNotNull(responseObserver, "responseObserver");
+        responseObserver.onError(Status.UNIMPLEMENTED.withDescription(String.format("Method %s is unimplemented", methodDescriptor.getFullMethodName()))
+                                                     .asRuntimeException());
     }
 
-    @Override
-    public void disableAutoRequest() {
-      checkState(!frozen, "Cannot disable auto flow control after initialization");
-      autoRequestEnabled = false;
+    /**
+     * Sets unimplemented status for streaming call.
+     *
+     * @param methodDescriptor of method for which error will be thrown.
+     * @param responseObserver on which error will be set.
+     */
+    public static <T> StreamObserver<T> asyncUnimplementedStreamingCall(
+            MethodDescriptor<?, ?> methodDescriptor, StreamObserver<?> responseObserver) {
+        // NB: For streaming call we want to do the same as for unary call. Fail-fast by setting error
+        // on responseObserver and then return no-op observer.
+        asyncUnimplementedUnaryCall(methodDescriptor, responseObserver);
+        return new NoopStreamObserver<>();
     }
 
-    @Override
-    public void request(int count) {
-      call.request(count);
+    /**
+     * No-op implementation of StreamObserver. Used in abstract stubs for default implementations of
+     * methods which throws UNIMPLEMENTED error and tests.
+     */
+    static class NoopStreamObserver<V> implements StreamObserver<V> {
+        @Override
+        public void onNext(V value) {
+        }
+
+        @Override
+        public void onError(Throwable t) {
+        }
+
+        @Override
+        public void onCompleted() {
+        }
     }
-  }
-
-  /**
-   * Sets unimplemented status for method on given response stream for unary call.
-   *
-   * @param methodDescriptor of method for which error will be thrown.
-   * @param responseObserver on which error will be set.
-   */
-  public static void asyncUnimplementedUnaryCall(
-      MethodDescriptor<?, ?> methodDescriptor, StreamObserver<?> responseObserver) {
-    checkNotNull(methodDescriptor, "methodDescriptor");
-    checkNotNull(responseObserver, "responseObserver");
-    responseObserver.onError(Status.UNIMPLEMENTED
-        .withDescription(String.format("Method %s is unimplemented",
-            methodDescriptor.getFullMethodName()))
-        .asRuntimeException());
-  }
-
-  /**
-   * Sets unimplemented status for streaming call.
-   *
-   * @param methodDescriptor of method for which error will be thrown.
-   * @param responseObserver on which error will be set.
-   */
-  public static <T> StreamObserver<T> asyncUnimplementedStreamingCall(
-      MethodDescriptor<?, ?> methodDescriptor, StreamObserver<?> responseObserver) {
-    // NB: For streaming call we want to do the same as for unary call. Fail-fast by setting error
-    // on responseObserver and then return no-op observer.
-    asyncUnimplementedUnaryCall(methodDescriptor, responseObserver);
-    return new NoopStreamObserver<>();
-  }
-
-  /**
-   * No-op implementation of StreamObserver. Used in abstract stubs for default implementations of
-   * methods which throws UNIMPLEMENTED error and tests.
-   */
-  static class NoopStreamObserver<V> implements StreamObserver<V> {
-    @Override
-    public void onNext(V value) {
-    }
-
-    @Override
-    public void onError(Throwable t) {
-    }
-
-    @Override
-    public void onCompleted() {
-    }
-  }
 }

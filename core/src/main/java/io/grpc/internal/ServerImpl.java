@@ -908,6 +908,9 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
             return listener;
         }
 
+        /**
+         * 设置监听器
+         */
         @VisibleForTesting
         void setListener(ServerStreamListener listener) {
             Preconditions.checkNotNull(listener, "listener must not be null");
@@ -917,12 +920,16 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
         /**
          * Like {@link ServerCall#close(Status, Metadata)}, but thread-safe for internal use.
+         * 关闭流，和 ServerCall#close 一样，对内部使用是线程安全的
          */
         private void internalClose(Throwable t) {
             // TODO(ejona86): this is not thread-safe :)
             stream.close(Status.UNKNOWN.withCause(t), new Metadata());
         }
 
+        /**
+         * 当从远程端点接收到消息时调用
+         */
         @Override
         public void messagesAvailable(final MessageProducer producer) {
             PerfMark.startTask("ServerStreamListener.messagesAvailable", tag);
@@ -939,6 +946,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
                     PerfMark.startTask("ServerCallListener(app).messagesAvailable", tag);
                     PerfMark.linkIn(link);
                     try {
+                        // 获取监听器，通知有新的消息
                         getListener().messagesAvailable(producer);
                     } catch (Throwable t) {
                         internalClose(t);
@@ -950,12 +958,16 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
             }
 
             try {
+                // 执行任务
                 callExecutor.execute(new MessagesAvailable());
             } finally {
                 PerfMark.stopTask("ServerStreamListener.messagesAvailable", tag);
             }
         }
 
+        /**
+         * 半关闭
+         */
         @Override
         public void halfClosed() {
             PerfMark.startTask("ServerStreamListener.halfClosed", tag);
@@ -971,6 +983,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
                     PerfMark.startTask("ServerCallListener(app).halfClosed", tag);
                     PerfMark.linkIn(link);
                     try {
+                        // 调用监听器的半关闭事件
                         getListener().halfClosed();
                     } catch (Throwable t) {
                         internalClose(t);
@@ -988,6 +1001,9 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
             }
         }
 
+        /**
+         * 关闭流
+         */
         @Override
         public void closed(final Status status) {
             PerfMark.startTask("ServerStreamListener.closed", tag);
@@ -998,9 +1014,13 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
             }
         }
 
+        /**
+         * 关闭流
+         */
         private void closedInternal(final Status status) {
             // For cancellations, promptly inform any users of the context that their work should be
             // aborted. Otherwise, we can wait until pending work is done.
+            // 如果状态不是 OK，则直接提交关闭 Context 任务
             if (!status.isOk()) {
                 // The callExecutor might be busy doing user work. To avoid waiting, use an executor that
                 // is not serializing.
@@ -1018,6 +1038,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
                     PerfMark.startTask("ServerCallListener(app).closed", tag);
                     PerfMark.linkIn(link);
                     try {
+                        // 调用监听器的关闭事件
                         getListener().closed(status);
                     } finally {
                         PerfMark.stopTask("ServerCallListener(app).closed", tag);
@@ -1028,6 +1049,9 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
             callExecutor.execute(new Closed());
         }
 
+        /**
+         * Transport 已经准备好发送消息
+         */
         @Override
         public void onReady() {
             PerfMark.startTask("ServerStreamListener.onReady", tag);
@@ -1042,6 +1066,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
                     PerfMark.startTask("ServerCallListener(app).onReady", tag);
                     PerfMark.linkIn(link);
                     try {
+                        // 调用监听器的 ready 事件
                         getListener().onReady();
                     } catch (Throwable t) {
                         internalClose(t);
@@ -1060,6 +1085,9 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
         }
     }
 
+    /**
+     * Context 关闭任务
+     */
     @VisibleForTesting
     static final class ContextCloser implements Runnable {
         private final Context.CancellableContext context;
@@ -1072,6 +1100,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
         @Override
         public void run() {
+            // 执行时使用指定异常关闭 Context
             context.cancel(cause);
         }
     }

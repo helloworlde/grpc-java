@@ -41,12 +41,15 @@ public abstract class ServerCall<ReqT, RespT> {
 
   /**
    * Callbacks for consuming incoming RPC messages.
+   * 消费 RPC 消息的回调
    *
    * <p>Any contexts are guaranteed to arrive before any messages, which are guaranteed before half
    * close, which is guaranteed before completion.
+   * 保证所有上下文在任何消息到达之前，在半关闭之前，在完成之前
    *
    * <p>Implementations are free to block for extended periods of time. Implementations are not
    * required to be thread-safe.
+   * 实现即使阻塞也没有关系，不要求实现是线程安全的
    */
   // TODO(ejona86): We need to decide what to do in the case of server closing with non-cancellation
   // before client half closes. It may be that we treat such a case as an error. If we permit such
@@ -55,46 +58,63 @@ public abstract class ServerCall<ReqT, RespT> {
     /**
      * A request message has been received. For streaming calls, there may be zero or more request
      * messages.
+     * 已经接受到消息，对于流式调用，可能没有或者有多个消息
      *
      * @param message a received request message.
+     *                接收到的消息
      */
-    public void onMessage(ReqT message) {}
+    public void onMessage(ReqT message) {
+    }
 
     /**
      * The client completed all message sending. However, the call may still be cancelled.
+     * 客户端完成了所有的消息发送，然而，调用依然可能会被取消
      */
-    public void onHalfClose() {}
+    public void onHalfClose() {
+    }
 
     /**
      * The call was cancelled and the server is encouraged to abort processing to save resources,
      * since the client will not process any further messages. Cancellations can be caused by
      * timeouts, explicit cancellation by the client, network errors, etc.
+     * 客户端取消了调用，因为客户端不会再处理任何消息，建议服务端取消处理，取消可能是超时、
+     * 客户端明确取消，网络错误等造成的
      *
      * <p>There will be no further callbacks for the call.
+     * 这个回调之后不会再有回调
      */
-    public void onCancel() {}
+    public void onCancel() {
+    }
 
     /**
      * The call is considered complete and {@link #onCancel} is guaranteed not to be called.
      * However, the client is not guaranteed to have received all messages.
+     * 认为请求是完成的，不建议再调用 onCancel, 但是不能保证客户端已经接收到了所有消息
      *
      * <p>There will be no further callbacks for the call.
+     * 在这个调用之后不会再有回调
      */
-    public void onComplete() {}
+    public void onComplete() {
+    }
 
     /**
      * This indicates that the call may now be capable of sending additional messages (via
      * {@link #sendMessage}) without requiring excessive buffering internally. This event is
      * just a suggestion and the application is free to ignore it, however doing so may
      * result in excessive buffering within the call.
+     * 表明请求可以发送附加的信息，而不需要额外的缓冲，这只是一个建议，应用可以忽略，但是这样做可能会
+     * 导致调用中的缓冲过多
      *
      * <p>Because there is a processing delay to deliver this notification, it is possible for
      * concurrent writes to cause {@code isReady() == false} within this callback. Handle "spurious"
      * notifications by checking {@code isReady()}'s current value instead of assuming it is now
      * {@code true}. If {@code isReady() == false} the normal expectations apply, so there would be
      * <em>another</em> {@code onReady()} callback.
+     * 因为投递通知有处理延迟，可能会并发写入导致 isReady 是 false 没有执行这个回调，需要通过调用 isReady 检查
+     * 当前的状态，而不是认为是 true，如果 isReady 是 false，则会有另外一个回调
      */
-    public void onReady() {}
+    public void onReady() {
+    }
   }
 
   /**
