@@ -56,31 +56,34 @@ public final class ServerCalls {
 
     /**
      * Creates a {@link ServerCallHandler} for a server streaming method of the service.
+     * 为服务端流请求方法创建一个处理器
      *
      * @param method an adaptor to the actual method on the service implementation.
+     *               真正的方法实现的适配器
      */
-    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncServerStreamingCall(
-            ServerStreamingMethod<ReqT, RespT> method) {
+    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncServerStreamingCall(ServerStreamingMethod<ReqT, RespT> method) {
         return new UnaryServerCallHandler<>(method);
     }
 
     /**
      * Creates a {@link ServerCallHandler} for a client streaming method of the service.
+     * 为客户端流请求方法创建处理器
      *
      * @param method an adaptor to the actual method on the service implementation.
+     *               真正的方法实现的适配器
      */
-    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncClientStreamingCall(
-            ClientStreamingMethod<ReqT, RespT> method) {
+    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncClientStreamingCall(ClientStreamingMethod<ReqT, RespT> method) {
         return new StreamingServerCallHandler<>(method);
     }
 
     /**
      * Creates a {@link ServerCallHandler} for a bidi streaming method of the service.
+     * 为双向流请求方法创建处理器
      *
      * @param method an adaptor to the actual method on the service implementation.
+     *               真正的方法实现的适配器
      */
-    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncBidiStreamingCall(
-            BidiStreamingMethod<ReqT, RespT> method) {
+    public static <ReqT, RespT> ServerCallHandler<ReqT, RespT> asyncBidiStreamingCall(BidiStreamingMethod<ReqT, RespT> method) {
         return new StreamingServerCallHandler<>(method);
     }
 
@@ -95,6 +98,7 @@ public final class ServerCalls {
 
     /**
      * Adaptor to a server streaming method.
+     * Server 端流方法的适配器
      */
     public interface ServerStreamingMethod<ReqT, RespT> extends UnaryRequestMethod<ReqT, RespT> {
         @Override
@@ -103,6 +107,7 @@ public final class ServerCalls {
 
     /**
      * Adaptor to a client streaming method.
+     * 客户端流方法的处理器
      */
     public interface ClientStreamingMethod<ReqT, RespT> extends StreamingRequestMethod<ReqT, RespT> {
         @Override
@@ -111,6 +116,7 @@ public final class ServerCalls {
 
     /**
      * Adaptor to a bidirectional streaming method.
+     * 双向流方法处理器
      */
     public interface BidiStreamingMethod<ReqT, RespT> extends StreamingRequestMethod<ReqT, RespT> {
         @Override
@@ -118,7 +124,7 @@ public final class ServerCalls {
     }
 
     /**
-     * Unary 调用处理器
+     * Unary 和 Server 端流方法调用处理器
      */
     private static final class UnaryServerCallHandler<ReqT, RespT> implements ServerCallHandler<ReqT, RespT> {
 
@@ -253,9 +259,12 @@ public final class ServerCalls {
         }
     }
 
-    private static final class StreamingServerCallHandler<ReqT, RespT>
-            implements ServerCallHandler<ReqT, RespT> {
+    /**
+     * 客户端流和双向流方法处理器
+     */
+    private static final class StreamingServerCallHandler<ReqT, RespT> implements ServerCallHandler<ReqT, RespT> {
 
+        // 方法
         private final StreamingRequestMethod<ReqT, RespT> method;
 
         // Non private to avoid synthetic class
@@ -263,67 +272,102 @@ public final class ServerCalls {
             this.method = method;
         }
 
+        /**
+         * 处理请求
+         *
+         * @param call    object for responding to the remote client.
+         *                用于响应远程客户端的对象
+         * @param headers 请求头
+         * @return 监听器
+         */
         @Override
         public ServerCall.Listener<ReqT> startCall(ServerCall<ReqT, RespT> call, Metadata headers) {
-            ServerCallStreamObserverImpl<ReqT, RespT> responseObserver =
-                    new ServerCallStreamObserverImpl<>(call);
+            // 创建响应观察器
+            ServerCallStreamObserverImpl<ReqT, RespT> responseObserver = new ServerCallStreamObserverImpl<>(call);
+            // 调用方法，返回请求观察器
             StreamObserver<ReqT> requestObserver = method.invoke(responseObserver);
+            // 冻结响应观察器
             responseObserver.freeze();
+            // 如果可以继续请求，则再请求一个消息
             if (responseObserver.autoRequestEnabled) {
                 call.request(1);
             }
+            // 返回监听器
             return new StreamingServerCallListener(requestObserver, responseObserver, call);
         }
 
+        /**
+         * 流请求监听器
+         */
         private final class StreamingServerCallListener extends ServerCall.Listener<ReqT> {
 
+            // 请求观察器
             private final StreamObserver<ReqT> requestObserver;
+            // 响应观察器
             private final ServerCallStreamObserverImpl<ReqT, RespT> responseObserver;
+            // 调用
             private final ServerCall<ReqT, RespT> call;
+            // 半关闭
             private boolean halfClosed = false;
 
             // Non private to avoid synthetic class
-            StreamingServerCallListener(
-                    StreamObserver<ReqT> requestObserver,
-                    ServerCallStreamObserverImpl<ReqT, RespT> responseObserver,
-                    ServerCall<ReqT, RespT> call) {
+            StreamingServerCallListener(StreamObserver<ReqT> requestObserver,
+                                        ServerCallStreamObserverImpl<ReqT, RespT> responseObserver,
+                                        ServerCall<ReqT, RespT> call) {
                 this.requestObserver = requestObserver;
                 this.responseObserver = responseObserver;
                 this.call = call;
             }
 
+            /**
+             * 处理接收消息
+             */
             @Override
             public void onMessage(ReqT request) {
+                // 处理请求
                 requestObserver.onNext(request);
 
                 // Request delivery of the next inbound message.
+                // 如果允许自动接收请求，则请求传递下一个消息
                 if (responseObserver.autoRequestEnabled) {
                     call.request(1);
                 }
             }
 
+            /**
+             * 半关闭
+             */
             @Override
             public void onHalfClose() {
                 halfClosed = true;
+                // 请求观察器完成
                 requestObserver.onCompleted();
             }
 
+            /**
+             * 取消请求
+             */
             @Override
             public void onCancel() {
                 responseObserver.cancelled = true;
+                // 如果有取消处理器，则执行
                 if (responseObserver.onCancelHandler != null) {
                     responseObserver.onCancelHandler.run();
                 }
+                // 如果还没有执行半关闭，则将请求观察器状态变为 CANCELLED
                 if (!halfClosed) {
-                    requestObserver.onError(
-                            Status.CANCELLED
-                                    .withDescription("cancelled before receiving half close")
-                                    .asRuntimeException());
+                    requestObserver.onError(Status.CANCELLED.withDescription("cancelled before receiving half close")
+                                                            .asRuntimeException());
                 }
             }
 
+
+            /**
+             * Ready 事件
+             */
             @Override
             public void onReady() {
+                // 如果有 ready 处理器则执行
                 if (responseObserver.onReadyHandler != null) {
                     responseObserver.onReadyHandler.run();
                 }
@@ -342,9 +386,13 @@ public final class ServerCalls {
         void invoke(ReqT request, StreamObserver<RespT> responseObserver);
     }
 
+    /**
+     * 流请求方法适配器
+     */
     private interface StreamingRequestMethod<ReqT, RespT> {
         /**
          * The provided {@code responseObserver} will extend {@link ServerCallStreamObserver}.
+         * 提供的 responseObserver 会继承 ServerCallStreamObserver
          */
         StreamObserver<ReqT> invoke(StreamObserver<RespT> responseObserver);
     }
@@ -486,12 +534,15 @@ public final class ServerCalls {
 
     /**
      * Sets unimplemented status for streaming call.
+     * 为流请求设置 UNIMPLEMENTED 状态的响应
      *
      * @param methodDescriptor of method for which error will be thrown.
+     *                         方法
      * @param responseObserver on which error will be set.
+     *                         响应观察器
      */
-    public static <T> StreamObserver<T> asyncUnimplementedStreamingCall(
-            MethodDescriptor<?, ?> methodDescriptor, StreamObserver<?> responseObserver) {
+    public static <T> StreamObserver<T> asyncUnimplementedStreamingCall(MethodDescriptor<?, ?> methodDescriptor,
+                                                                        StreamObserver<?> responseObserver) {
         // NB: For streaming call we want to do the same as for unary call. Fail-fast by setting error
         // on responseObserver and then return no-op observer.
         asyncUnimplementedUnaryCall(methodDescriptor, responseObserver);
@@ -501,6 +552,7 @@ public final class ServerCalls {
     /**
      * No-op implementation of StreamObserver. Used in abstract stubs for default implementations of
      * methods which throws UNIMPLEMENTED error and tests.
+     * 流请求观察器的无操作的实现，是抽象的 Stub 的默认实现，会返回 UNIMPLEMENTED 错误
      */
     static class NoopStreamObserver<V> implements StreamObserver<V> {
         @Override
