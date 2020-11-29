@@ -16,22 +16,23 @@
 
 package io.grpc;
 
-import static com.google.common.base.Charsets.US_ASCII;
-import static com.google.common.base.Charsets.UTF_8;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Throwables.getStackTraceAsString;
-
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Objects;
 import io.grpc.Metadata.TrustedAsciiMarshaller;
+
+import javax.annotation.CheckReturnValue;
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.Immutable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.TreeMap;
-import javax.annotation.CheckReturnValue;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.Immutable;
+
+import static com.google.common.base.Charsets.US_ASCII;
+import static com.google.common.base.Charsets.UTF_8;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Throwables.getStackTraceAsString;
 
 
 /**
@@ -390,37 +391,48 @@ public final class Status {
    * Extract an error {@link Status} from the causal chain of a {@link Throwable}.
    * If no status can be found, a status is created with {@link Code#UNKNOWN} as its code and
    * {@code t} as its cause.
+   * 根据异常链获取错误状态，如果没有发现状态则返回 UNKNOWN
    *
    * @return non-{@code null} status
+   * 非空的状态
    */
   public static Status fromThrowable(Throwable t) {
     Throwable cause = checkNotNull(t, "t");
     while (cause != null) {
+      // 如果异常是 StatusException 则直接获取状态
       if (cause instanceof StatusException) {
         return ((StatusException) cause).getStatus();
       } else if (cause instanceof StatusRuntimeException) {
+        // 如果是 StatusRuntimeException 则直接获取状态
         return ((StatusRuntimeException) cause).getStatus();
       }
+      // 获取下一个异常，继续获取状态
       cause = cause.getCause();
     }
     // Couldn't find a cause with a Status
+    // 如果获取不到状态则返回 UNKNOWN
     return UNKNOWN.withCause(t);
   }
 
   /**
    * Extract an error trailers from the causal chain of a {@link Throwable}.
+   * 从异常中获取错误的元数据
    *
    * @return the trailers or {@code null} if not found.
+   * 返回错误的元数据或者 null
    */
   @ExperimentalApi("https://github.com/grpc/grpc-java/issues/4683")
   public static Metadata trailersFromThrowable(Throwable t) {
     Throwable cause = checkNotNull(t, "t");
+    // 如果有 cause，则判断 cause 是否是 StatusException，如果是则直接获取元数据
     while (cause != null) {
       if (cause instanceof StatusException) {
         return ((StatusException) cause).getTrailers();
       } else if (cause instanceof StatusRuntimeException) {
+        // 如果是 StatusRuntimeException 则直接获取元数据
         return ((StatusRuntimeException) cause).getTrailers();
       }
+      // 获取下一个异常，继续判断
       cause = cause.getCause();
     }
     return null;

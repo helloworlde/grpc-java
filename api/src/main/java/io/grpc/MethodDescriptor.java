@@ -346,9 +346,12 @@ public final class MethodDescriptor<ReqT, RespT> {
     /**
      * Serialize an outgoing response message.
      * The returned InputStream should be closed by the caller.
+     * 序列化发送的响应内容，返回的流应当由调用者来关闭
      *
      * @param response the response message to serialize.
+     *                 需要序列化的响应
      * @return the serialized message as a byte stream.
+     * 返回序列化之后的流
      * @since 1.0.0
      */
     public InputStream streamResponse(RespT response) {

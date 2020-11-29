@@ -397,76 +397,124 @@ public final class ServerCalls {
         StreamObserver<ReqT> invoke(StreamObserver<RespT> responseObserver);
     }
 
-    private static final class ServerCallStreamObserverImpl<ReqT, RespT>
-            extends ServerCallStreamObserver<RespT> {
+    private static final class ServerCallStreamObserverImpl<ReqT, RespT> extends ServerCallStreamObserver<RespT> {
+
         final ServerCall<ReqT, RespT> call;
+
         volatile boolean cancelled;
         private boolean frozen;
         private boolean autoRequestEnabled = true;
         private boolean sentHeaders;
+
         private Runnable onReadyHandler;
         private Runnable onCancelHandler;
+
         private boolean aborted = false;
         private boolean completed = false;
 
+        /**
+         * 使用 ServerCall 构建实例
+         */
         // Non private to avoid synthetic class
         ServerCallStreamObserverImpl(ServerCall<ReqT, RespT> call) {
             this.call = call;
         }
 
+        /**
+         * 冻结调用
+         */
         private void freeze() {
             this.frozen = true;
         }
 
+        /**
+         * 设置压缩器
+         *
+         * @param enable whether to enable compression.
+         *               是否开启压缩器
+         */
         @Override
         public void setMessageCompression(boolean enable) {
             call.setMessageCompression(enable);
         }
 
+        /**
+         * 设置压缩器类型
+         *
+         * @param compression the compression algorithm to use.
+         *                    使用的压缩算法
+         */
         @Override
         public void setCompression(String compression) {
             call.setCompression(compression);
         }
 
+        /**
+         * 从流中接收值
+         */
         @Override
         public void onNext(RespT response) {
+            // 如果已经被取消调用了，则判断是否有取消回调，如果没有则返回取消状态
             if (cancelled) {
                 if (onCancelHandler == null) {
                     throw Status.CANCELLED.withDescription("call already cancelled").asRuntimeException();
                 }
                 return;
             }
+            // 检查是否已经丢弃或者完成
             checkState(!aborted, "Stream was terminated by error, no further calls are allowed");
             checkState(!completed, "Stream is already completed, no further calls are allowed");
+            // 如果还没有发送 header，则发送 header
             if (!sentHeaders) {
                 call.sendHeaders(new Metadata());
+                // 将发送 header 设置为 true
                 sentHeaders = true;
             }
+            // 然后发送响应
             call.sendMessage(response);
         }
 
+        /**
+         * 处理请求错误
+         *
+         * @param t the error occurred on the stream
+         *          流中发生的错误
+         */
         @Override
         public void onError(Throwable t) {
+            // 从异常中获取元数据
             Metadata metadata = Status.trailersFromThrowable(t);
+            // 如果没有 Metadata 则创建一个新的实例
             if (metadata == null) {
                 metadata = new Metadata();
             }
+            // 从异常中获取状态
             call.close(Status.fromThrowable(t), metadata);
+            // 将丢弃状态改为 true
             aborted = true;
         }
 
+        /**
+         * 请求完成事件
+         */
         @Override
         public void onCompleted() {
+            // 如果已经被取消，则返回取消的状态
             if (cancelled) {
                 if (onCancelHandler == null) {
                     throw Status.CANCELLED.withDescription("call already cancelled").asRuntimeException();
                 }
             } else {
+                // 通知请求完成
                 call.close(Status.OK, new Metadata());
+                // 将完成状态改为 true
                 completed = true;
             }
         }
 
+        /**
+         * 返回 ready 状态
+         */
         @Override
         public boolean isReady() {
             return call.isReady();
@@ -484,31 +532,54 @@ public final class ServerCalls {
             this.onReadyHandler = r;
         }
 
+        /**
+         * 返回流是否取消了
+         */
         @Override
         public boolean isCancelled() {
             return call.isCancelled();
         }
 
+        /**
+         * 设置取消事件回调任务
+         *
+         * @param onCancelHandler to call when client has cancelled the call.
+         *                        当客户端取消调用时执行
+         */
         @Override
         public void setOnCancelHandler(Runnable onCancelHandler) {
+            // 在被冻结之后不能再设置，因为请求已经被处理
             checkState(!frozen, "Cannot alter onCancelHandler after initialization. May only be called "
                     + "during the initial call to the application, before the service returns its "
                     + "StreamObserver");
             this.onCancelHandler = onCancelHandler;
         }
 
+        /**
+         * 禁用自动请求
+         */
         @Deprecated
         @Override
         public void disableAutoInboundFlowControl() {
             disableAutoRequest();
         }
 
+        /**
+         * 禁用自动请求
+         */
         @Override
         public void disableAutoRequest() {
+            // 在被冻结之后不能再设置，因为请求已经被处理
             checkState(!frozen, "Cannot disable auto flow control after initialization");
             autoRequestEnabled = false;
         }
 
+        /**
+         * 发送指定数量的请求
+         *
+         * @param count more messages
+         *              要发送的请求的数量
+         */
         @Override
         public void request(int count) {
             call.request(count);

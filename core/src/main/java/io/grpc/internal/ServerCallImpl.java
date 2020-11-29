@@ -103,6 +103,12 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
     }
   }
 
+  /**
+   * 发送响应 header
+   *
+   * @param headers metadata to send prior to any response body.
+   *                在发送响应之前发送的 header
+   */
   @Override
   public void sendHeaders(Metadata headers) {
     PerfMark.startTask("ServerCall.sendHeaders", tag);
@@ -114,18 +120,19 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
   }
 
   private void sendHeadersInternal(Metadata headers) {
+    // 检查是否已经发送过 header 或是否已经关闭了调用
     checkState(!sendHeadersCalled, "sendHeaders has already been called");
     checkState(!closeCalled, "call is closed");
 
+    // 丢弃编码的 key
     headers.discardAll(MESSAGE_ENCODING_KEY);
+    // 如果压缩器为 null，则设置为 NONE
     if (compressor == null) {
       compressor = Codec.Identity.NONE;
     } else {
       if (messageAcceptEncoding != null) {
         // TODO(carl-mastrangelo): remove the string allocation.
-        if (!GrpcUtil.iterableContains(
-            ACCEPT_ENCODING_SPLITTER.split(new String(messageAcceptEncoding, GrpcUtil.US_ASCII)),
-            compressor.getMessageEncoding())) {
+        if (!GrpcUtil.iterableContains(ACCEPT_ENCODING_SPLITTER.split(new String(messageAcceptEncoding, GrpcUtil.US_ASCII)), compressor.getMessageEncoding())) {
           // resort to using no compression.
           compressor = Codec.Identity.NONE;
         }
@@ -135,23 +142,31 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
     }
 
     // Always put compressor, even if it's identity.
+    // 设置压缩器类型
     headers.put(MESSAGE_ENCODING_KEY, compressor.getMessageEncoding());
 
+    // 为流设置压缩器
     stream.setCompressor(compressor);
 
+    // 丢弃消息编码的 key
     headers.discardAll(MESSAGE_ACCEPT_ENCODING_KEY);
-    byte[] advertisedEncodings =
-        InternalDecompressorRegistry.getRawAdvertisedMessageEncodings(decompressorRegistry);
+    byte[] advertisedEncodings = InternalDecompressorRegistry.getRawAdvertisedMessageEncodings(decompressorRegistry);
     if (advertisedEncodings.length != 0) {
       headers.put(MESSAGE_ACCEPT_ENCODING_KEY, advertisedEncodings);
     }
 
     // Don't check if sendMessage has been called, since it requires that sendHeaders was already
     // called.
+    // 将调用 header 状态改为 true
     sendHeadersCalled = true;
     stream.writeHeaders(headers);
   }
 
+  /**
+   * 发送消息
+   * @param message response message.
+   *                要发送的消息
+   */
   @Override
   public void sendMessage(RespT message) {
     PerfMark.startTask("ServerCall.sendMessage", tag);
@@ -163,25 +178,27 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
   }
 
   private void sendMessageInternal(RespT message) {
+    // 检查是否已经发送了 header，和调用是否已经被关闭
     checkState(sendHeadersCalled, "sendHeaders has not been called");
     checkState(!closeCalled, "call is closed");
 
+    // 如果是 UNARY 或者 CLIENT_STREAMING 类型的消息，且已经发送过消息了，则不允许再发送，返回错误状态
     if (method.getType().serverSendsOneMessage() && messageSent) {
       internalClose(Status.INTERNAL.withDescription(TOO_MANY_RESPONSES));
       return;
     }
 
+    // 将发送消息状态改为 true
     messageSent = true;
     try {
+      // 将消息序列化为流，写入消息，清空流
       InputStream resp = method.streamResponse(message);
       stream.writeMessage(resp);
       stream.flush();
     } catch (RuntimeException e) {
       close(Status.fromThrowable(e), new Metadata());
     } catch (Error e) {
-      close(
-          Status.CANCELLED.withDescription("Server sendMessage() failed with Error"),
-          new Metadata());
+      close(Status.CANCELLED.withDescription("Server sendMessage() failed with Error"), new Metadata());
       throw e;
     }
   }
@@ -200,11 +217,20 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
     checkArgument(compressor != null, "Unable to find compressor by name %s", compressorName);
   }
 
+  /**
+   * 返回流是否 ready
+   */
   @Override
   public boolean isReady() {
     return stream.isReady();
   }
 
+  /**
+   * 处理请求完成事件
+   *
+   * @param status   状态
+   * @param trailers 元数据
+   */
   @Override
   public void close(Status status, Metadata trailers) {
     PerfMark.startTask("ServerCall.close", tag);
@@ -216,21 +242,29 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
   }
 
   private void closeInternal(Status status, Metadata trailers) {
+    // 检查是否已经关闭
     checkState(!closeCalled, "call already closed");
     try {
+      // 将关闭状态改为 true
       closeCalled = true;
 
+      // 检查状态如果是 OK，且方法类型是 Server 端只能发送一次，且没有发送消息，则返回错误
       if (status.isOk() && method.getType().serverSendsOneMessage() && !messageSent) {
         internalClose(Status.INTERNAL.withDescription(MISSING_RESPONSE));
         return;
       }
 
+      // 关闭流
       stream.close(status, trailers);
     } finally {
+      // 统计结果
       serverCallTracer.reportCallEnded(status.isOk());
     }
   }
 
+  /**
+   * 返回流是否取消了
+   */
   @Override
   public boolean isCancelled() {
     return cancelled;
@@ -259,10 +293,13 @@ final class ServerCallImpl<ReqT, RespT> extends ServerCall<ReqT, RespT> {
    * Close the {@link ServerStream} because an internal error occurred. Allow the application to
    * run until completion, but silently ignore interactions with the {@link ServerStream} from now
    * on.
+   * 因为内部错误关闭 ServerStream，允许程序运行直到完成，但是从现在开始忽略与 ServerStream 的交流
    */
   private void internalClose(Status internalError) {
-    log.log(Level.WARNING, "Cancelling the stream with status {0}", new Object[] {internalError});
+    log.log(Level.WARNING, "Cancelling the stream with status {0}", new Object[]{internalError});
+    // 取消流
     stream.cancel(internalError);
+    // 统计
     serverCallTracer.reportCallEnded(internalError.isOk()); // error so always false
   }
 

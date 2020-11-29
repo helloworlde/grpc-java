@@ -92,8 +92,12 @@ public abstract class AbstractStream implements Stream {
         }
     }
 
+    /**
+     * 清空流
+     */
     @Override
     public final void flush() {
+        // 如果帧还没有关闭，则清空帧
         if (!framer().isClosed()) {
             framer().flush();
         }
@@ -125,9 +129,11 @@ public abstract class AbstractStream implements Stream {
      */
     @Override
     public boolean isReady() {
+        // 如果流已经关闭，则返回 false
         if (framer().isClosed()) {
             return false;
         }
+        // 如果没有关闭，返回 Transport 的状态
         return transportState().isReady();
     }
 
