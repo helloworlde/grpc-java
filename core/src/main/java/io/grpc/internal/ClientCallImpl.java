@@ -613,6 +613,13 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
     }
   }
 
+  /**
+   * 取消调用
+   *
+   * @param message if not {@code null}, will appear as the description of the CANCELLED status
+   *                如果不为空，将描述显示为 CANCELLED 状态
+   * @param cause   if not {@code null}, will appear as the cause of the CANCELLED status
+   */
   @Override
   public void cancel(@Nullable String message, @Nullable Throwable cause) {
     PerfMark.startTask("ClientCall.cancel", tag);
@@ -624,17 +631,21 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
   }
 
   private void cancelInternal(@Nullable String message, @Nullable Throwable cause) {
+    // 如果 message 和异常都是 null，则创建一个新的 CancellationException
     if (message == null && cause == null) {
       cause = new CancellationException("Cancelled without a message or cause");
       log.log(Level.WARNING, "Cancelling without a message or cause is suboptimal", cause);
     }
+    // 如果请求已经被取消，则返回
     if (cancelCalled) {
       return;
     }
+    // 修改取消状态
     cancelCalled = true;
     try {
       // Cancel is called in exception handling cases, so it may be the case that the
       // stream was never successfully created or start has never been called.
+      // 如果流不是 null，则使用取消状态
       if (stream != null) {
         Status status = Status.CANCELLED;
         if (message != null) {
@@ -645,9 +656,11 @@ final class ClientCallImpl<ReqT, RespT> extends ClientCall<ReqT, RespT> {
         if (cause != null) {
           status = status.withCause(cause);
         }
+        // 取消流
         stream.cancel(status);
       }
     } finally {
+      // 移除上下文监听器和超时
       removeContextListenerAndCancelDeadlineFuture();
     }
   }
