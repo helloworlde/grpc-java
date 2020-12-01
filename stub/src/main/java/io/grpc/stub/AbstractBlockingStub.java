@@ -19,11 +19,13 @@ package io.grpc.stub;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.stub.ClientCalls.StubType;
+
 import javax.annotation.CheckReturnValue;
 import javax.annotation.concurrent.ThreadSafe;
 
 /**
  * Stub implementations for blocking stubs.
+ * 阻塞的 Stub 的实现
  *
  * <p>DO NOT MOCK: Customizing options doesn't work properly in mocks. Use InProcessChannelBuilder
  * to create a real channel suitable for testing. It is also possible to mock Channel instead.
@@ -32,39 +34,45 @@ import javax.annotation.concurrent.ThreadSafe;
  */
 @ThreadSafe
 @CheckReturnValue
-public abstract class AbstractBlockingStub<S extends AbstractBlockingStub<S>>
-    extends AbstractStub<S> {
+public abstract class AbstractBlockingStub<S extends AbstractBlockingStub<S>> extends AbstractStub<S> {
 
-  protected AbstractBlockingStub(Channel channel, CallOptions callOptions) {
-    super(channel, callOptions);
-  }
+    protected AbstractBlockingStub(Channel channel, CallOptions callOptions) {
+        super(channel, callOptions);
+    }
 
-  /**
-   * Returns a new blocking stub with the given channel for the provided method configurations.
-   *
-   * @since 1.26.0
-   * @param factory the factory to create a blocking stub
-   * @param channel the channel that this stub will use to do communications
-   */
-  public static <T extends AbstractStub<T>> T newStub(
-      StubFactory<T> factory, Channel channel) {
-    return newStub(factory, channel, CallOptions.DEFAULT);
-  }
+    /**
+     * Returns a new blocking stub with the given channel for the provided method configurations.
+     * 根据给定的 Channel 和工厂构建新的阻塞 Stub
+     *
+     * @param factory the factory to create a blocking stub
+     *                用于创建 Stub 的新的工厂
+     * @param channel the channel that this stub will use to do communications
+     *                这个 Stub 用于通信的 Channel
+     * @since 1.26.0
+     */
+    public static <T extends AbstractStub<T>> T newStub(StubFactory<T> factory, Channel channel) {
+        return newStub(factory, channel, CallOptions.DEFAULT);
+    }
 
-  /**
-   * Returns a new blocking stub with the given channel for the provided method configurations.
-   *
-   * @since 1.26.0
-   * @param factory the factory to create a blocking stub
-   * @param channel the channel that this stub will use to do communications
-   * @param callOptions the runtime call options to be applied to every call on this stub
-   */
-  public static <T extends AbstractStub<T>> T newStub(
-      StubFactory<T> factory, Channel channel, CallOptions callOptions) {
-    T stub = factory.newStub(
-        channel, callOptions.withOption(ClientCalls.STUB_TYPE_OPTION, StubType.BLOCKING));
-    assert stub instanceof AbstractBlockingStub
-        : String.format("Expected AbstractBlockingStub, but got %s.", stub.getClass());
-    return stub;
-  }
+    /**
+     * Returns a new blocking stub with the given channel for the provided method configurations.
+     * 根据所给的 Channel、调用参数和工厂构建新的 Stub
+     *
+     * @param factory     the factory to create a blocking stub
+     *                    用于创建 Stub 的新的工厂
+     * @param channel     the channel that this stub will use to do communications
+     *                    这个 Stub 用于通信的 Channel
+     * @param callOptions the runtime call options to be applied to every call on this stub
+     *                    用于 Stub 每个请求使用的调用选项
+     * @since 1.26.0
+     */
+    public static <T extends AbstractStub<T>> T newStub(StubFactory<T> factory,
+                                                        Channel channel,
+                                                        CallOptions callOptions) {
+        T stub = factory.newStub(channel,
+                callOptions.withOption(ClientCalls.STUB_TYPE_OPTION, StubType.BLOCKING));
+
+        assert stub instanceof AbstractBlockingStub : String.format("Expected AbstractBlockingStub, but got %s.", stub.getClass());
+        return stub;
+    }
 }
