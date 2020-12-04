@@ -16,11 +16,6 @@
 
 package io.grpc.netty;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static io.grpc.netty.NettyServerBuilder.MAX_CONNECTION_AGE_NANOS_DISABLED;
-import static io.netty.channel.ChannelOption.ALLOCATOR;
-import static io.netty.channel.ChannelOption.SO_KEEPALIVE;
-
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -50,6 +45,7 @@ import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.ReferenceCounted;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
+
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.HashMap;
@@ -57,6 +53,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static io.grpc.netty.NettyServerBuilder.MAX_CONNECTION_AGE_NANOS_DISABLED;
+import static io.netty.channel.ChannelOption.ALLOCATOR;
+import static io.netty.channel.ChannelOption.SO_KEEPALIVE;
 
 /**
  * Netty-based server implementation.
@@ -159,10 +160,17 @@ class NettyServer implements InternalServer, InternalWithLogId {
     return listenSocketStats;
   }
 
+  /**
+   * 启动 NettyServer
+   *
+   * @param serverListener 监听器
+   * @throws IOException 异常
+   */
   @Override
   public void start(ServerListener serverListener) throws IOException {
     listener = checkNotNull(serverListener, "serverListener");
 
+    // 用于启动 Netty ServerChannel
     ServerBootstrap b = new ServerBootstrap();
     b.option(ALLOCATOR, Utils.getByteBufAllocator(forceHeapBuffer));
     b.childOption(ALLOCATOR, Utils.getByteBufAllocator(forceHeapBuffer));
@@ -196,13 +204,11 @@ class NettyServer implements InternalServer, InternalWithLogId {
         long maxConnectionAgeInNanos = NettyServer.this.maxConnectionAgeInNanos;
         if (maxConnectionAgeInNanos != MAX_CONNECTION_AGE_NANOS_DISABLED) {
           // apply a random jitter of +/-10% to max connection age
-          maxConnectionAgeInNanos =
-              (long) ((.9D + Math.random() * .2D) * maxConnectionAgeInNanos);
+          maxConnectionAgeInNanos = (long) ((.9D + Math.random() * .2D) * maxConnectionAgeInNanos);
         }
 
-        NettyServerTransport transport =
-            new NettyServerTransport(
-                ch,
+        // 构建基于 Netty 的 ServerTransport
+        NettyServerTransport transport = new NettyServerTransport(ch,
                 channelDone,
                 protocolNegotiator,
                 streamTracerFactories,
@@ -230,6 +236,7 @@ class NettyServer implements InternalServer, InternalWithLogId {
           // `channel` shutdown can race with `ch` initialization, so this is only safe to increment
           // inside the lock.
           sharedResourceReferenceCounter.retain();
+          // 调用监听器回调，Transport 创建事件
           transportListener = listener.transportCreated(transport);
         }
 
@@ -248,6 +255,7 @@ class NettyServer implements InternalServer, InternalWithLogId {
           }
         }
 
+        // 启动监听器
         transport.start(transportListener);
         ChannelFutureListener loopReleaser = new LoopReleaser();
         channelDone.addListener(loopReleaser);
@@ -255,6 +263,7 @@ class NettyServer implements InternalServer, InternalWithLogId {
       }
     });
     // Bind and start to accept incoming connections.
+    // 绑定地址，接受连接
     ChannelFuture future = b.bind(address);
     // We'd love to observe interruption, but if interrupted we will need to close the channel,
     // which itself would need an await() to guarantee the port is not used when the method returns.
@@ -263,6 +272,7 @@ class NettyServer implements InternalServer, InternalWithLogId {
     if (!future.isSuccess()) {
       throw new IOException("Failed to bind", future.cause());
     }
+
     channel = future.channel();
     channel.eventLoop().execute(new Runnable() {
       @Override
