@@ -16,18 +16,6 @@
 
 package io.grpc.netty;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static io.grpc.internal.GrpcUtil.SERVER_KEEPALIVE_TIME_NANOS_DISABLED;
-import static io.grpc.netty.NettyServerBuilder.MAX_CONNECTION_AGE_GRACE_NANOS_INFINITE;
-import static io.grpc.netty.NettyServerBuilder.MAX_CONNECTION_AGE_NANOS_DISABLED;
-import static io.grpc.netty.NettyServerBuilder.MAX_CONNECTION_IDLE_NANOS_DISABLED;
-import static io.grpc.netty.Utils.CONTENT_TYPE_HEADER;
-import static io.grpc.netty.Utils.HTTP_METHOD;
-import static io.grpc.netty.Utils.TE_HEADER;
-import static io.grpc.netty.Utils.TE_TRAILERS;
-import static io.netty.handler.codec.http2.DefaultHttp2LocalFlowController.DEFAULT_WINDOW_UPDATE_RATIO;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
@@ -52,47 +40,34 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
-import io.netty.handler.codec.http2.DecoratingHttp2FrameWriter;
-import io.netty.handler.codec.http2.DefaultHttp2Connection;
-import io.netty.handler.codec.http2.DefaultHttp2ConnectionDecoder;
-import io.netty.handler.codec.http2.DefaultHttp2FrameReader;
-import io.netty.handler.codec.http2.DefaultHttp2FrameWriter;
-import io.netty.handler.codec.http2.DefaultHttp2Headers;
-import io.netty.handler.codec.http2.DefaultHttp2LocalFlowController;
-import io.netty.handler.codec.http2.DefaultHttp2RemoteFlowController;
-import io.netty.handler.codec.http2.Http2Connection;
-import io.netty.handler.codec.http2.Http2ConnectionAdapter;
-import io.netty.handler.codec.http2.Http2ConnectionDecoder;
-import io.netty.handler.codec.http2.Http2ConnectionEncoder;
-import io.netty.handler.codec.http2.Http2Error;
-import io.netty.handler.codec.http2.Http2Exception;
+import io.netty.handler.codec.http2.*;
 import io.netty.handler.codec.http2.Http2Exception.StreamException;
-import io.netty.handler.codec.http2.Http2FlowController;
-import io.netty.handler.codec.http2.Http2FrameAdapter;
-import io.netty.handler.codec.http2.Http2FrameLogger;
-import io.netty.handler.codec.http2.Http2FrameReader;
-import io.netty.handler.codec.http2.Http2FrameWriter;
-import io.netty.handler.codec.http2.Http2Headers;
-import io.netty.handler.codec.http2.Http2HeadersDecoder;
-import io.netty.handler.codec.http2.Http2InboundFrameLogger;
-import io.netty.handler.codec.http2.Http2OutboundFrameLogger;
-import io.netty.handler.codec.http2.Http2Settings;
-import io.netty.handler.codec.http2.Http2Stream;
-import io.netty.handler.codec.http2.Http2StreamVisitor;
-import io.netty.handler.codec.http2.WeightedFairQueueByteDistributor;
 import io.netty.handler.logging.LogLevel;
 import io.netty.util.AsciiString;
 import io.netty.util.ReferenceCountUtil;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
+
+import javax.annotation.CheckForNull;
+import javax.annotation.Nullable;
 import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.annotation.CheckForNull;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static io.grpc.internal.GrpcUtil.SERVER_KEEPALIVE_TIME_NANOS_DISABLED;
+import static io.grpc.netty.NettyServerBuilder.MAX_CONNECTION_AGE_GRACE_NANOS_INFINITE;
+import static io.grpc.netty.NettyServerBuilder.MAX_CONNECTION_AGE_NANOS_DISABLED;
+import static io.grpc.netty.NettyServerBuilder.MAX_CONNECTION_IDLE_NANOS_DISABLED;
+import static io.grpc.netty.Utils.CONTENT_TYPE_HEADER;
+import static io.grpc.netty.Utils.HTTP_METHOD;
+import static io.grpc.netty.Utils.TE_HEADER;
+import static io.grpc.netty.Utils.TE_TRAILERS;
+import static io.netty.handler.codec.http2.DefaultHttp2LocalFlowController.DEFAULT_WINDOW_UPDATE_RATIO;
 
 /**
  * Server-side Netty handler for GRPC processing. All event handlers are executed entirely within
@@ -378,82 +353,93 @@ class NettyServerHandler extends AbstractNettyHandler {
     super.handlerAdded(ctx);
   }
 
-  private void onHeadersRead(ChannelHandlerContext ctx, int streamId, Http2Headers headers)
-      throws Http2Exception {
+  /**
+   * 当接收到 header 时调用
+   */
+  private void onHeadersRead(ChannelHandlerContext ctx, int streamId, Http2Headers headers) throws Http2Exception {
     try {
-
       // Remove the leading slash of the path and get the fully qualified method name
+      // 删除斜杠获取方法限定名称
       CharSequence path = headers.path();
 
+      // 如果没有 path，则返回 404
       if (path == null) {
-        respondWithHttpError(ctx, streamId, 404, Status.Code.UNIMPLEMENTED,
-            "Expected path but is missing");
+        respondWithHttpError(ctx, streamId, 404, Status.Code.UNIMPLEMENTED, "Expected path but is missing");
         return;
       }
 
+      // 如果 path 不是以 / 开始，则返回 404
       if (path.charAt(0) != '/') {
-        respondWithHttpError(ctx, streamId, 404, Status.Code.UNIMPLEMENTED,
-            String.format("Expected path to start with /: %s", path));
+        respondWithHttpError(ctx, streamId, 404, Status.Code.UNIMPLEMENTED, String.format("Expected path to start with /: %s", path));
         return;
       }
 
+      // 方法限定名，即包含服务名和方法名
       String method = path.subSequence(1, path.length()).toString();
 
       // Verify that the Content-Type is correct in the request.
+      // 获取请求类型并校验
       CharSequence contentType = headers.get(CONTENT_TYPE_HEADER);
       if (contentType == null) {
-        respondWithHttpError(
-            ctx, streamId, 415, Status.Code.INTERNAL, "Content-Type is missing from the request");
+        respondWithHttpError(ctx, streamId, 415, Status.Code.INTERNAL, "Content-Type is missing from the request");
         return;
       }
+
+      // 检查请求类型是否是 application/grpc 类型
       String contentTypeString = contentType.toString();
       if (!GrpcUtil.isGrpcContentType(contentTypeString)) {
-        respondWithHttpError(ctx, streamId, 415, Status.Code.INTERNAL,
-            String.format("Content-Type '%s' is not supported", contentTypeString));
+        respondWithHttpError(ctx, streamId, 415, Status.Code.INTERNAL, String.format("Content-Type '%s' is not supported", contentTypeString));
         return;
       }
 
+      // 检查请求方法类型是否一致
       if (!HTTP_METHOD.contentEquals(headers.method())) {
-        respondWithHttpError(ctx, streamId, 405, Status.Code.INTERNAL,
-            String.format("Method '%s' is not supported", headers.method()));
+        respondWithHttpError(ctx, streamId, 405, Status.Code.INTERNAL, String.format("Method '%s' is not supported", headers.method()));
         return;
       }
 
+      // 检查传输编码类型
       if (!teWarningLogged && !TE_TRAILERS.contentEquals(headers.get(TE_HEADER))) {
         logger.warning(String.format("Expected header TE: %s, but %s is received. This means "
-                + "some intermediate proxy may not support trailers",
-            TE_TRAILERS, headers.get(TE_HEADER)));
+                + "some intermediate proxy may not support trailers", TE_TRAILERS, headers.get(TE_HEADER)));
         teWarningLogged = true;
       }
 
       // The Http2Stream object was put by AbstractHttp2ConnectionHandler before calling this
       // method.
+      // 获取 HTTP 流
       Http2Stream http2Stream = requireHttp2Stream(streamId);
 
+      // 将 header 转为 metadata
       Metadata metadata = Utils.convertHeaders(headers);
-      StatsTraceContext statsTraceCtx =
-          StatsTraceContext.newServerContext(streamTracerFactories, method, metadata);
+      // 创建支持统计的上下文
+      StatsTraceContext statsTraceCtx = StatsTraceContext.newServerContext(streamTracerFactories, method, metadata);
 
+      // 创建流的声明
       NettyServerStream.TransportState state = new NettyServerStream.TransportState(
-          this,
-          ctx.channel().eventLoop(),
-          http2Stream,
-          maxMessageSize,
-          statsTraceCtx,
-          transportTracer,
-          method);
+              this,
+              ctx.channel().eventLoop(),
+              http2Stream,
+              maxMessageSize,
+              statsTraceCtx,
+              transportTracer,
+              method);
 
       PerfMark.startTask("NettyServerHandler.onHeadersRead", state.tag());
       try {
+        // 获取请求的 authority
         String authority = getOrUpdateAuthority((AsciiString) headers.authority());
-        NettyServerStream stream = new NettyServerStream(
-            ctx.channel(),
-            state,
-            attributes,
-            authority,
-            statsTraceCtx,
-            transportTracer);
+        // 创建 Server 端的流
+        NettyServerStream stream = new NettyServerStream(ctx.channel(),
+                state,
+                attributes,
+                authority,
+                statsTraceCtx,
+                transportTracer);
+
+        // 触发监听器，通知流创建事件，查找相应处理器，开始处理流，会提交 StreamCreated 任务到线程池中
         transportListener.streamCreated(stream, method, metadata);
+        // 会提交 OnReady 任务到线程池中，通知 Stream Ready
         state.onStreamAllocated();
         http2Stream.setProperty(streamKey, state);
       } finally {
@@ -798,15 +784,18 @@ class NettyServerHandler extends AbstractNettyHandler {
       return padding;
     }
 
+    /**
+     * 当接收到 header 时调用
+     */
     @Override
     public void onHeadersRead(ChannelHandlerContext ctx,
-        int streamId,
-        Http2Headers headers,
-        int streamDependency,
-        short weight,
-        boolean exclusive,
-        int padding,
-        boolean endStream) throws Http2Exception {
+                              int streamId,
+                              Http2Headers headers,
+                              int streamDependency,
+                              short weight,
+                              boolean exclusive,
+                              int padding,
+                              boolean endStream) throws Http2Exception {
       if (keepAliveManager != null) {
         keepAliveManager.onDataReceived();
       }

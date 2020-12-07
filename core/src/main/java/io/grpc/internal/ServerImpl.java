@@ -579,7 +579,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
 
         /**
-         * 流创建事件
+         * 流创建事件，提交根据方法查找流，处理流的任务
          */
         @Override
         public void streamCreated(ServerStream stream, String methodName, Metadata headers) {
@@ -629,7 +629,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
 
             final Link link = PerfMark.linkOut();
 
-            // 将回调调度到应用程序的执行程序上
+            // 流事件监听器，处理流的所有生命周期事件
             final JumpToApplicationThreadServerStreamListener jumpListener = new JumpToApplicationThreadServerStreamListener(wrappedExecutor, executor, stream, context, tag);
             stream.setListener(jumpListener);
             // Run in wrappedExecutor so jumpListener.setListener() is called before any callbacks
@@ -687,6 +687,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
                     // An extremely short deadline may expire before stream.setListener(jumpListener).
                     // This causes NPE as in issue: https://github.com/grpc/grpc-java/issues/6300
                     // Delay of setting cancellationListener to context will fix the issue.
+                    // 添加流取消的监听器
                     final class ServerStreamCancellationListener implements Context.CancellationListener {
                         @Override
                         public void cancelled(Context context) {
@@ -702,7 +703,7 @@ public final class ServerImpl extends io.grpc.Server implements InternalInstrume
                     context.addListener(new ServerStreamCancellationListener(), directExecutor());
                 }
             }
-
+            // 提交流创建任务
             wrappedExecutor.execute(new StreamCreated());
         }
 
