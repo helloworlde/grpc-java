@@ -136,6 +136,9 @@ public class CompositeReadableBuffer extends AbstractReadableBuffer {
     }
   }
 
+  /**
+   * 读取指定数量的字节
+   */
   @Override
   public CompositeReadableBuffer readBytes(int length) {
     checkReadable(length);

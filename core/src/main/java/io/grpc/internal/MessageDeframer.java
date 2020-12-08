@@ -158,12 +158,19 @@ public class MessageDeframer implements Closeable, Deframer {
     unprocessed = null;
   }
 
+  /**
+   * 读取指定数量的帧投递给监听器
+   *
+   * @param numMessages the requested number of messages to be delivered to the listener.
+   *                    投递给监听器的帧的数量
+   */
   @Override
   public void request(int numMessages) {
     checkArgument(numMessages > 0, "numMessages must be > 0");
     if (isClosed()) {
       return;
     }
+    // 增加等待投递的数量
     pendingDeliveries += numMessages;
     deliver();
   }
@@ -242,12 +249,16 @@ public class MessageDeframer implements Closeable, Deframer {
 
   /**
    * Indicates whether or not this deframer has been closed.
+   * 解帧器是否关闭
    */
   public boolean isClosed() {
+    // 如果缓冲器和解压器都关闭，则说明解帧器已经关闭
     return unprocessed == null && fullStreamDecompressor == null;
   }
 
-  /** Returns true if this deframer has already been closed or scheduled to close. */
+  /**
+   * Returns true if this deframer has already been closed or scheduled to close.
+   */
   private boolean isClosedOrScheduledToClose() {
     return isClosed() || closeWhenComplete;
   }
@@ -262,23 +273,29 @@ public class MessageDeframer implements Closeable, Deframer {
 
   /**
    * Reads and delivers as many messages to the listener as possible.
+   * 读取消息并投递监听器
    */
   private void deliver() {
     // We can have reentrancy here when using a direct executor, triggered by calls to
     // request more messages. This is safe as we simply loop until pendingDelivers = 0
+    // 当使用直接线程池时可能会有重入，当要求读取更多消息时触发，循环直到 pendingDelivers = 0 是安全的
+    // 检查投递的状态
     if (inDelivery) {
       return;
     }
     inDelivery = true;
     try {
       // Process the uncompressed bytes.
+      // 如果没有停止投递，且有等待投递的消息，且读取成功，则根据相应状态进行处理
       while (!stopDelivery && pendingDeliveries > 0 && readRequiredBytes()) {
         switch (state) {
           case HEADER:
+            // 处理 header
             processHeader();
             break;
           case BODY:
             // Read the body and deliver the message.
+            // 处理body
             processBody();
 
             // Since we've delivered a message, decrement the number of pending
@@ -290,6 +307,7 @@ public class MessageDeframer implements Closeable, Deframer {
         }
       }
 
+      // 如果已经停止投递，则关闭
       if (stopDelivery) {
         close();
         return;
@@ -313,20 +331,25 @@ public class MessageDeframer implements Closeable, Deframer {
 
   /**
    * Attempts to read the required bytes into nextFrame.
+   * 尝试将要求的的字节读入帧汇总
    *
    * @return {@code true} if all of the required bytes have been read.
+   * 如果所有要求读取的帧都读取到了字节中，则返回 true
    */
   private boolean readRequiredBytes() {
     int totalBytesRead = 0;
     int deflatedBytesRead = 0;
     try {
+      // 如果帧为 null，则读取帧
       if (nextFrame == null) {
         nextFrame = new CompositeReadableBuffer();
       }
 
       // Read until the buffer contains all the required bytes.
+      // 读取直到缓冲中有所有要求读取的字节
       int missingBytes;
       while ((missingBytes = requiredLength - nextFrame.readableBytes()) > 0) {
+        // 如果有压缩，则读取后解压
         if (fullStreamDecompressor != null) {
           try {
             if (inflatedBuffer == null || inflatedIndex == inflatedBuffer.length) {
@@ -353,6 +376,7 @@ public class MessageDeframer implements Closeable, Deframer {
             // No more data is available.
             return false;
           }
+          // 读取指定数量的字节，加入到缓冲区中
           int toRead = Math.min(missingBytes, unprocessed.readableBytes());
           totalBytesRead += toRead;
           nextFrame.addBuffer(unprocessed.readBytes(toRead));
@@ -361,7 +385,9 @@ public class MessageDeframer implements Closeable, Deframer {
       return true;
     } finally {
       if (totalBytesRead > 0) {
+        // 通知监听器读取的字节的数量
         listener.bytesRead(totalBytesRead);
+        // 统计
         if (state == State.BODY) {
           if (fullStreamDecompressor != null) {
             // With compressed streams, totalBytesRead can include gzip header and trailer metadata
@@ -379,34 +405,37 @@ public class MessageDeframer implements Closeable, Deframer {
   /**
    * Processes the GRPC compression header which is composed of the compression flag and the outer
    * frame length.
+   * 处理请求压缩的 header
    */
   private void processHeader() {
     int type = nextFrame.readUnsignedByte();
     if ((type & RESERVED_MASK) != 0) {
-      throw Status.INTERNAL.withDescription(
-          "gRPC frame header malformed: reserved bits not zero")
-          .asRuntimeException();
+      throw Status.INTERNAL.withDescription("gRPC frame header malformed: reserved bits not zero")
+                           .asRuntimeException();
     }
+
     compressedFlag = (type & COMPRESSED_FLAG_MASK) != 0;
 
     // Update the required length to include the length of the frame.
     requiredLength = nextFrame.readInt();
+    // 如果要求的长度为小于 0 或者已经超过最大长度，则返回错误
     if (requiredLength < 0 || requiredLength > maxInboundMessageSize) {
-      throw Status.RESOURCE_EXHAUSTED.withDescription(
-          String.format("gRPC message exceeds maximum size %d: %d",
-              maxInboundMessageSize, requiredLength))
-          .asRuntimeException();
+      throw Status.RESOURCE_EXHAUSTED.withDescription(String.format("gRPC message exceeds maximum size %d: %d", maxInboundMessageSize, requiredLength))
+                                     .asRuntimeException();
     }
 
     currentMessageSeqNo++;
+    // 添加统计
     statsTraceCtx.inboundMessage(currentMessageSeqNo);
     transportTracer.reportMessageReceived();
     // Continue reading the frame body.
+    // 将读取状态改为读取 body
     state = State.BODY;
   }
 
   /**
    * Processes the GRPC message body, which depending on frame header flags may be compressed.
+   * 处理 gPRC 请求体消息
    */
   private void processBody() {
     // There is no reliable way to get the uncompressed size per message when it's compressed,
@@ -414,33 +443,40 @@ public class MessageDeframer implements Closeable, Deframer {
     // unknown until all bytes are read, and we don't know when it happens.
     statsTraceCtx.inboundMessageRead(currentMessageSeqNo, inboundBodyWireSize, -1);
     inboundBodyWireSize = 0;
+    // 读取请求体的流
     InputStream stream = compressedFlag ? getCompressedBody() : getUncompressedBody();
     nextFrame = null;
+    // 通知监听器有新的消息
     listener.messagesAvailable(new SingleMessageProducer(stream));
 
     // Done with this frame, begin processing the next header.
+    // 将状态改为处理 header
     state = State.HEADER;
     requiredLength = HEADER_LENGTH;
   }
 
+  /**
+   * 读取未压缩的请求体
+   */
   private InputStream getUncompressedBody() {
     statsTraceCtx.inboundUncompressedSize(nextFrame.readableBytes());
     return ReadableBuffers.openStream(nextFrame, true);
   }
 
+  /**
+   * 读取压缩的请求体
+   */
   private InputStream getCompressedBody() {
     if (decompressor == Codec.Identity.NONE) {
-      throw Status.INTERNAL.withDescription(
-          "Can't decode compressed gRPC message as compression not configured")
-          .asRuntimeException();
+      throw Status.INTERNAL.withDescription("Can't decode compressed gRPC message as compression not configured")
+                           .asRuntimeException();
     }
 
     try {
       // Enforce the maxMessageSize limit on the returned stream.
-      InputStream unlimitedStream =
-          decompressor.decompress(ReadableBuffers.openStream(nextFrame, true));
-      return new SizeEnforcingInputStream(
-          unlimitedStream, maxInboundMessageSize, statsTraceCtx);
+      // 读取并解压
+      InputStream unlimitedStream = decompressor.decompress(ReadableBuffers.openStream(nextFrame, true));
+      return new SizeEnforcingInputStream(unlimitedStream, maxInboundMessageSize, statsTraceCtx);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
@@ -530,6 +566,9 @@ public class MessageDeframer implements Closeable, Deframer {
     }
   }
 
+  /**
+   * 单个消息生产者
+   */
   private static class SingleMessageProducer implements StreamListener.MessageProducer {
     private InputStream message;
 
