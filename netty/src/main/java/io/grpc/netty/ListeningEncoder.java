@@ -16,8 +16,6 @@
 
 package io.grpc.netty;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -28,6 +26,8 @@ import io.netty.handler.codec.http2.Http2ConnectionEncoder;
 import io.netty.handler.codec.http2.Http2FrameWriter;
 import io.netty.handler.codec.http2.StreamBufferingEncoder;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 /** A ListeningEncoder notifies {@link Http2OutboundFrameListener} on http2 outbound frame event. */
 interface ListeningEncoder {
 
@@ -36,17 +36,30 @@ interface ListeningEncoder {
   /**
    * Partial implementation of (Listening subset of event) event listener for outbound http2
    * frames.
+   * 用于 http2 出站帧的部分事件的监听器
    */
   class Http2OutboundFrameListener {
 
-    /** Notifies on outbound WINDOW_UPDATE frame. */
-    public void onWindowUpdate(int streamId, int windowSizeIncrement) {}
+    /**
+     * Notifies on outbound WINDOW_UPDATE frame.
+     * 当 WINDOW_UPDATE 帧出站时通知
+     */
+    public void onWindowUpdate(int streamId, int windowSizeIncrement) {
+    }
 
-    /** Notifies on outbound PING frame. */
-    public void onPing(boolean ack, long data) {}
+    /**
+     * Notifies on outbound PING frame.
+     * 当 PING 帧出站时通知
+     */
+    public void onPing(boolean ack, long data) {
+    }
 
-    /** Notifies on outbound DATA frame. */
-    public void onData(int streamId, ByteBuf data, int padding, boolean endStream) {}
+    /**
+     * Notifies on outbound DATA frame.
+     * 当 DATA 帧出站时通知
+     */
+    public void onData(int streamId, ByteBuf data, int padding, boolean endStream) {
+    }
   }
 
   /** A {@link StreamBufferingEncoder} notifies http2 outbound frame event. */
@@ -107,9 +120,14 @@ interface ListeningEncoder {
       this.listener = checkNotNull(listener, "listener");
     }
 
+    /**
+     * 写入 ping 请求
+     */
     @Override
-    public ChannelFuture writePing(
-        ChannelHandlerContext ctx, boolean ack, long data, ChannelPromise promise) {
+    public ChannelFuture writePing(ChannelHandlerContext ctx,
+                                   boolean ack,
+                                   long data,
+                                   ChannelPromise promise) {
       listener.onPing(ack, data);
       return super.writePing(ctx, ack, data, promise);
     }
