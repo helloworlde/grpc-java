@@ -85,11 +85,13 @@ class NettyServerHandler extends AbstractNettyHandler {
 
     private final Http2Connection.PropertyKey streamKey;
     private final ServerTransportListener transportListener;
+
     private final int maxMessageSize;
     private final long keepAliveTimeInNanos;
     private final long keepAliveTimeoutInNanos;
     private final long maxConnectionAgeInNanos;
     private final long maxConnectionAgeGraceInNanos;
+
     private final List<? extends ServerStreamTracer.Factory> streamTracerFactories;
     private final TransportTracer transportTracer;
     private final KeepAliveEnforcer keepAliveEnforcer;
@@ -255,6 +257,7 @@ class NettyServerHandler extends AbstractNettyHandler {
              */
             @Override
             public void onStreamActive(Http2Stream stream) {
+                // 当只有一个流活跃时，触发 Transport 的 active 事件
                 if (connection.numActiveStreams() == 1) {
                     keepAliveEnforcer.onTransportActive();
                     if (maxConnectionIdleManager != null) {
@@ -268,6 +271,7 @@ class NettyServerHandler extends AbstractNettyHandler {
              */
             @Override
             public void onStreamClosed(Http2Stream stream) {
+                // 当没有流活跃时，触发 Transport 的 idle 事件
                 if (connection.numActiveStreams() == 0) {
                     keepAliveEnforcer.onTransportIdle();
                     if (maxConnectionIdleManager != null) {
@@ -301,16 +305,21 @@ class NettyServerHandler extends AbstractNettyHandler {
         return connectionError;
     }
 
+    /**
+     * 处理器添加事件回调
+     */
     @Override
     public void handlerAdded(final ChannelHandlerContext ctx) throws Exception {
+        // 写入队列
         serverWriteQueue = new WriteQueue(ctx.channel());
 
         // init max connection age monitor
+        // 最大连接监控器，当连接时间到达最大时关闭并清空缓冲
         if (maxConnectionAgeInNanos != MAX_CONNECTION_AGE_NANOS_DISABLED) {
-            maxConnectionAgeMonitor = ctx.executor().schedule(
-                    new LogExceptionRunnable(new Runnable() {
+            maxConnectionAgeMonitor = ctx.executor().schedule(new LogExceptionRunnable(new Runnable() {
                         @Override
                         public void run() {
+                            // 提交一个优雅关闭任务
                             if (gracefulShutdown == null) {
                                 gracefulShutdown = new GracefulShutdown("max_age", maxConnectionAgeGraceInNanos);
                                 gracefulShutdown.start(ctx);
@@ -322,17 +331,23 @@ class NettyServerHandler extends AbstractNettyHandler {
                     TimeUnit.NANOSECONDS);
         }
 
+        // 启动空闲管理器
         if (maxConnectionIdleManager != null) {
             maxConnectionIdleManager.start(ctx);
         }
 
+        // 如果 keep-alive 时间有效，则创建 keep-alive 管理器，并触发 Transport start 事件
         if (keepAliveTimeInNanos != SERVER_KEEPALIVE_TIME_NANOS_DISABLED) {
-            keepAliveManager = new KeepAliveManager(new KeepAlivePinger(ctx), ctx.executor(),
-                    keepAliveTimeInNanos, keepAliveTimeoutInNanos, true /* keepAliveDuringTransportIdle */);
+            keepAliveManager = new KeepAliveManager(new KeepAlivePinger(ctx),
+                    ctx.executor(),
+                    keepAliveTimeInNanos,
+                    keepAliveTimeoutInNanos,
+                    true /* keepAliveDuringTransportIdle */);
             keepAliveManager.onTransportStarted();
         }
 
 
+        // 如果 Transport 跟踪器不为空，则为流控窗口设置跟踪器
         if (transportTracer != null) {
             assert encoder().connection().equals(decoder().connection());
             final Http2Connection connection = encoder().connection();
@@ -350,6 +365,7 @@ class NettyServerHandler extends AbstractNettyHandler {
             });
         }
 
+        // 将上下文添加到 Netty 中
         super.handlerAdded(ctx);
     }
 
@@ -464,13 +480,18 @@ class NettyServerHandler extends AbstractNettyHandler {
         return lastKnownAuthority.toString();
     }
 
-    private void onDataRead(int streamId, ByteBuf data, int padding, boolean endOfStream)
-            throws Http2Exception {
+    /**
+     * 当读取到 data 时触发，最终会触发 messagesAvailable 事件
+     */
+    private void onDataRead(int streamId, ByteBuf data, int padding, boolean endOfStream) throws Http2Exception {
+        // 流控
         flowControlPing().onDataRead(data.readableBytes(), padding);
         try {
+            // 使用流 ID 获取流对象，创建 TransportState
             NettyServerStream.TransportState stream = serverStream(requireHttp2Stream(streamId));
             PerfMark.startTask("NettyServerHandler.onDataRead", stream.tag());
             try {
+                // 触发流入站事件，同时会触发 messagesAvailable 事件
                 stream.inboundDataReceived(data, endOfStream);
             } finally {
                 PerfMark.stopTask("NettyServerHandler.onDataRead", stream.tag());
@@ -482,14 +503,16 @@ class NettyServerHandler extends AbstractNettyHandler {
         }
     }
 
+    /**
+     * 读取到 RST_STREAM 流时触发，会取消流
+     */
     private void onRstStreamRead(int streamId, long errorCode) throws Http2Exception {
         try {
             NettyServerStream.TransportState stream = serverStream(connection().stream(streamId));
             if (stream != null) {
                 PerfMark.startTask("NettyServerHandler.onRstStreamRead", stream.tag());
                 try {
-                    stream.transportReportStatus(
-                            Status.CANCELLED.withDescription("RST_STREAM received for code " + errorCode));
+                    stream.transportReportStatus(Status.CANCELLED.withDescription("RST_STREAM received for code " + errorCode));
                 } finally {
                     PerfMark.stopTask("NettyServerHandler.onRstStreamRead", stream.tag());
                 }
@@ -501,24 +524,36 @@ class NettyServerHandler extends AbstractNettyHandler {
         }
     }
 
+    /**
+     * 连接错误时触发
+     */
     @Override
-    protected void onConnectionError(ChannelHandlerContext ctx, boolean outbound, Throwable cause,
+    protected void onConnectionError(ChannelHandlerContext ctx,
+                                     boolean outbound,
+                                     Throwable cause,
                                      Http2Exception http2Ex) {
         logger.log(Level.FINE, "Connection Error", cause);
         connectionError = cause;
         super.onConnectionError(ctx, outbound, cause, http2Ex);
     }
 
+    /**
+     * 当流错误时触发
+     */
     @Override
-    protected void onStreamError(ChannelHandlerContext ctx, boolean outbound, Throwable cause,
+    protected void onStreamError(ChannelHandlerContext ctx,
+                                 boolean outbound,
+                                 Throwable cause,
                                  StreamException http2Ex) {
         logger.log(Level.WARNING, "Stream Error", cause);
-        NettyServerStream.TransportState serverStream = serverStream(
-                connection().stream(Http2Exception.streamId(http2Ex)));
+        // 获取流
+        NettyServerStream.TransportState serverStream = serverStream(connection().stream(Http2Exception.streamId(http2Ex)));
+
         Tag tag = serverStream != null ? serverStream.tag() : PerfMark.createTag();
         PerfMark.startTask("NettyServerHandler.onStreamError", tag);
         try {
             if (serverStream != null) {
+                // 使用错误状态关闭流
                 serverStream.transportReportStatus(Utils.statusFromThrowable(cause));
             }
             // TODO(ejona): Abort the stream by sending headers to help the client with debugging.
@@ -529,9 +564,16 @@ class NettyServerHandler extends AbstractNettyHandler {
         }
     }
 
+    /**
+     * 协议谈判完成时触发
+     *
+     * @param attrs        arbitrary attributes passed after protocol negotiation (eg. SSLSession).
+     *                     当协议谈判完成后传递的属性
+     * @param securityInfo informs channelz about the security protocol.
+     */
     @Override
-    public void handleProtocolNegotiationCompleted(
-            Attributes attrs, InternalChannelz.Security securityInfo) {
+    public void handleProtocolNegotiationCompleted(Attributes attrs,
+                                                   InternalChannelz.Security securityInfo) {
         negotiationAttributes = attrs;
         this.securityInfo = securityInfo;
         super.handleProtocolNegotiationCompleted(attrs, securityInfo);
@@ -554,22 +596,27 @@ class NettyServerHandler extends AbstractNettyHandler {
 
     /**
      * Handler for the Channel shutting down.
+     * Channel 关闭处理器
      */
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         try {
+            // 关闭 keep-alive 管理器
             if (keepAliveManager != null) {
                 keepAliveManager.onTransportTermination();
             }
+            // 关闭最大连接空闲管理器
             if (maxConnectionIdleManager != null) {
                 maxConnectionIdleManager.onTransportTermination();
             }
+            // 关闭最大连接时间管理器
             if (maxConnectionAgeMonitor != null) {
                 maxConnectionAgeMonitor.cancel(false);
             }
-            final Status status =
-                    Status.UNAVAILABLE.withDescription("connection terminated for unknown reason");
+
+            final Status status = Status.UNAVAILABLE.withDescription("connection terminated for unknown reason");
             // Any streams that are still active must be closed
+            // 使用 UNAVAILABLE 状态关闭所有活跃的流
             connection().forEachActiveStream(new Http2StreamVisitor() {
                 @Override
                 public boolean visit(Http2Stream stream) throws Http2Exception {
@@ -581,6 +628,7 @@ class NettyServerHandler extends AbstractNettyHandler {
                 }
             });
         } finally {
+            // 将 Channel 状态改为非活跃
             super.channelInactive(ctx);
         }
     }
@@ -612,8 +660,12 @@ class NettyServerHandler extends AbstractNettyHandler {
         }
     }
 
+    /**
+     * 关闭 Channel
+     */
     @Override
     public void close(ChannelHandlerContext ctx, ChannelPromise promise) throws Exception {
+        // 如果没有关闭任务，则创建一个新的并启动
         if (gracefulShutdown == null) {
             gracefulShutdown = new GracefulShutdown("app_requested", null);
             gracefulShutdown.start(ctx);
@@ -740,6 +792,9 @@ class NettyServerHandler extends AbstractNettyHandler {
         encoder().writeData(ctx, streamId, msgBuf, 0, true, ctx.newPromise());
     }
 
+    /**
+     * 使用流 ID 获取流
+     */
     private Http2Stream requireHttp2Stream(int streamId) {
         Http2Stream stream = connection().stream(streamId);
         if (stream == null) {
@@ -751,6 +806,7 @@ class NettyServerHandler extends AbstractNettyHandler {
 
     /**
      * Returns the server stream associated to the given HTTP/2 stream object.
+     * 返回给定的 HTTP2 流对象关联的 Server 端的流
      */
     private NettyServerStream.TransportState serverStream(Http2Stream stream) {
         return stream == null ? null : (NettyServerStream.TransportState) stream.getProperty(streamKey);
@@ -802,6 +858,10 @@ class NettyServerHandler extends AbstractNettyHandler {
             NettyServerHandler.this.onHeadersRead(ctx, streamId, headers);
         }
 
+        /**
+         * 当读取到 RST_STREAM 时触发
+         * 允许立即终止一个流，发送 RST_STREAM 以请求取消流或指示发生了错误情况
+         */
         @Override
         public void onRstStreamRead(ChannelHandlerContext ctx, int streamId, long errorCode)
                 throws Http2Exception {
@@ -896,75 +956,89 @@ class NettyServerHandler extends AbstractNettyHandler {
         }
     }
 
+    /**
+     * 优雅关闭
+     */
     private final class GracefulShutdown {
         String goAwayMessage;
 
         /**
          * The grace time between starting graceful shutdown and closing the netty channel,
          * {@code null} is unspecified.
+         * 开始优雅关闭和关闭 netty channel 的时间间隔
          */
         @CheckForNull
         Long graceTimeInNanos;
 
         /**
          * True if ping is Acked or ping is timeout.
+         * 如果 ping 被 ack 或者超时时为 true
          */
         boolean pingAckedOrTimeout;
 
         Future<?> pingFuture;
 
-        GracefulShutdown(String goAwayMessage,
-                         @Nullable Long graceTimeInNanos) {
+        GracefulShutdown(String goAwayMessage, @Nullable Long graceTimeInNanos) {
             this.goAwayMessage = goAwayMessage;
             this.graceTimeInNanos = graceTimeInNanos;
         }
 
         /**
          * Sends out first GOAWAY and ping, and schedules second GOAWAY and close.
+         * 发出第一个 GOAWAY 和 ping，并提交第二个
          */
         void start(final ChannelHandlerContext ctx) {
-            goAway(
-                    ctx,
+            // 防止因为对端收到 NON_ERROR 状态后再创建新的流
+            goAway(ctx,
                     Integer.MAX_VALUE,
                     Http2Error.NO_ERROR.code(),
                     ByteBufUtil.writeAscii(ctx.alloc(), goAwayMessage),
                     ctx.newPromise());
 
-            pingFuture = ctx.executor().schedule(
-                    new Runnable() {
-                        @Override
-                        public void run() {
-                            secondGoAwayAndClose(ctx);
-                        }
-                    },
-                    GRACEFUL_SHUTDOWN_PING_TIMEOUT_NANOS,
-                    TimeUnit.NANOSECONDS);
+            // 提交第二个发送 GOAWAY 任务并关闭
+            pingFuture = ctx.executor()
+                            .schedule(new Runnable() {
+                                          @Override
+                                          public void run() {
+                                              secondGoAwayAndClose(ctx);
+                                          }
+                                      },
+                                    GRACEFUL_SHUTDOWN_PING_TIMEOUT_NANOS,
+                                    TimeUnit.NANOSECONDS);
 
+            // 发送 ping
             encoder().writePing(ctx, false /* isAck */, GRACEFUL_SHUTDOWN_PING, ctx.newPromise());
         }
 
+        /**
+         * 发送第二个 ping
+         */
         void secondGoAwayAndClose(ChannelHandlerContext ctx) {
+            // 如果 ping 已经 ack 或者超时，则返回
             if (pingAckedOrTimeout) {
                 return;
             }
             pingAckedOrTimeout = true;
 
             checkNotNull(pingFuture, "pingFuture");
+            // 取消 ping
             pingFuture.cancel(false);
 
             // send the second GOAWAY with last stream id
-            goAway(
-                    ctx,
+            // 使用最后一个流的 id 发送 GOAWAY
+            goAway(ctx,
                     connection().remote().lastStreamCreated(),
                     Http2Error.NO_ERROR.code(),
                     ByteBufUtil.writeAscii(ctx.alloc(), goAwayMessage),
                     ctx.newPromise());
 
             // gracefully shutdown with specified grace time
+            // 使用等待时间关闭
             long savedGracefulShutdownTimeMillis = gracefulShutdownTimeoutMillis();
             long overriddenGraceTime = graceTimeOverrideMillis(savedGracefulShutdownTimeMillis);
             try {
                 gracefulShutdownTimeoutMillis(overriddenGraceTime);
+                // 如果没有则提交一个新的关闭任务
                 NettyServerHandler.super.close(ctx, ctx.newPromise());
             } catch (Exception e) {
                 onError(ctx, /* outbound= */ true, e);
@@ -973,6 +1047,9 @@ class NettyServerHandler extends AbstractNettyHandler {
             }
         }
 
+        /**
+         * 获取优雅关闭等待时间
+         */
         private long graceTimeOverrideMillis(long originalMillis) {
             if (graceTimeInNanos == null) {
                 return originalMillis;
