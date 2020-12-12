@@ -639,21 +639,24 @@ class NettyServerHandler extends AbstractNettyHandler {
 
     /**
      * Handler for commands sent from the stream.
+     * 流发出的命令处理器
      */
     @Override
-    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise)
-            throws Exception {
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+        // 如果是发送 gRPC 帧的命令，则发送帧
         if (msg instanceof SendGrpcFrameCommand) {
             sendGrpcFrame(ctx, (SendGrpcFrameCommand) msg, promise);
         } else if (msg instanceof SendResponseHeadersCommand) {
+            // 如果是发送响应 Header 命令，则发送响应 header
             sendResponseHeaders(ctx, (SendResponseHeadersCommand) msg, promise);
         } else if (msg instanceof CancelServerStreamCommand) {
+            // 如果是取消命令，则执行取消流
             cancelStream(ctx, (CancelServerStreamCommand) msg, promise);
         } else if (msg instanceof ForcefulCloseCommand) {
+            // 如果是流强制关闭事件，则执行强制关闭
             forcefulClose(ctx, (ForcefulCloseCommand) msg, promise);
         } else {
-            AssertionError e =
-                    new AssertionError("Write called for unexpected type: " + msg.getClass().getName());
+            AssertionError e = new AssertionError("Write called for unexpected type: " + msg.getClass().getName());
             ReferenceCountUtil.release(msg);
             promise.setFailure(e);
             throw e;
@@ -675,6 +678,7 @@ class NettyServerHandler extends AbstractNettyHandler {
 
     /**
      * Returns the given processed bytes back to inbound flow control.
+     * 将给定的已处理字节返回到入站流控制
      */
     void returnProcessedBytes(Http2Stream http2Stream, int bytes) {
         try {
@@ -684,8 +688,13 @@ class NettyServerHandler extends AbstractNettyHandler {
         }
     }
 
+    /**
+     * 在流完成时关闭
+     */
     private void closeStreamWhenDone(ChannelPromise promise, int streamId) throws Http2Exception {
+        // 根据流 id 获取流
         final NettyServerStream.TransportState stream = serverStream(requireHttp2Stream(streamId));
+        // 添加完成监听器，触发流关闭事件
         promise.addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) {
@@ -696,16 +705,20 @@ class NettyServerHandler extends AbstractNettyHandler {
 
     /**
      * Sends the given gRPC frame to the client.
+     * 将给定的 gRPC 帧发送给客户端
      */
-    private void sendGrpcFrame(ChannelHandlerContext ctx, SendGrpcFrameCommand cmd,
+    private void sendGrpcFrame(ChannelHandlerContext ctx,
+                               SendGrpcFrameCommand cmd,
                                ChannelPromise promise) throws Http2Exception {
         PerfMark.startTask("NettyServerHandler.sendGrpcFrame", cmd.stream().tag());
         PerfMark.linkIn(cmd.getLink());
         try {
+            // 如果已经到达帧末尾，则在完成时关闭
             if (cmd.endStream()) {
                 closeStreamWhenDone(promise, cmd.stream().id());
             }
             // Call the base class to write the HTTP/2 DATA frame.
+            // 如果还没有到达流末尾，则写入帧
             encoder().writeData(ctx, cmd.stream().id(), cmd.content(), 0, cmd.endStream(), promise);
         } finally {
             PerfMark.stopTask("NettyServerHandler.sendGrpcFrame", cmd.stream().tag());
@@ -714,80 +727,111 @@ class NettyServerHandler extends AbstractNettyHandler {
 
     /**
      * Sends the response headers to the client.
+     * 向客户端发送响应 header
      */
-    private void sendResponseHeaders(ChannelHandlerContext ctx, SendResponseHeadersCommand cmd,
+    private void sendResponseHeaders(ChannelHandlerContext ctx,
+                                     SendResponseHeadersCommand cmd,
                                      ChannelPromise promise) throws Http2Exception {
         PerfMark.startTask("NettyServerHandler.sendResponseHeaders", cmd.stream().tag());
         PerfMark.linkIn(cmd.getLink());
         try {
             // TODO(carl-mastrangelo): remove this check once https://github.com/netty/netty/issues/6296
             // is fixed.
+            // 根据流 id 获取流
             int streamId = cmd.stream().id();
             Http2Stream stream = connection().stream(streamId);
+            // 如果流不存在，则使用取消重置流的状态
             if (stream == null) {
                 resetStream(ctx, streamId, Http2Error.CANCEL.code(), promise);
                 return;
             }
+            // 如果已经到达流末尾，则在完成时关闭流
             if (cmd.endOfStream()) {
                 closeStreamWhenDone(promise, streamId);
             }
+            // 写入 header
             encoder().writeHeaders(ctx, streamId, cmd.headers(), 0, cmd.endOfStream(), promise);
         } finally {
             PerfMark.stopTask("NettyServerHandler.sendResponseHeaders", cmd.stream().tag());
         }
     }
 
-    private void cancelStream(ChannelHandlerContext ctx, CancelServerStreamCommand cmd,
+    /**
+     * 取消流
+     */
+    private void cancelStream(ChannelHandlerContext ctx,
+                              CancelServerStreamCommand cmd,
                               ChannelPromise promise) {
         PerfMark.startTask("NettyServerHandler.cancelStream", cmd.stream().tag());
         PerfMark.linkIn(cmd.getLink());
         try {
             // Notify the listener if we haven't already.
+            // 通知监听器流取消
             cmd.stream().transportReportStatus(cmd.reason());
             // Terminate the stream.
+            // 发送 RST_STREAM，终止流
             encoder().writeRstStream(ctx, cmd.stream().id(), Http2Error.CANCEL.code(), promise);
         } finally {
             PerfMark.stopTask("NettyServerHandler.cancelStream", cmd.stream().tag());
         }
     }
 
-    private void forcefulClose(final ChannelHandlerContext ctx, final ForcefulCloseCommand msg,
+    /**
+     * 强制关闭流
+     */
+    private void forcefulClose(final ChannelHandlerContext ctx,
+                               final ForcefulCloseCommand msg,
                                ChannelPromise promise) throws Exception {
         super.close(ctx, promise);
+        // 遍历连接关闭
         connection().forEachActiveStream(new Http2StreamVisitor() {
             @Override
             public boolean visit(Http2Stream stream) throws Http2Exception {
+                // 获取流
                 NettyServerStream.TransportState serverStream = serverStream(stream);
                 if (serverStream != null) {
                     PerfMark.startTask("NettyServerHandler.forcefulClose", serverStream.tag());
                     PerfMark.linkIn(msg.getLink());
                     try {
+                        // 通知监听器强制关闭
                         serverStream.transportReportStatus(msg.getStatus());
+                        // 重置流
                         resetStream(ctx, stream.id(), Http2Error.CANCEL.code(), ctx.newPromise());
                     } finally {
                         PerfMark.stopTask("NettyServerHandler.forcefulClose", serverStream.tag());
                     }
                 }
+                // 关闭流
                 stream.close();
                 return true;
             }
         });
     }
 
-    private void respondWithHttpError(
-            ChannelHandlerContext ctx, int streamId, int code, Status.Code statusCode, String msg) {
+    /**
+     * 使用错误状态发送响应
+     */
+    private void respondWithHttpError(ChannelHandlerContext ctx,
+                                      int streamId,
+                                      int code,
+                                      Status.Code statusCode,
+                                      String msg) {
+        // 创建响应元数据
         Metadata metadata = new Metadata();
         metadata.put(InternalStatus.CODE_KEY, statusCode.toStatus());
         metadata.put(InternalStatus.MESSAGE_KEY, msg);
-        byte[][] serialized = InternalMetadata.serialize(metadata);
 
+        // 序列化，转换为 HTTP2 的 header
+        byte[][] serialized = InternalMetadata.serialize(metadata);
         Http2Headers headers = new DefaultHttp2Headers(true, serialized.length / 2)
                 .status("" + code)
                 .set(CONTENT_TYPE_HEADER, "text/plain; encoding=utf-8");
         for (int i = 0; i < serialized.length; i += 2) {
             headers.add(new AsciiString(serialized[i], false), new AsciiString(serialized[i + 1], false));
         }
+        // 写入 header
         encoder().writeHeaders(ctx, streamId, headers, 0, false, ctx.newPromise());
+        // 将错误信息作为 body 写入
         ByteBuf msgBuf = ByteBufUtil.writeUtf8(ctx.alloc(), msg);
         encoder().writeData(ctx, streamId, msgBuf, 0, true, ctx.newPromise());
     }
@@ -813,29 +857,46 @@ class NettyServerHandler extends AbstractNettyHandler {
     }
 
     private Http2Exception newStreamException(int streamId, Throwable cause) {
-        return Http2Exception.streamError(
-                streamId, Http2Error.INTERNAL_ERROR, cause, Strings.nullToEmpty(cause.getMessage()));
+        return Http2Exception.streamError(streamId,
+                Http2Error.INTERNAL_ERROR,
+                cause,
+                Strings.nullToEmpty(cause.getMessage()));
     }
 
+    /**
+     * 帧监听器
+     */
     private class FrameListener extends Http2FrameAdapter {
+
         private boolean firstSettings = true;
 
+        /**
+         * 当接收到 SETTING 帧时调用
+         */
         @Override
         public void onSettingsRead(ChannelHandlerContext ctx, Http2Settings settings) {
             if (firstSettings) {
                 firstSettings = false;
                 // Delay transportReady until we see the client's HTTP handshake, for coverage with
                 // handshakeTimeout
+                // 通知 Transport ready
                 attributes = transportListener.transportReady(negotiationAttributes);
             }
         }
 
+        /**
+         * 当接收到入站帧时调用
+         */
         @Override
-        public int onDataRead(ChannelHandlerContext ctx, int streamId, ByteBuf data, int padding,
+        public int onDataRead(ChannelHandlerContext ctx,
+                              int streamId,
+                              ByteBuf data,
+                              int padding,
                               boolean endOfStream) throws Http2Exception {
             if (keepAliveManager != null) {
                 keepAliveManager.onDataReceived();
             }
+            // 最终会触发 messagesAvailable 事件
             NettyServerHandler.this.onDataRead(streamId, data, padding, endOfStream);
             return padding;
         }
@@ -855,6 +916,7 @@ class NettyServerHandler extends AbstractNettyHandler {
             if (keepAliveManager != null) {
                 keepAliveManager.onDataReceived();
             }
+            // 最终会创建流并出发流创建事件
             NettyServerHandler.this.onHeadersRead(ctx, streamId, headers);
         }
 
@@ -871,15 +933,22 @@ class NettyServerHandler extends AbstractNettyHandler {
             NettyServerHandler.this.onRstStreamRead(streamId, errorCode);
         }
 
+        /**
+         * 当接收到 PING 帧时调用
+         */
         @Override
         public void onPingRead(ChannelHandlerContext ctx, long data) throws Http2Exception {
             if (keepAliveManager != null) {
                 keepAliveManager.onDataReceived();
             }
+            // 当连接状态不正常时，返回 RESOURCE_EXHAUSTED 状态，表示 ping 太多
             if (!keepAliveEnforcer.pingAcceptable()) {
                 ByteBuf debugData = ByteBufUtil.writeAscii(ctx.alloc(), "too_many_pings");
-                goAway(ctx, connection().remote().lastStreamCreated(), Http2Error.ENHANCE_YOUR_CALM.code(),
-                        debugData, ctx.newPromise());
+                goAway(ctx,
+                        connection().remote().lastStreamCreated(),
+                        Http2Error.ENHANCE_YOUR_CALM.code(),
+                        debugData,
+                        ctx.newPromise());
                 Status status = Status.RESOURCE_EXHAUSTED.withDescription("Too many pings from client");
                 try {
                     forcefulClose(ctx, new ForcefulCloseCommand(status), ctx.newPromise());
@@ -889,18 +958,22 @@ class NettyServerHandler extends AbstractNettyHandler {
             }
         }
 
+        /**
+         * 当 ping 帧被 ack 时调用
+         */
         @Override
         public void onPingAckRead(ChannelHandlerContext ctx, long data) throws Http2Exception {
             if (keepAliveManager != null) {
                 keepAliveManager.onDataReceived();
             }
+            // 如果是流控，则更新流控窗口
             if (data == flowControlPing().payload()) {
                 flowControlPing().updateWindow();
                 if (logger.isLoggable(Level.FINE)) {
-                    logger.log(Level.FINE, String.format("Window: %d",
-                            decoder().flowController().initialWindowSize(connection().connectionStream())));
+                    logger.log(Level.FINE, String.format("Window: %d", decoder().flowController().initialWindowSize(connection().connectionStream())));
                 }
             } else if (data == GRACEFUL_SHUTDOWN_PING) {
+                // 如果是优雅关闭的帧，有优雅关闭任务时开始关闭
                 if (gracefulShutdown == null) {
                     // this should never happen
                     logger.warning("Received GRACEFUL_SHUTDOWN_PING Ack but gracefulShutdown is null");
@@ -913,6 +986,9 @@ class NettyServerHandler extends AbstractNettyHandler {
         }
     }
 
+    /**
+     * keep alive ping 管理器
+     */
     private final class KeepAlivePinger implements KeepAliveManager.KeepAlivePinger {
         final ChannelHandlerContext ctx;
 
@@ -920,12 +996,15 @@ class NettyServerHandler extends AbstractNettyHandler {
             this.ctx = ctx;
         }
 
+        /**
+         * 发送 ping
+         */
         @Override
         public void ping() {
-            ChannelFuture pingFuture = encoder().writePing(
-                    ctx, false /* isAck */, KEEPALIVE_PING, ctx.newPromise());
+            ChannelFuture pingFuture = encoder().writePing(ctx, false /* isAck */, KEEPALIVE_PING, ctx.newPromise());
             ctx.flush();
             if (transportTracer != null) {
+                // 添加监听器用于统计
                 pingFuture.addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
@@ -937,13 +1016,15 @@ class NettyServerHandler extends AbstractNettyHandler {
             }
         }
 
+        /**
+         * ping 超时时调用
+         */
         @Override
         public void onPingTimeout() {
             try {
-                forcefulClose(
-                        ctx,
-                        new ForcefulCloseCommand(Status.UNAVAILABLE
-                                .withDescription("Keepalive failed. The connection is likely gone")),
+                // 强制关闭流
+                forcefulClose(ctx,
+                        new ForcefulCloseCommand(Status.UNAVAILABLE.withDescription("Keepalive failed. The connection is likely gone")),
                         ctx.newPromise());
             } catch (Exception ex) {
                 try {
@@ -1064,7 +1145,9 @@ class NettyServerHandler extends AbstractNettyHandler {
 
     // Use a frame writer so that we know when frames are through flow control and actually being
     // written.
+    // Http2FrameWriter 装饰器，可以知道当帧通过流控和实际写入
     private static class WriteMonitoringFrameWriter extends DecoratingHttp2FrameWriter {
+
         private final KeepAliveEnforcer keepAliveEnforcer;
 
         public WriteMonitoringFrameWriter(Http2FrameWriter delegate,
@@ -1073,27 +1156,62 @@ class NettyServerHandler extends AbstractNettyHandler {
             this.keepAliveEnforcer = keepAliveEnforcer;
         }
 
+        /**
+         * 将数据帧写入远程端点
+         */
         @Override
-        public ChannelFuture writeData(ChannelHandlerContext ctx, int streamId, ByteBuf data,
-                                       int padding, boolean endStream, ChannelPromise promise) {
+        public ChannelFuture writeData(ChannelHandlerContext ctx,
+                                       int streamId,
+                                       ByteBuf data,
+                                       int padding,
+                                       boolean endStream,
+                                       ChannelPromise promise) {
+            // 重置计数器
             keepAliveEnforcer.resetCounters();
+            // 写入数据
             return super.writeData(ctx, streamId, data, padding, endStream, promise);
         }
 
+        /**
+         * 将 Header 写入远程端点
+         */
         @Override
-        public ChannelFuture writeHeaders(ChannelHandlerContext ctx, int streamId, Http2Headers headers,
-                                          int padding, boolean endStream, ChannelPromise promise) {
+        public ChannelFuture writeHeaders(ChannelHandlerContext ctx,
+                                          int streamId,
+                                          Http2Headers headers,
+                                          int padding,
+                                          boolean endStream,
+                                          ChannelPromise promise) {
+            // 重置计数器
             keepAliveEnforcer.resetCounters();
             return super.writeHeaders(ctx, streamId, headers, padding, endStream, promise);
         }
 
+        /**
+         * 将 Header 写入远程端点
+         */
         @Override
-        public ChannelFuture writeHeaders(ChannelHandlerContext ctx, int streamId, Http2Headers headers,
-                                          int streamDependency, short weight, boolean exclusive, int padding, boolean endStream,
+        public ChannelFuture writeHeaders(ChannelHandlerContext ctx,
+                                          int streamId,
+                                          Http2Headers headers,
+                                          int streamDependency,
+                                          short weight,
+                                          boolean exclusive,
+                                          int padding,
+                                          boolean endStream,
                                           ChannelPromise promise) {
+            // 重置计数器
             keepAliveEnforcer.resetCounters();
-            return super.writeHeaders(ctx, streamId, headers, streamDependency, weight, exclusive,
-                    padding, endStream, promise);
+            // 写入 Header
+            return super.writeHeaders(ctx,
+                    streamId,
+                    headers,
+                    streamDependency,
+                    weight,
+                    exclusive,
+                    padding,
+                    endStream,
+                    promise);
         }
     }
 }
