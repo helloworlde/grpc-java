@@ -16,14 +16,15 @@
 
 package io.grpc.internal;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 import com.google.common.annotations.VisibleForTesting;
 import io.grpc.Decompressor;
+
+import javax.annotation.Nullable;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import javax.annotation.Nullable;
+
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * Sits between {@link AbstractStream.TransportState} and {@link MessageDeframer} to deframe in the
@@ -31,148 +32,169 @@ import javax.annotation.Nullable;
  * InitializingMessageProducer} and given back to the transport, where they will be run on the
  * client thread. Calls from the deframer back to the transport use {@link
  * TransportExecutor#runOnTransportThread} to run on the transport thread.
+ * <p>
+ * 在 TransportState 和 MessageDeframer 之间，以便在客户端线程中解码；从 Transport 向 deframer 的调用被包装
+ * 成 InitializingMessageProducer，并返回给 Transport，会在客户端线程中执行，从 dframer 调用 Transport 使用
+ * TransportExecutor#runOnTransportThread 在 Transport 线程中执行
  */
 public class ApplicationThreadDeframer implements Deframer {
-  interface TransportExecutor extends ApplicationThreadDeframerListener.TransportExecutor {}
 
-  private final MessageDeframer.Listener storedListener;
-  private final ApplicationThreadDeframerListener appListener;
-  private final MessageDeframer deframer;
+    interface TransportExecutor extends ApplicationThreadDeframerListener.TransportExecutor {
+    }
 
-  ApplicationThreadDeframer(
-      MessageDeframer.Listener listener,
-      TransportExecutor transportExecutor,
-      MessageDeframer deframer) {
-    this.storedListener =
-        new SquelchLateMessagesAvailableDeframerListener(checkNotNull(listener, "listener"));
-    this.appListener = new ApplicationThreadDeframerListener(storedListener, transportExecutor);
-    deframer.setListener(appListener);
-    this.deframer = deframer;
-  }
+    private final MessageDeframer.Listener storedListener;
+    private final ApplicationThreadDeframerListener appListener;
+    private final MessageDeframer deframer;
 
-  @Override
-  public void setMaxInboundMessageSize(int messageSize) {
-    deframer.setMaxInboundMessageSize(messageSize);
-  }
+    ApplicationThreadDeframer(MessageDeframer.Listener listener,
+                              TransportExecutor transportExecutor,
+                              MessageDeframer deframer) {
+        this.storedListener = new SquelchLateMessagesAvailableDeframerListener(checkNotNull(listener, "listener"));
+        this.appListener = new ApplicationThreadDeframerListener(storedListener, transportExecutor);
+        deframer.setListener(appListener);
+        this.deframer = deframer;
+    }
 
-  @Override
-  public void setDecompressor(Decompressor decompressor) {
-    deframer.setDecompressor(decompressor);
-  }
+    @Override
+    public void setMaxInboundMessageSize(int messageSize) {
+        deframer.setMaxInboundMessageSize(messageSize);
+    }
 
-  @Override
-  public void setFullStreamDecompressor(GzipInflatingBuffer fullStreamDecompressor) {
-    deframer.setFullStreamDecompressor(fullStreamDecompressor);
-  }
+    @Override
+    public void setDecompressor(Decompressor decompressor) {
+        deframer.setDecompressor(decompressor);
+    }
 
-  @Override
-  public void request(final int numMessages) {
-    storedListener.messagesAvailable(
-        new InitializingMessageProducer(
-            new Runnable() {
-              @Override
-              public void run() {
+    @Override
+    public void setFullStreamDecompressor(GzipInflatingBuffer fullStreamDecompressor) {
+        deframer.setFullStreamDecompressor(fullStreamDecompressor);
+    }
+
+    /**
+     * 发送给定数量的请求消息，不会发送更多的消息
+     */
+    @Override
+    public void request(final int numMessages) {
+        // 提交初始化消息生产任务
+        storedListener.messagesAvailable(new InitializingMessageProducer(new Runnable() {
+            @Override
+            public void run() {
                 if (deframer.isClosed()) {
-                  return;
+                    return;
                 }
                 try {
-                  deframer.request(numMessages);
+                    // 发送指定数量的消息
+                    deframer.request(numMessages);
                 } catch (Throwable t) {
-                  appListener.deframeFailed(t);
-                  deframer.close(); // unrecoverable state
+                    appListener.deframeFailed(t);
+                    deframer.close(); // unrecoverable state
                 }
-              }
-            }));
-  }
+            }
+        }));
+    }
 
-  @Override
-  public void deframe(final ReadableBuffer data) {
-    storedListener.messagesAvailable(
-        new CloseableInitializingMessageProducer(
-            new Runnable() {
-              @Override
-              public void run() {
+    /**
+     * 将给定的数据添加到解帧器中，尝试发送给监听器
+     */
+    @Override
+    public void deframe(final ReadableBuffer data) {
+        storedListener.messagesAvailable(new CloseableInitializingMessageProducer(new Runnable() {
+            @Override
+            public void run() {
                 try {
-                  deframer.deframe(data);
+                    // 解帧
+                    deframer.deframe(data);
                 } catch (Throwable t) {
-                  appListener.deframeFailed(t);
-                  deframer.close(); // unrecoverable state
+                    appListener.deframeFailed(t);
+                    deframer.close(); // unrecoverable state
                 }
-              }
-            },
-            new Closeable() {
-              @Override
-              public void close() {
+            }
+        }, new Closeable() {
+            @Override
+            public void close() {
                 data.close();
-              }
-            }));
-  }
+            }
+        }));
+    }
 
-  @Override
-  public void closeWhenComplete() {
-    storedListener.messagesAvailable(
-        new InitializingMessageProducer(
-            new Runnable() {
-              @Override
-              public void run() {
+    /**
+     * 当消息完成时关闭
+     */
+    @Override
+    public void closeWhenComplete() {
+        storedListener.messagesAvailable(new InitializingMessageProducer(new Runnable() {
+            @Override
+            public void run() {
                 deframer.closeWhenComplete();
-              }
-            }));
-  }
+            }
+        }));
+    }
 
-  @Override
-  public void close() {
-    deframer.stopDelivery();
-    storedListener.messagesAvailable(
-        new InitializingMessageProducer(
-            new Runnable() {
-              @Override
-              public void run() {
+    /**
+     * 关闭消息
+     */
+    @Override
+    public void close() {
+        deframer.stopDelivery();
+        storedListener.messagesAvailable(new InitializingMessageProducer(new Runnable() {
+            @Override
+            public void run() {
                 deframer.close();
-              }
-            }));
-  }
-
-  @VisibleForTesting
-  MessageDeframer.Listener getAppListener() {
-    return appListener;
-  }
-
-  private class InitializingMessageProducer implements StreamListener.MessageProducer {
-    private final Runnable runnable;
-    private boolean initialized = false;
-
-    private InitializingMessageProducer(Runnable runnable) {
-      this.runnable = runnable;
+            }
+        }));
     }
 
-    private void initialize() {
-      if (!initialized) {
-        runnable.run();
-        initialized = true;
-      }
+    @VisibleForTesting
+    MessageDeframer.Listener getAppListener() {
+        return appListener;
     }
 
-    @Nullable
-    @Override
-    public InputStream next() {
-      initialize();
-      return appListener.messageReadQueuePoll();
-    }
-  }
+    /**
+     * gRPC 消息解码生产者
+     */
+    private class InitializingMessageProducer implements StreamListener.MessageProducer {
 
-  private class CloseableInitializingMessageProducer extends InitializingMessageProducer
-      implements Closeable {
-    private final Closeable closeable;
+        private final Runnable runnable;
+        private boolean initialized = false;
 
-    public CloseableInitializingMessageProducer(Runnable runnable, Closeable closeable) {
-      super(runnable);
-      this.closeable = closeable;
+        private InitializingMessageProducer(Runnable runnable) {
+            this.runnable = runnable;
+        }
+
+        /**
+         * 初始化，会执行任务
+         */
+        private void initialize() {
+            if (!initialized) {
+                runnable.run();
+                initialized = true;
+            }
+        }
+
+        @Nullable
+        @Override
+        public InputStream next() {
+            // 初始化
+            initialize();
+            // 从队列中获取流
+            return appListener.messageReadQueuePoll();
+        }
     }
 
-    @Override
-    public void close() throws IOException {
-      closeable.close();
+    /**
+     * 可关闭的消息生产者
+     */
+    private class CloseableInitializingMessageProducer extends InitializingMessageProducer implements Closeable {
+        private final Closeable closeable;
+
+        public CloseableInitializingMessageProducer(Runnable runnable, Closeable closeable) {
+            super(runnable);
+            this.closeable = closeable;
+        }
+
+        @Override
+        public void close() throws IOException {
+            closeable.close();
+        }
     }
-  }
 }

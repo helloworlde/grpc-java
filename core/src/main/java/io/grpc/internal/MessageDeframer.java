@@ -175,6 +175,9 @@ public class MessageDeframer implements Closeable, Deframer {
     deliver();
   }
 
+  /**
+   * 将给定的数据添加到解帧器中，尝试发送给监听器
+   */
   @Override
   public void deframe(ReadableBuffer data) {
     checkNotNull(data, "data");
@@ -188,6 +191,7 @@ public class MessageDeframer implements Closeable, Deframer {
         }
         needToCloseData = false;
 
+        // 投递
         deliver();
       }
     } finally {
@@ -222,6 +226,9 @@ public class MessageDeframer implements Closeable, Deframer {
     return pendingDeliveries != 0;
   }
 
+  /**
+   * 消息关闭
+   */
   @Override
   public void close() {
     if (isClosed()) {
