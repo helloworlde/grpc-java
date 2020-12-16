@@ -448,6 +448,7 @@ class NettyClientStream extends AbstractClientStream {
          * @param endOfStream 是否到达流末尾
          */
         void transportDataReceived(ByteBuf frame, boolean endOfStream) {
+            // 处理帧
             transportDataReceived(new NettyReadableBuffer(frame.retain()), endOfStream);
         }
 

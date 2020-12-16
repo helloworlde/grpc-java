@@ -123,33 +123,38 @@ public abstract class Http2ClientStreamTransportState extends AbstractClientStre
 
   /**
    * Called by subclasses whenever a data frame is received from the transport.
+   * 当 Transport 接收到数据帧时调用
    *
-   * @param frame the received data frame
+   * @param frame       the received data frame
+   *                    接收到的数据帧
    * @param endOfStream {@code true} if there will be no more data received for this stream
+   *                    如果是 true 表示不会再有数据帧
    */
   protected void transportDataReceived(ReadableBuffer frame, boolean endOfStream) {
+    // 如果 Transport 错误，则关闭帧，进入错误处理
     if (transportError != null) {
       // We've already detected a transport error and now we're just accumulating more detail
       // for it.
       transportError = transportError.augmentDescription("DATA-----------------------------\n"
-          + ReadableBuffers.readAsString(frame, errorCharset));
+              + ReadableBuffers.readAsString(frame, errorCharset));
       frame.close();
       if (transportError.getDescription().length() > 1000 || endOfStream) {
         http2ProcessingFailed(transportError, false, transportErrorMetadata);
       }
     } else {
+      // 如果没有接收到 header，则返回错误
       if (!headersReceived) {
-        http2ProcessingFailed(
-            Status.INTERNAL.withDescription("headers not received before payload"),
-            false,
-            new Metadata());
+        http2ProcessingFailed(Status.INTERNAL.withDescription("headers not received before payload"),
+                false,
+                new Metadata());
         return;
       }
+      // 处理帧
       inboundDataReceived(frame);
+      // 如果已经到达流末尾，则修改状态
       if (endOfStream) {
         // This is a protocol violation as we expect to receive trailers.
-        transportError =
-            Status.INTERNAL.withDescription("Received unexpected EOS on DATA frame from server.");
+        transportError = Status.INTERNAL.withDescription("Received unexpected EOS on DATA frame from server.");
         transportErrorMetadata = new Metadata();
         transportReportStatus(transportError, false, transportErrorMetadata);
       }
@@ -158,21 +163,27 @@ public abstract class Http2ClientStreamTransportState extends AbstractClientStre
 
   /**
    * Called by subclasses for the terminal trailer metadata on a stream.
+   * 处理接收到的响应结束元数据
    *
    * @param trailers the received terminal trailer metadata
    */
   protected void transportTrailersReceived(Metadata trailers) {
     Preconditions.checkNotNull(trailers, "trailers");
+    // 如果没有错误，且没有接收到 header
     if (transportError == null && !headersReceived) {
+      // 校验
       transportError = validateInitialMetadata(trailers);
+      // 如果有错误，则将元数据赋值给 Metadata
       if (transportError != null) {
         transportErrorMetadata = trailers;
       }
     }
+    // 如果有错误，则处理错误状态
     if (transportError != null) {
       transportError = transportError.augmentDescription("trailers: " + trailers);
       http2ProcessingFailed(transportError, false, transportErrorMetadata);
     } else {
+      // 如果没有错误，则获取状态，并使用该状态处理相应的流
       Status status = statusFromTrailers(trailers);
       stripTransportDetails(trailers);
       inboundTrailersReceived(trailers, status);
