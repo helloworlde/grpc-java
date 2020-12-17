@@ -21,37 +21,37 @@ import io.netty.handler.codec.http2.Http2Headers;
 
 /**
  * A command to create a new stream. This is created by {@link NettyClientStream} and passed to the
- * {@link NettyClientHandler} for processing in the Channel thread.
+ * {@link NettyClientHandler} for prozcessing in the Channel thread.
+ * 流创建指令，由  NettyClientStream 创建，传递给 NettyClientHandler 在 Channel 线程中处理
  */
 class CreateStreamCommand extends WriteQueue.AbstractQueuedCommand {
-  private final Http2Headers headers;
-  private final NettyClientStream.TransportState stream;
-  private final boolean shouldBeCountedForInUse;
-  private final boolean get;
+    private final Http2Headers headers;
+    private final NettyClientStream.TransportState stream;
+    private final boolean shouldBeCountedForInUse;
+    private final boolean get;
 
-  CreateStreamCommand(
-      Http2Headers headers,
-      NettyClientStream.TransportState stream,
-      boolean shouldBeCountedForInUse, boolean get) {
-    this.stream = Preconditions.checkNotNull(stream, "stream");
-    this.headers = Preconditions.checkNotNull(headers, "headers");
-    this.shouldBeCountedForInUse = shouldBeCountedForInUse;
-    this.get = get;
-  }
+    CreateStreamCommand(Http2Headers headers,
+                        NettyClientStream.TransportState stream,
+                        boolean shouldBeCountedForInUse, boolean get) {
+        this.stream = Preconditions.checkNotNull(stream, "stream");
+        this.headers = Preconditions.checkNotNull(headers, "headers");
+        this.shouldBeCountedForInUse = shouldBeCountedForInUse;
+        this.get = get;
+    }
 
-  NettyClientStream.TransportState stream() {
-    return stream;
-  }
+    NettyClientStream.TransportState stream() {
+        return stream;
+    }
 
-  Http2Headers headers() {
-    return headers;
-  }
+    Http2Headers headers() {
+        return headers;
+    }
 
-  boolean shouldBeCountedForInUse() {
-    return shouldBeCountedForInUse;
-  }
+    boolean shouldBeCountedForInUse() {
+        return shouldBeCountedForInUse;
+    }
 
-  boolean isGet() {
-    return get;
-  }
+    boolean isGet() {
+        return get;
+    }
 }

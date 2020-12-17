@@ -43,34 +43,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
-import io.netty.handler.codec.http2.DefaultHttp2Connection;
-import io.netty.handler.codec.http2.DefaultHttp2ConnectionDecoder;
-import io.netty.handler.codec.http2.DefaultHttp2ConnectionEncoder;
-import io.netty.handler.codec.http2.DefaultHttp2FrameReader;
-import io.netty.handler.codec.http2.DefaultHttp2FrameWriter;
-import io.netty.handler.codec.http2.DefaultHttp2LocalFlowController;
-import io.netty.handler.codec.http2.DefaultHttp2RemoteFlowController;
-import io.netty.handler.codec.http2.Http2CodecUtil;
-import io.netty.handler.codec.http2.Http2Connection;
-import io.netty.handler.codec.http2.Http2ConnectionAdapter;
-import io.netty.handler.codec.http2.Http2ConnectionDecoder;
-import io.netty.handler.codec.http2.Http2ConnectionEncoder;
-import io.netty.handler.codec.http2.Http2Error;
-import io.netty.handler.codec.http2.Http2Exception;
-import io.netty.handler.codec.http2.Http2FlowController;
-import io.netty.handler.codec.http2.Http2FrameAdapter;
-import io.netty.handler.codec.http2.Http2FrameLogger;
-import io.netty.handler.codec.http2.Http2FrameReader;
-import io.netty.handler.codec.http2.Http2FrameWriter;
-import io.netty.handler.codec.http2.Http2Headers;
-import io.netty.handler.codec.http2.Http2HeadersDecoder;
-import io.netty.handler.codec.http2.Http2InboundFrameLogger;
-import io.netty.handler.codec.http2.Http2OutboundFrameLogger;
-import io.netty.handler.codec.http2.Http2Settings;
-import io.netty.handler.codec.http2.Http2Stream;
-import io.netty.handler.codec.http2.Http2StreamVisitor;
-import io.netty.handler.codec.http2.StreamBufferingEncoder;
-import io.netty.handler.codec.http2.WeightedFairQueueByteDistributor;
+import io.netty.handler.codec.http2.*;
 import io.netty.handler.logging.LogLevel;
 import io.perfmark.PerfMark;
 import io.perfmark.Tag;
@@ -259,42 +232,53 @@ class NettyClientHandler extends AbstractNettyHandler {
                                     .set(GrpcAttributes.ATTR_CLIENT_EAG_ATTRS, eagAttributes).build();
 
         // Set the frame listener on the decoder.
+        // 创建帧监听器
         decoder().frameListener(new FrameListener());
 
         Http2Connection connection = encoder.connection();
         streamKey = connection.newKey();
 
+        // 连接监听器
         connection.addListener(new Http2ConnectionAdapter() {
+            /**
+             * 当接收到 GOAWAY 时
+             */
             @Override
             public void onGoAwayReceived(int lastStreamId, long errorCode, ByteBuf debugData) {
                 byte[] debugDataBytes = ByteBufUtil.getBytes(debugData);
+                // 使用获取到的状态处理 GOAWAY，将已知流之后的所有流都关闭
                 goingAway(statusFromGoAway(errorCode, debugDataBytes));
                 if (errorCode == Http2Error.ENHANCE_YOUR_CALM.code()) {
                     String data = new String(debugDataBytes, UTF_8);
-                    logger.log(
-                            Level.WARNING, "Received GOAWAY with ENHANCE_YOUR_CALM. Debug data: {0}", data);
+                    logger.log(Level.WARNING, "Received GOAWAY with ENHANCE_YOUR_CALM. Debug data: {0}", data);
                     if ("too_many_pings".equals(data)) {
                         tooManyPingsRunnable.run();
                     }
                 }
             }
 
+            /**
+             * 当流状态变为活跃时调用
+             */
             @Override
             public void onStreamActive(Http2Stream stream) {
-                if (connection().numActiveStreams() == 1
-                        && NettyClientHandler.this.keepAliveManager != null) {
+                if (connection().numActiveStreams() == 1 && NettyClientHandler.this.keepAliveManager != null) {
                     NettyClientHandler.this.keepAliveManager.onTransportActive();
                 }
             }
 
+            /**
+             * 流关闭时调用
+             */
             @Override
             public void onStreamClosed(Http2Stream stream) {
                 // Although streams with CALL_OPTIONS_RPC_OWNED_BY_BALANCER are not marked as "in-use" in
                 // the first place, we don't propagate that option here, and it's safe to reset the in-use
                 // state for them, which will be a cheap no-op.
+                // 更新使用状态
                 inUseState.updateObjectInUse(stream, false);
-                if (connection().numActiveStreams() == 0
-                        && NettyClientHandler.this.keepAliveManager != null) {
+                // 如果没有活跃的流，则 Transport 进入 IDLE 模式
+                if (connection().numActiveStreams() == 0 && NettyClientHandler.this.keepAliveManager != null) {
                     NettyClientHandler.this.keepAliveManager.onTransportIdle();
                 }
             }
@@ -304,6 +288,7 @@ class NettyClientHandler extends AbstractNettyHandler {
     /**
      * The protocol negotiation attributes, available once the protocol negotiation completes;
      * otherwise returns {@code Attributes.EMPTY}.
+     * 协议谈判属性，当协议谈判完成时可用，除此之外，返回 Attributes.EMPTY
      */
     Attributes getAttributes() {
         return attributes;
@@ -311,23 +296,32 @@ class NettyClientHandler extends AbstractNettyHandler {
 
     /**
      * Handler for commands sent from the stream.
+     * 从流发送的命令处理
      */
     @Override
-    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise)
-            throws Exception {
+    public void write(ChannelHandlerContext ctx,
+                      Object msg,
+                      ChannelPromise promise) throws Exception {
         if (msg instanceof CreateStreamCommand) {
+            // 创建流
             createStream((CreateStreamCommand) msg, promise);
         } else if (msg instanceof SendGrpcFrameCommand) {
+            // 发送 gRPC 帧
             sendGrpcFrame(ctx, (SendGrpcFrameCommand) msg, promise);
         } else if (msg instanceof CancelClientStreamCommand) {
+            // 取消流
             cancelStream(ctx, (CancelClientStreamCommand) msg, promise);
         } else if (msg instanceof SendPingCommand) {
+            // 发送 ping 帧
             sendPingFrame(ctx, (SendPingCommand) msg, promise);
         } else if (msg instanceof GracefulCloseCommand) {
+            // 优雅关闭
             gracefulClose(ctx, (GracefulCloseCommand) msg, promise);
         } else if (msg instanceof ForcefulCloseCommand) {
+            // 强制关闭
             forcefulClose(ctx, (ForcefulCloseCommand) msg, promise);
         } else if (msg == NOOP_MESSAGE) {
+            // 无操作，则写入空缓冲
             ctx.write(Unpooled.EMPTY_BUFFER, promise);
         } else {
             throw new AssertionError("Write called for unexpected type: " + msg.getClass().getName());
@@ -467,19 +461,24 @@ class NettyClientHandler extends AbstractNettyHandler {
         }
     }
 
+    /**
+     * 处理协议谈判完成
+     */
     @Override
-    public void handleProtocolNegotiationCompleted(
-            Attributes attributes, InternalChannelz.Security securityInfo) {
+    public void handleProtocolNegotiationCompleted(Attributes attributes,
+                                                   InternalChannelz.Security securityInfo) {
         this.attributes = this.attributes.toBuilder().setAll(attributes).build();
         this.securityInfo = securityInfo;
         super.handleProtocolNegotiationCompleted(attributes, securityInfo);
         writeBufferingAndRemove(ctx().channel());
     }
 
+    /**
+     * 写入缓冲并移除
+     */
     static void writeBufferingAndRemove(Channel channel) {
         checkNotNull(channel, "channel");
-        ChannelHandlerContext handlerCtx =
-                channel.pipeline().context(WriteBufferingAndExceptionHandler.class);
+        ChannelHandlerContext handlerCtx = channel.pipeline().context(WriteBufferingAndExceptionHandler.class);
         if (handlerCtx == null) {
             return;
         }
@@ -500,8 +499,13 @@ class NettyClientHandler extends AbstractNettyHandler {
         return securityInfo;
     }
 
+    /**
+     * 连接失败
+     */
     @Override
-    protected void onConnectionError(ChannelHandlerContext ctx, boolean outbound, Throwable cause,
+    protected void onConnectionError(ChannelHandlerContext ctx,
+                                     boolean outbound,
+                                     Throwable cause,
                                      Http2Exception http2Ex) {
         logger.log(Level.FINE, "Caught a connection error", cause);
         lifecycleManager.notifyShutdown(Utils.statusFromThrowable(cause));
@@ -509,40 +513,50 @@ class NettyClientHandler extends AbstractNettyHandler {
         super.onConnectionError(ctx, outbound, cause, http2Ex);
     }
 
+    /**
+     * 流错误事件
+     */
     @Override
-    protected void onStreamError(ChannelHandlerContext ctx, boolean outbound, Throwable cause,
+    protected void onStreamError(ChannelHandlerContext ctx,
+                                 boolean outbound,
+                                 Throwable cause,
                                  Http2Exception.StreamException http2Ex) {
         // Close the stream with a status that contains the cause.
         NettyClientStream.TransportState stream = clientStream(connection().stream(http2Ex.streamId()));
         if (stream != null) {
+            // 上报流的状态
             stream.transportReportStatus(Utils.statusFromThrowable(cause), false, new Metadata());
         } else {
             logger.log(Level.FINE, "Stream error for unknown stream " + http2Ex.streamId(), cause);
         }
 
         // Delegate to the base class to send a RST_STREAM.
+        // 发送 RST_STREAM
         super.onStreamError(ctx, outbound, cause, http2Ex);
     }
 
+    /**
+     * 检查优雅关闭是否完成
+     */
     @Override
     protected boolean isGracefulShutdownComplete() {
         // Only allow graceful shutdown to complete after all pending streams have completed.
-        return super.isGracefulShutdownComplete()
-                && ((StreamBufferingEncoder) encoder()).numBufferedStreams() == 0;
+        return super.isGracefulShutdownComplete() && ((StreamBufferingEncoder) encoder()).numBufferedStreams() == 0;
     }
 
     /**
      * Attempts to create a new stream from the given command. If there are too many active streams,
      * the creation request is queued.
+     * 尝试使用所给的指令创建一个新的流，如果有很多活跃的流，则创建请求被放入队列等待
      */
-    private void createStream(CreateStreamCommand command, ChannelPromise promise)
-            throws Exception {
+    private void createStream(CreateStreamCommand command, ChannelPromise promise) throws Exception {
+        // 如果在关闭中，则标记为不存在，并拒绝请求
         if (lifecycleManager.getShutdownThrowable() != null) {
             command.stream().setNonExistent();
             // The connection is going away (it is really the GOAWAY case),
             // just terminate the stream now.
-            command.stream().transportReportStatus(
-                    lifecycleManager.getShutdownStatus(), RpcProgress.REFUSED, true, new Metadata());
+            command.stream()
+                   .transportReportStatus(lifecycleManager.getShutdownStatus(), RpcProgress.REFUSED, true, new Metadata());
             promise.setFailure(lifecycleManager.getShutdownThrowable());
             return;
         }
@@ -550,6 +564,7 @@ class NettyClientHandler extends AbstractNettyHandler {
         // Get the stream ID for the new stream.
         int streamId;
         try {
+            // 获取 ID
             streamId = incrementAndGetNextStreamId();
         } catch (StatusException e) {
             command.stream().setNonExistent();
@@ -566,44 +581,60 @@ class NettyClientHandler extends AbstractNettyHandler {
             return;
         }
 
+        // 获取流
         NettyClientStream.TransportState stream = command.stream();
+        // 获取 header
         Http2Headers headers = command.headers();
+        // 为流设置 ID
         stream.setId(streamId);
 
         PerfMark.startTask("NettyClientHandler.createStream", stream.tag());
         PerfMark.linkIn(command.getLink());
         try {
-            createStreamTraced(
-                    streamId, stream, headers, command.isGet(), command.shouldBeCountedForInUse(), promise);
+            // 创建可跟踪的流，并发送流 header
+            createStreamTraced(streamId,
+                    stream,
+                    headers,
+                    command.isGet(),
+                    command.shouldBeCountedForInUse(),
+                    promise);
         } finally {
             PerfMark.stopTask("NettyClientHandler.createStream", stream.tag());
         }
     }
 
-    private void createStreamTraced(
-            final int streamId,
-            final NettyClientStream.TransportState stream,
-            final Http2Headers headers,
-            boolean isGet,
-            final boolean shouldBeCountedForInUse,
-            final ChannelPromise promise) {
+    /**
+     * 创建可跟踪的流，并发送流 header
+     */
+    private void createStreamTraced(final int streamId,
+                                    final NettyClientStream.TransportState stream,
+                                    final Http2Headers headers,
+                                    boolean isGet,
+                                    final boolean shouldBeCountedForInUse,
+                                    final ChannelPromise promise) {
         // Create an intermediate promise so that we can intercept the failure reported back to the
         // application.
+        // 创建一个中间的 promise，用于拦截失败并返回给应用层
         ChannelPromise tempPromise = ctx().newPromise();
+        // 将 header 帧加入等待队列，并设置监听器
         encoder().writeHeaders(ctx(), streamId, headers, 0, isGet, tempPromise)
                  .addListener(new ChannelFutureListener() {
                      @Override
                      public void operationComplete(ChannelFuture future) throws Exception {
+                         // 如果操作成功
                          if (future.isSuccess()) {
                              // The http2Stream will be null in case a stream buffered in the encoder
                              // was canceled via RST_STREAM.
+                             // 根据流 ID 获取流
                              Http2Stream http2Stream = connection().stream(streamId);
                              if (http2Stream != null) {
+                                 // 发送 header
                                  stream.getStatsTraceContext().clientOutboundHeaders();
                                  http2Stream.setProperty(streamKey, stream);
 
                                  // This delays the in-use state until the I/O completes, which technically may
                                  // be later than we would like.
+                                 // 更新使用中状态
                                  if (shouldBeCountedForInUse) {
                                      inUseState.updateObjectInUse(http2Stream, true);
                                  }
@@ -619,10 +650,10 @@ class NettyClientHandler extends AbstractNettyHandler {
                              // Just forward on the success status to the original promise.
                              promise.setSuccess();
                          } else {
+                             // 如果操作失败则关闭流
                              final Throwable cause = future.cause();
                              if (cause instanceof StreamBufferingEncoder.Http2GoAwayException) {
-                                 StreamBufferingEncoder.Http2GoAwayException e =
-                                         (StreamBufferingEncoder.Http2GoAwayException) cause;
+                                 StreamBufferingEncoder.Http2GoAwayException e = (StreamBufferingEncoder.Http2GoAwayException) cause;
                                  lifecycleManager.notifyShutdown(statusFromGoAway(e.errorCode(), e.debugData()));
                                  promise.setFailure(lifecycleManager.getShutdownThrowable());
                              } else {
@@ -635,8 +666,10 @@ class NettyClientHandler extends AbstractNettyHandler {
 
     /**
      * Cancels this stream.
+     * 取消流
      */
-    private void cancelStream(ChannelHandlerContext ctx, CancelClientStreamCommand cmd,
+    private void cancelStream(ChannelHandlerContext ctx,
+                              CancelClientStreamCommand cmd,
                               ChannelPromise promise) {
         NettyClientStream.TransportState stream = cmd.stream();
         PerfMark.startTask("NettyClientHandler.cancelStream", stream.tag());
@@ -644,8 +677,10 @@ class NettyClientHandler extends AbstractNettyHandler {
         try {
             Status reason = cmd.reason();
             if (reason != null) {
+                // 通知流取消，关闭监听器
                 stream.transportReportStatus(reason, true, new Metadata());
             }
+            // 如果流存在，则向 server 端发送 RST_STREAM
             if (!cmd.stream().isNonExistent()) {
                 encoder().writeRstStream(ctx, stream.id(), Http2Error.CANCEL.code(), promise);
             } else {
@@ -658,21 +693,28 @@ class NettyClientHandler extends AbstractNettyHandler {
 
     /**
      * Sends the given GRPC frame for the stream.
+     * 发送流的 gRPC 帧
      */
-    private void sendGrpcFrame(ChannelHandlerContext ctx, SendGrpcFrameCommand cmd,
+    private void sendGrpcFrame(ChannelHandlerContext ctx,
+                               SendGrpcFrameCommand cmd,
                                ChannelPromise promise) {
         PerfMark.startTask("NettyClientHandler.sendGrpcFrame", cmd.stream().tag());
         PerfMark.linkIn(cmd.getLink());
         try {
             // Call the base class to write the HTTP/2 DATA frame.
             // Note: no need to flush since this is handled by the outbound flow controller.
+            // 写入数据
             encoder().writeData(ctx, cmd.stream().id(), cmd.content(), 0, cmd.endStream(), promise);
         } finally {
             PerfMark.stopTask("NettyClientHandler.sendGrpcFrame", cmd.stream().tag());
         }
     }
 
-    private void sendPingFrame(ChannelHandlerContext ctx, SendPingCommand msg,
+    /**
+     * 发送 ping
+     */
+    private void sendPingFrame(ChannelHandlerContext ctx,
+                               SendPingCommand msg,
                                ChannelPromise promise) {
         PerfMark.startTask("NettyClientHandler.sendPingFrame");
         PerfMark.linkIn(msg.getLink());
@@ -686,8 +728,10 @@ class NettyClientHandler extends AbstractNettyHandler {
     /**
      * Sends a PING frame. If a ping operation is already outstanding, the callback in the message is
      * registered to be called when the existing operation completes, and no new frame is sent.
+     * 发送 PING 帧，如果已经有 ping 操作出站，现有操作完成后，将注册消息中的回调以进行调用，发送新的帧
      */
-    private void sendPingFrameTraced(ChannelHandlerContext ctx, SendPingCommand msg,
+    private void sendPingFrameTraced(ChannelHandlerContext ctx,
+                                     SendPingCommand msg,
                                      ChannelPromise promise) {
         // Don't check lifecycleManager.getShutdownStatus() since we want to allow pings after shutdown
         // but before termination. After termination, messages will no longer arrive because the
@@ -697,6 +741,7 @@ class NettyClientHandler extends AbstractNettyHandler {
         Executor executor = msg.executor();
         // we only allow one outstanding ping at a time, so just add the callback to
         // any outstanding operation
+        // 同一时间只允许有一个出站的回调，将回调加入出站的操作中
         if (ping != null) {
             promise.setSuccess();
             ping.addCallback(callback, executor);
@@ -712,18 +757,23 @@ class NettyClientHandler extends AbstractNettyHandler {
         long data = USER_PING_PAYLOAD;
         Stopwatch stopwatch = stopwatchFactory.get();
         stopwatch.start();
+        // 创建 HTTP ping
         ping = new Http2Ping(data, stopwatch);
         ping.addCallback(callback, executor);
         // and then write the ping
+        // 写入 PING
         encoder().writePing(ctx, false, USER_PING_PAYLOAD, promise);
         ctx.flush();
         final Http2Ping finalPing = ping;
+        // 添加监听器
         promise.addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
+                // 如果成功则上报 keep alive
                 if (future.isSuccess()) {
                     transportTracer.reportKeepAliveSent();
                 } else {
+                    // 失败则将 ping 状态改为失败
                     Throwable cause = future.cause();
                     if (cause instanceof ClosedChannelException) {
                         cause = lifecycleManager.getShutdownThrowable();
@@ -741,18 +791,29 @@ class NettyClientHandler extends AbstractNettyHandler {
         });
     }
 
-    private void gracefulClose(ChannelHandlerContext ctx, GracefulCloseCommand msg,
+    /**
+     * 优雅关闭流
+     */
+    private void gracefulClose(ChannelHandlerContext ctx,
+                               GracefulCloseCommand msg,
                                ChannelPromise promise) throws Exception {
         lifecycleManager.notifyShutdown(msg.getStatus());
         // Explicitly flush to create any buffered streams before sending GOAWAY.
         // TODO(ejona): determine if the need to flush is a bug in Netty
+        // 清空缓冲区
         flush(ctx);
+        // 关闭流
         close(ctx, promise);
     }
 
-    private void forcefulClose(final ChannelHandlerContext ctx, final ForcefulCloseCommand msg,
+    /**
+     * 强制关闭流
+     */
+    private void forcefulClose(final ChannelHandlerContext ctx,
+                               final ForcefulCloseCommand msg,
                                ChannelPromise promise) throws Exception {
         // close() already called by NettyClientTransport, so just need to clean up streams
+        // 已经在 NettyClientTransport 中调用了 close()，所以仅需要清理流
         connection().forEachActiveStream(new Http2StreamVisitor() {
             @Override
             public boolean visit(Http2Stream stream) throws Http2Exception {
@@ -761,10 +822,13 @@ class NettyClientHandler extends AbstractNettyHandler {
                 PerfMark.startTask("NettyClientHandler.forcefulClose", tag);
                 PerfMark.linkIn(msg.getLink());
                 try {
+                    // 如果流存在，修改状态并关闭
                     if (clientStream != null) {
                         clientStream.transportReportStatus(msg.getStatus(), true, new Metadata());
+                        // 重置流
                         resetStream(ctx, stream.id(), Http2Error.CANCEL.code(), ctx.newPromise());
                     }
+                    // 关闭
                     stream.close();
                     return true;
                 } finally {
@@ -778,8 +842,11 @@ class NettyClientHandler extends AbstractNettyHandler {
     /**
      * Handler for a GOAWAY being received. Fails any streams created after the
      * last known stream. May only be called during a read.
+     * <p>
+     * GOAWAY 处理器，将已知的流之后的所有流都失败，可能只有在读取期间会被调用
      */
     private void goingAway(Status status) {
+        // 通知优雅关闭
         lifecycleManager.notifyGracefulShutdown(status);
         // Try to allocate as many in-flight streams as possible, to reduce race window of
         // https://github.com/grpc/grpc-java/issues/2562 . To be of any help, the server has to
@@ -789,20 +856,25 @@ class NettyClientHandler extends AbstractNettyHandler {
 
         // This can cause reentrancy, but should be minor since it is normal to handle writes in
         // response to a read. Also, the call stack is rather shallow at this point
+        // 清空等待的流
         clientWriteQueue.drainNow();
+        // 通知关闭
         lifecycleManager.notifyShutdown(status);
-
+        // 获取状态
         final Status goAwayStatus = lifecycleManager.getShutdownStatus();
+        // 获取已知的最后一个流 ID
         final int lastKnownStream = connection().local().lastStreamKnownByPeer();
         try {
             connection().forEachActiveStream(new Http2StreamVisitor() {
+                /**
+                 * 将已知的流之后的所有流都关闭
+                 */
                 @Override
                 public boolean visit(Http2Stream stream) throws Http2Exception {
                     if (stream.id() > lastKnownStream) {
                         NettyClientStream.TransportState clientStream = clientStream(stream);
                         if (clientStream != null) {
-                            clientStream.transportReportStatus(
-                                    goAwayStatus, RpcProgress.REFUSED, false, new Metadata());
+                            clientStream.transportReportStatus(goAwayStatus, RpcProgress.REFUSED, false, new Metadata());
                         }
                         stream.close();
                     }
@@ -821,6 +893,9 @@ class NettyClientHandler extends AbstractNettyHandler {
         }
     }
 
+    /**
+     * 根据错误码获取状态
+     */
     private Status statusFromGoAway(long errorCode, byte[] debugData) {
         Status status = GrpcUtil.Http2Error.statusForCode((int) errorCode)
                                            .augmentDescription("Received Goaway");
@@ -839,6 +914,9 @@ class NettyClientHandler extends AbstractNettyHandler {
         return stream == null ? null : (NettyClientStream.TransportState) stream.getProperty(streamKey);
     }
 
+    /**
+     * 获取下一个流的 ID
+     */
     private int incrementAndGetNextStreamId() throws StatusException {
         int nextStreamId = connection().local().incrementAndGetNextStreamId();
         if (nextStreamId < 0) {
@@ -849,6 +927,9 @@ class NettyClientHandler extends AbstractNettyHandler {
         return nextStreamId;
     }
 
+    /**
+     * 根据流 ID 获取流
+     */
     private Http2Stream requireHttp2Stream(int streamId) {
         Http2Stream stream = connection().stream(streamId);
         if (stream == null) {

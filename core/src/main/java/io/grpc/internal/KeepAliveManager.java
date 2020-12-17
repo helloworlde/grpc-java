@@ -185,6 +185,7 @@ public class KeepAliveManager {
 
   /**
    * Transport has active streams. Start sending keepalives if necessary.
+   * Transport 激活了流，如果有必要则开始发送 keep alive
    */
   public synchronized void onTransportActive() {
     if (state == State.IDLE) {
@@ -193,9 +194,9 @@ public class KeepAliveManager {
       state = State.PING_SCHEDULED;
       if (pingFuture == null) {
         pingFuture = scheduler.schedule(
-            sendPing,
-            keepAliveTimeInNanos - stopwatch.elapsed(TimeUnit.NANOSECONDS),
-            TimeUnit.NANOSECONDS);
+                sendPing,
+                keepAliveTimeInNanos - stopwatch.elapsed(TimeUnit.NANOSECONDS),
+                TimeUnit.NANOSECONDS);
       }
     } else if (state == State.IDLE_AND_PING_SENT) {
       state = State.PING_SENT;
