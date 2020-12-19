@@ -17,50 +17,53 @@
 package io.grpc;
 
 import com.google.common.base.MoreObjects;
+
 import javax.annotation.Nullable;
 
 /**
  * A {@link ClientCall} which forwards all of its methods to another {@link ClientCall} which
  * may have a different sendMessage() message type.
+ * 会将所有方法的调用转发给另一个 ClientCall 的 ClientCall，可能会在 sendMessage 时有不一样的消息类型
  */
 abstract class PartialForwardingClientCall<ReqT, RespT> extends ClientCall<ReqT, RespT> {
-  /**
-   * Returns the delegated {@code ClientCall}.
-   */
-  protected abstract ClientCall<?, ?> delegate();
 
-  @Override
-  public void request(int numMessages) {
-    delegate().request(numMessages);
-  }
+    /**
+     * Returns the delegated {@code ClientCall}.
+     */
+    protected abstract ClientCall<?, ?> delegate();
 
-  @Override
-  public void cancel(@Nullable String message, @Nullable Throwable cause) {
-    delegate().cancel(message, cause);
-  }
+    @Override
+    public void request(int numMessages) {
+        delegate().request(numMessages);
+    }
 
-  @Override
-  public void halfClose() {
-    delegate().halfClose();
-  }
+    @Override
+    public void cancel(@Nullable String message, @Nullable Throwable cause) {
+        delegate().cancel(message, cause);
+    }
 
-  @Override
-  public void setMessageCompression(boolean enabled) {
-    delegate().setMessageCompression(enabled);
-  }
+    @Override
+    public void halfClose() {
+        delegate().halfClose();
+    }
 
-  @Override
-  public boolean isReady() {
-    return delegate().isReady();
-  }
+    @Override
+    public void setMessageCompression(boolean enabled) {
+        delegate().setMessageCompression(enabled);
+    }
 
-  @Override
-  public Attributes getAttributes() {
-    return delegate().getAttributes();
-  }
+    @Override
+    public boolean isReady() {
+        return delegate().isReady();
+    }
 
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
-  }
+    @Override
+    public Attributes getAttributes() {
+        return delegate().getAttributes();
+    }
+
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
+    }
 }

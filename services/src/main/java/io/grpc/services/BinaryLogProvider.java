@@ -162,10 +162,9 @@ public abstract class BinaryLogProvider extends BinaryLog {
       if (binlogInterceptor == null) {
         return next.newCall(method, callOptions);
       } else {
+        // 二进制日志拦截，包装拦截器，并进行调用
         return InternalClientInterceptors
-                .wrapClientInterceptor(binlogInterceptor,
-                        BYTEARRAY_MARSHALLER,
-                        BYTEARRAY_MARSHALLER)
+                .wrapClientInterceptor(binlogInterceptor, BYTEARRAY_MARSHALLER, BYTEARRAY_MARSHALLER)
                 .interceptCall(method, callOptions, next);
       }
     }
