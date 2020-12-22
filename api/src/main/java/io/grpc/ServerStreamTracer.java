@@ -25,112 +25,113 @@ import javax.annotation.concurrent.ThreadSafe;
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/2861")
 @ThreadSafe
 public abstract class ServerStreamTracer extends StreamTracer {
-  /**
-   * Called before the interceptors and the call handlers and make changes to the Context object
-   * if needed.
-   */
-  public Context filterContext(Context context) {
-    return context;
-  }
-
-  /**
-   * Called when {@link ServerCall} is created.  This is for the tracer to access information about
-   * the {@code ServerCall}.  Called after {@link #filterContext} and before the application call
-   * handler.
-   */
-  @SuppressWarnings("deprecation")
-  public void serverCallStarted(ServerCallInfo<?, ?> callInfo) {
-    serverCallStarted(ReadOnlyServerCall.create(callInfo));
-  }
-
-  /**
-   * Called when {@link ServerCall} is created.  This is for the tracer to access information about
-   * the {@code ServerCall}.  Called after {@link #filterContext} and before the application call
-   * handler.
-   *
-   * @deprecated Implement {@link #serverCallStarted(ServerCallInfo)} instead. This method will be
-   *     removed in a future release of gRPC.
-   */
-  @Deprecated
-  public void serverCallStarted(ServerCall<?, ?> call) {
-  }
-
-  public abstract static class Factory {
     /**
-     * Creates a {@link ServerStreamTracer} for a new server stream.
-     *
-     * <p>Called right before the stream is created
-     *
-     * @param fullMethodName the fully qualified method name
-     * @param headers the received request headers.  It can be safely mutated within this method.
-     *        It should not be saved because it is not safe for read or write after the method
-     *        returns.
+     * Called before the interceptors and the call handlers and make changes to the Context object
+     * if needed.
+     * 在拦截器和调用处理器之前调用，如果需要可以修改 Context 的对象
      */
-    public abstract ServerStreamTracer newServerStreamTracer(
-        String fullMethodName, Metadata headers);
-  }
-
-  /**
-   * A data class with info about the started {@link ServerCall}.
-   */
-  public abstract static class ServerCallInfo<ReqT, RespT> {
-    public abstract MethodDescriptor<ReqT, RespT> getMethodDescriptor();
-
-    public abstract Attributes getAttributes();
-
-    @Nullable
-    public abstract String getAuthority();
-  }
-
-  /**
-   * This class exists solely to help transition to the {@link ServerCallInfo} based API.
-   *
-   * @deprecated Will be deleted when {@link #serverCallStarted(ServerCall)} is removed.
-   */
-  @Deprecated
-  private static final class ReadOnlyServerCall<ReqT, RespT>
-      extends ForwardingServerCall<ReqT, RespT> {
-    private final ServerCallInfo<ReqT, RespT> callInfo;
-
-    private static <ReqT, RespT> ReadOnlyServerCall<ReqT, RespT> create(
-        ServerCallInfo<ReqT, RespT> callInfo) {
-      return new ReadOnlyServerCall<>(callInfo);
+    public Context filterContext(Context context) {
+        return context;
     }
 
-    private ReadOnlyServerCall(ServerCallInfo<ReqT, RespT> callInfo) {
-      this.callInfo = callInfo;
+    /**
+     * Called when {@link ServerCall} is created.  This is for the tracer to access information about
+     * the {@code ServerCall}.  Called after {@link #filterContext} and before the application call
+     * handler.
+     */
+    @SuppressWarnings("deprecation")
+    public void serverCallStarted(ServerCallInfo<?, ?> callInfo) {
+        serverCallStarted(ReadOnlyServerCall.create(callInfo));
     }
 
-    @Override
-    public MethodDescriptor<ReqT, RespT> getMethodDescriptor() {
-      return callInfo.getMethodDescriptor();
+    /**
+     * Called when {@link ServerCall} is created.  This is for the tracer to access information about
+     * the {@code ServerCall}.  Called after {@link #filterContext} and before the application call
+     * handler.
+     *
+     * @deprecated Implement {@link #serverCallStarted(ServerCallInfo)} instead. This method will be
+     * removed in a future release of gRPC.
+     */
+    @Deprecated
+    public void serverCallStarted(ServerCall<?, ?> call) {
     }
 
-    @Override
-    public Attributes getAttributes() {
-      return callInfo.getAttributes();
+    public abstract static class Factory {
+        /**
+         * Creates a {@link ServerStreamTracer} for a new server stream.
+         *
+         * <p>Called right before the stream is created
+         *
+         * @param fullMethodName the fully qualified method name
+         * @param headers        the received request headers.  It can be safely mutated within this method.
+         *                       It should not be saved because it is not safe for read or write after the method
+         *                       returns.
+         */
+        public abstract ServerStreamTracer newServerStreamTracer(
+                String fullMethodName, Metadata headers);
     }
 
-    @Override
-    public boolean isReady() {
-      // a dummy value
-      return false;
+    /**
+     * A data class with info about the started {@link ServerCall}.
+     */
+    public abstract static class ServerCallInfo<ReqT, RespT> {
+        public abstract MethodDescriptor<ReqT, RespT> getMethodDescriptor();
+
+        public abstract Attributes getAttributes();
+
+        @Nullable
+        public abstract String getAuthority();
     }
 
-    @Override
-    public boolean isCancelled() {
-      // a dummy value
-      return false;
-    }
+    /**
+     * This class exists solely to help transition to the {@link ServerCallInfo} based API.
+     *
+     * @deprecated Will be deleted when {@link #serverCallStarted(ServerCall)} is removed.
+     */
+    @Deprecated
+    private static final class ReadOnlyServerCall<ReqT, RespT>
+            extends ForwardingServerCall<ReqT, RespT> {
+        private final ServerCallInfo<ReqT, RespT> callInfo;
 
-    @Override
-    public String getAuthority() {
-      return callInfo.getAuthority();
-    }
+        private static <ReqT, RespT> ReadOnlyServerCall<ReqT, RespT> create(
+                ServerCallInfo<ReqT, RespT> callInfo) {
+            return new ReadOnlyServerCall<>(callInfo);
+        }
 
-    @Override
-    protected ServerCall<ReqT, RespT> delegate() {
-      throw new UnsupportedOperationException();
+        private ReadOnlyServerCall(ServerCallInfo<ReqT, RespT> callInfo) {
+            this.callInfo = callInfo;
+        }
+
+        @Override
+        public MethodDescriptor<ReqT, RespT> getMethodDescriptor() {
+            return callInfo.getMethodDescriptor();
+        }
+
+        @Override
+        public Attributes getAttributes() {
+            return callInfo.getAttributes();
+        }
+
+        @Override
+        public boolean isReady() {
+            // a dummy value
+            return false;
+        }
+
+        @Override
+        public boolean isCancelled() {
+            // a dummy value
+            return false;
+        }
+
+        @Override
+        public String getAuthority() {
+            return callInfo.getAuthority();
+        }
+
+        @Override
+        protected ServerCall<ReqT, RespT> delegate() {
+            throw new UnsupportedOperationException();
+        }
     }
-  }
 }

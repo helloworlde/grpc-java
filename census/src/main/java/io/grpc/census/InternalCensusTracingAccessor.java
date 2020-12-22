@@ -24,33 +24,31 @@ import io.opencensus.trace.Tracing;
 /**
  * Accessor for getting {@link ClientInterceptor} or {@link ServerStreamTracer.Factory} with
  * default Census tracing implementation.
+ * <p>
+ * 用于访问 Census tracing 实现的 ClientInterceptor 和 ServerStreamTracer.Factory
  */
 @Internal
 public final class InternalCensusTracingAccessor {
 
-  // Prevent instantiation.
-  private InternalCensusTracingAccessor() {
-  }
+    // Prevent instantiation.
+    private InternalCensusTracingAccessor() {
+    }
 
-  /**
-   * Returns a {@link ClientInterceptor} with default tracing implementation.
-   */
-  public static ClientInterceptor getClientInterceptor() {
-    CensusTracingModule censusTracing =
-        new CensusTracingModule(
-            Tracing.getTracer(),
-            Tracing.getPropagationComponent().getBinaryFormat());
-    return censusTracing.getClientInterceptor();
-  }
+    /**
+     * Returns a {@link ClientInterceptor} with default tracing implementation.
+     * 返回包含 tracing 默认实现的 ClientInterceptor
+     */
+    public static ClientInterceptor getClientInterceptor() {
+        CensusTracingModule censusTracing = new CensusTracingModule(Tracing.getTracer(), Tracing.getPropagationComponent().getBinaryFormat());
+        return censusTracing.getClientInterceptor();
+    }
 
-  /**
-   * Returns a {@link ServerStreamTracer.Factory} with default stats implementation.
-   */
-  public static ServerStreamTracer.Factory getServerStreamTracerFactory() {
-    CensusTracingModule censusTracing =
-        new CensusTracingModule(
-            Tracing.getTracer(),
-            Tracing.getPropagationComponent().getBinaryFormat());
-    return censusTracing.getServerTracerFactory();
-  }
+    /**
+     * Returns a {@link ServerStreamTracer.Factory} with default stats implementation.
+     * 返回包含 tracing 默认实现的  ServerStreamTracer.Factory
+     */
+    public static ServerStreamTracer.Factory getServerStreamTracerFactory() {
+        CensusTracingModule censusTracing = new CensusTracingModule(Tracing.getTracer(), Tracing.getPropagationComponent().getBinaryFormat());
+        return censusTracing.getServerTracerFactory();
+    }
 }
