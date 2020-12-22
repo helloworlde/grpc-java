@@ -28,166 +28,180 @@ import static com.google.common.base.Preconditions.checkNotNull;
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/2861")
 @ThreadSafe
 public abstract class ClientStreamTracer extends StreamTracer {
-  /**
-   * Headers has been sent to the socket.
-   * 将 Header 发送给 Socket
-   */
-  public void outboundHeaders() {
-  }
-
-  /**
-   * Headers has been received from the server.
-   */
-  public void inboundHeaders() {
-  }
-
-  /**
-   * Trailing metadata has been received from the server.
-   * 从 server 端接收到的尾元数据
-   *
-   * @param trailers the mutable trailing metadata.  Modifications to it will be seen by
-   *                 interceptors and the application.
-   *                 可变的尾元数据，修改可以被拦截器和服务知道
-   * @since 1.17.0
-   */
-  public void inboundTrailers(Metadata trailers) {
-  }
-
-  /**
-   * Factory class for {@link ClientStreamTracer}.
-   */
-  public abstract static class Factory {
     /**
-     * Creates a {@link ClientStreamTracer} for a new client stream.
-     *
-     * @param callOptions the effective CallOptions of the call
-     * @param headers the mutable headers of the stream. It can be safely mutated within this
-     *        method.  It should not be saved because it is not safe for read or write after the
-     *        method returns.
-     *
-     * @deprecated use {@link
-     * #newClientStreamTracer(io.grpc.ClientStreamTracer.StreamInfo, io.grpc.Metadata)} instead.
+     * Headers has been sent to the socket.
+     * 将 Header 发送给 Socket
      */
-    @Deprecated
-    public ClientStreamTracer newClientStreamTracer(CallOptions callOptions, Metadata headers) {
-      throw new UnsupportedOperationException("Not implemented");
+    public void outboundHeaders() {
     }
 
     /**
-     * Creates a {@link ClientStreamTracer} for a new client stream.  This is called inside the
-     * transport when it's creating the stream.
+     * Headers has been received from the server.
+     * 接收到服务端发送的 header
+     */
+    public void inboundHeaders() {
+    }
+
+    /**
+     * Trailing metadata has been received from the server.
+     * 从 server 端接收到的尾元数据
      *
-     * @param info information about the stream
-     * @param headers the mutable headers of the stream. It can be safely mutated within this
-     *        method.  Changes made to it will be sent by the stream.  It should not be saved
-     *        because it is not safe for read or write after the method returns.
+     * @param trailers the mutable trailing metadata.  Modifications to it will be seen by
+     *                 interceptors and the application.
+     *                 可变的尾元数据，修改可以被拦截器和服务知道
+     * @since 1.17.0
+     */
+    public void inboundTrailers(Metadata trailers) {
+    }
+
+    /**
+     * Factory class for {@link ClientStreamTracer}.
+     * ClientStreamTracer 工厂
+     */
+    public abstract static class Factory {
+        /**
+         * Creates a {@link ClientStreamTracer} for a new client stream.
+         * 为新的客户端流创建 ClientStreamTracer
+         *
+         * @param callOptions the effective CallOptions of the call
+         *                    调用参数
+         * @param headers     the mutable headers of the stream. It can be safely mutated within this
+         *                    method.  It should not be saved because it is not safe for read or write after the
+         *                    method returns.
+         *                    流的可变的 header
+         * @deprecated use {@link
+         * #newClientStreamTracer(io.grpc.ClientStreamTracer.StreamInfo, io.grpc.Metadata)} instead.
+         */
+        @Deprecated
+        public ClientStreamTracer newClientStreamTracer(CallOptions callOptions, Metadata headers) {
+            throw new UnsupportedOperationException("Not implemented");
+        }
+
+        /**
+         * Creates a {@link ClientStreamTracer} for a new client stream.  This is called inside the
+         * transport when it's creating the stream.
+         * 为新的客户端流创建 ClientStreamTracer，会在 Transport 内部创建流时调用
+         *
+         * @param info    information about the stream
+         *                流的信息
+         * @param headers the mutable headers of the stream. It can be safely mutated within this
+         *                method.  Changes made to it will be sent by the stream.  It should not be saved
+         *                because it is not safe for read or write after the method returns.
+         *                流的可变的 header
+         * @since 1.20.0
+         */
+        @SuppressWarnings("deprecation")
+        public ClientStreamTracer newClientStreamTracer(StreamInfo info, Metadata headers) {
+            return newClientStreamTracer(info.getCallOptions(), headers);
+        }
+    }
+
+    /**
+     * Information about a stream.
+     * 流的信息
+     *
+     * <p>Note this class doesn't override {@code equals()} and {@code hashCode}, as is the case for
+     * {@link CallOptions}.
      *
      * @since 1.20.0
      */
-    @SuppressWarnings("deprecation")
-    public ClientStreamTracer newClientStreamTracer(StreamInfo info, Metadata headers) {
-      return newClientStreamTracer(info.getCallOptions(), headers);
+    @ExperimentalApi("https://github.com/grpc/grpc-java/issues/2861")
+    public static final class StreamInfo {
+
+        private final Attributes transportAttrs;
+
+        private final CallOptions callOptions;
+
+        StreamInfo(Attributes transportAttrs, CallOptions callOptions) {
+            this.transportAttrs = checkNotNull(transportAttrs, "transportAttrs");
+            this.callOptions = checkNotNull(callOptions, "callOptions");
+        }
+
+        /**
+         * Returns the attributes of the transport that this stream was created on.
+         * 返回用于创建流的 Transport 的属性
+         */
+        @Grpc.TransportAttr
+        public Attributes getTransportAttrs() {
+            return transportAttrs;
+        }
+
+        /**
+         * Returns the effective CallOptions of the call.
+         * 返回调用的有效的 CallOptions
+         */
+        public CallOptions getCallOptions() {
+            return callOptions;
+        }
+
+        /**
+         * Converts this StreamInfo into a new Builder.
+         * 将 StreamInfo 转为新的 Builder
+         *
+         * @since 1.21.0
+         */
+        public Builder toBuilder() {
+            Builder builder = new Builder();
+            builder.setTransportAttrs(transportAttrs);
+            builder.setCallOptions(callOptions);
+            return builder;
+        }
+
+        /**
+         * Creates an empty Builder.
+         * 创建一个空的 Builder
+         *
+         * @since 1.21.0
+         */
+        public static Builder newBuilder() {
+            return new Builder();
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                              .add("transportAttrs", transportAttrs)
+                              .add("callOptions", callOptions)
+                              .toString();
+        }
+
+        /**
+         * Builds {@link StreamInfo} objects.
+         * StreamInfo 构建器
+         *
+         * @since 1.21.0
+         */
+        public static final class Builder {
+            private Attributes transportAttrs = Attributes.EMPTY;
+            private CallOptions callOptions = CallOptions.DEFAULT;
+
+            Builder() {
+            }
+
+            /**
+             * Sets the attributes of the transport that this stream was created on.  This field is
+             * optional.
+             */
+            @Grpc.TransportAttr
+            public Builder setTransportAttrs(Attributes transportAttrs) {
+                this.transportAttrs = checkNotNull(transportAttrs, "transportAttrs cannot be null");
+                return this;
+            }
+
+            /**
+             * Sets the effective CallOptions of the call.  This field is optional.
+             */
+            public Builder setCallOptions(CallOptions callOptions) {
+                this.callOptions = checkNotNull(callOptions, "callOptions cannot be null");
+                return this;
+            }
+
+            /**
+             * Builds a new StreamInfo.
+             */
+            public StreamInfo build() {
+                return new StreamInfo(transportAttrs, callOptions);
+            }
+        }
     }
-  }
-
-  /**
-   * Information about a stream.
-   *
-   * <p>Note this class doesn't override {@code equals()} and {@code hashCode}, as is the case for
-   * {@link CallOptions}.
-   *
-   * @since 1.20.0
-   */
-  @ExperimentalApi("https://github.com/grpc/grpc-java/issues/2861")
-  public static final class StreamInfo {
-    private final Attributes transportAttrs;
-    private final CallOptions callOptions;
-
-    StreamInfo(Attributes transportAttrs, CallOptions callOptions) {
-      this.transportAttrs = checkNotNull(transportAttrs, "transportAttrs");
-      this.callOptions = checkNotNull(callOptions, "callOptions");
-    }
-
-    /**
-     * Returns the attributes of the transport that this stream was created on.
-     */
-    @Grpc.TransportAttr
-    public Attributes getTransportAttrs() {
-      return transportAttrs;
-    }
-
-    /**
-     * Returns the effective CallOptions of the call.
-     */
-    public CallOptions getCallOptions() {
-      return callOptions;
-    }
-
-    /**
-     * Converts this StreamInfo into a new Builder.
-     *
-     * @since 1.21.0
-     */
-    public Builder toBuilder() {
-      Builder builder = new Builder();
-      builder.setTransportAttrs(transportAttrs);
-      builder.setCallOptions(callOptions);
-      return builder;
-    }
-
-    /**
-     * Creates an empty Builder.
-     *
-     * @since 1.21.0
-     */
-    public static Builder newBuilder() {
-      return new Builder();
-    }
-
-    @Override
-    public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("transportAttrs", transportAttrs)
-          .add("callOptions", callOptions)
-          .toString();
-    }
-
-    /**
-     * Builds {@link StreamInfo} objects.
-     *
-     * @since 1.21.0
-     */
-    public static final class Builder {
-      private Attributes transportAttrs = Attributes.EMPTY;
-      private CallOptions callOptions = CallOptions.DEFAULT;
-
-      Builder() {
-      }
-
-      /**
-       * Sets the attributes of the transport that this stream was created on.  This field is
-       * optional.
-       */
-      @Grpc.TransportAttr
-      public Builder setTransportAttrs(Attributes transportAttrs) {
-        this.transportAttrs = checkNotNull(transportAttrs, "transportAttrs cannot be null");
-        return this;
-      }
-
-      /**
-       * Sets the effective CallOptions of the call.  This field is optional.
-       */
-      public Builder setCallOptions(CallOptions callOptions) {
-        this.callOptions = checkNotNull(callOptions, "callOptions cannot be null");
-        return this;
-      }
-
-      /**
-       * Builds a new StreamInfo.
-       */
-      public StreamInfo build() {
-        return new StreamInfo(transportAttrs, callOptions);
-      }
-    }
-  }
 }

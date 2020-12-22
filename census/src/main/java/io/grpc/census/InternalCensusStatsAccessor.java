@@ -28,90 +28,102 @@ import io.opencensus.tags.propagation.TagContextBinarySerializer;
 /**
  * Accessor for getting {@link ClientInterceptor} or {@link ServerStreamTracer.Factory} with
  * default Census stats implementation.
+ * 用于获取访问 Census 统计的 ClientInterceptor 或 ServerStreamTracer.Factory 实现
  */
 @Internal
 public final class InternalCensusStatsAccessor {
 
-  private static final Supplier<Stopwatch> STOPWATCH_SUPPLIER = new Supplier<Stopwatch>() {
-    @Override
-    public Stopwatch get() {
-      return Stopwatch.createUnstarted();
+    private static final Supplier<Stopwatch> STOPWATCH_SUPPLIER = new Supplier<Stopwatch>() {
+        @Override
+        public Stopwatch get() {
+            return Stopwatch.createUnstarted();
+        }
+    };
+
+    // Prevent instantiation.
+    private InternalCensusStatsAccessor() {
     }
-  };
 
-  // Prevent instantiation.
-  private InternalCensusStatsAccessor() {
-  }
+    /**
+     * Returns a {@link ClientInterceptor} with default stats implementation.
+     * 返回包含统计默认实现的 ClientInterceptor
+     */
+    public static ClientInterceptor getClientInterceptor(boolean recordStartedRpcs,
+                                                         boolean recordFinishedRpcs,
+                                                         boolean recordRealTimeMetrics) {
 
-  /**
-   * Returns a {@link ClientInterceptor} with default stats implementation.
-   */
-  public static ClientInterceptor getClientInterceptor(
-      boolean recordStartedRpcs,
-      boolean recordFinishedRpcs,
-      boolean recordRealTimeMetrics) {
-    CensusStatsModule censusStats =
-        new CensusStatsModule(
-            STOPWATCH_SUPPLIER,
-            true, /* propagateTags */
-            recordStartedRpcs,
-            recordFinishedRpcs,
-            recordRealTimeMetrics);
-    return censusStats.getClientInterceptor();
-  }
+        CensusStatsModule censusStats = new CensusStatsModule(STOPWATCH_SUPPLIER,
+                true, /* propagateTags */
+                recordStartedRpcs,
+                recordFinishedRpcs,
+                recordRealTimeMetrics);
 
-  /**
-   * Returns a {@link ClientInterceptor} with custom stats implementation.
-   */
-  public static ClientInterceptor getClientInterceptor(
-      Tagger tagger,
-      TagContextBinarySerializer tagCtxSerializer,
-      StatsRecorder statsRecorder,
-      Supplier<Stopwatch> stopwatchSupplier,
-      boolean propagateTags,
-      boolean recordStartedRpcs,
-      boolean recordFinishedRpcs,
-      boolean recordRealTimeMetrics) {
-    CensusStatsModule censusStats =
-        new CensusStatsModule(
-            tagger, tagCtxSerializer, statsRecorder, stopwatchSupplier,
-            propagateTags, recordStartedRpcs, recordFinishedRpcs, recordRealTimeMetrics);
-    return censusStats.getClientInterceptor();
-  }
+        return censusStats.getClientInterceptor();
+    }
 
-  /**
-   * Returns a {@link ServerStreamTracer.Factory} with default stats implementation.
-   */
-  public static ServerStreamTracer.Factory getServerStreamTracerFactory(
-      boolean recordStartedRpcs,
-      boolean recordFinishedRpcs,
-      boolean recordRealTimeMetrics) {
-    CensusStatsModule censusStats =
-        new CensusStatsModule(
-            STOPWATCH_SUPPLIER,
-            true, /* propagateTags */
-            recordStartedRpcs,
-            recordFinishedRpcs,
-            recordRealTimeMetrics);
-    return censusStats.getServerTracerFactory();
-  }
+    /**
+     * Returns a {@link ClientInterceptor} with custom stats implementation.
+     * 返回包含统计默认实现的 ClientInterceptor
+     */
+    public static ClientInterceptor getClientInterceptor(Tagger tagger,
+                                                         TagContextBinarySerializer tagCtxSerializer,
+                                                         StatsRecorder statsRecorder,
+                                                         Supplier<Stopwatch> stopwatchSupplier,
+                                                         boolean propagateTags,
+                                                         boolean recordStartedRpcs,
+                                                         boolean recordFinishedRpcs,
+                                                         boolean recordRealTimeMetrics) {
 
-  /**
-   * Returns a {@link ServerStreamTracer.Factory} with custom stats implementation.
-   */
-  public static ServerStreamTracer.Factory getServerStreamTracerFactory(
-      Tagger tagger,
-      TagContextBinarySerializer tagCtxSerializer,
-      StatsRecorder statsRecorder,
-      Supplier<Stopwatch> stopwatchSupplier,
-      boolean propagateTags,
-      boolean recordStartedRpcs,
-      boolean recordFinishedRpcs,
-      boolean recordRealTimeMetrics) {
-    CensusStatsModule censusStats =
-        new CensusStatsModule(
-            tagger, tagCtxSerializer, statsRecorder, stopwatchSupplier,
-            propagateTags, recordStartedRpcs, recordFinishedRpcs, recordRealTimeMetrics);
-    return censusStats.getServerTracerFactory();
-  }
+        CensusStatsModule censusStats = new CensusStatsModule(tagger,
+                tagCtxSerializer,
+                statsRecorder,
+                stopwatchSupplier,
+                propagateTags,
+                recordStartedRpcs,
+                recordFinishedRpcs,
+                recordRealTimeMetrics);
+
+        return censusStats.getClientInterceptor();
+    }
+
+    /**
+     * Returns a {@link ServerStreamTracer.Factory} with default stats implementation.
+     * 返回包含统计默认实现的 ServerStreamTracer.Factory
+     */
+    public static ServerStreamTracer.Factory getServerStreamTracerFactory(boolean recordStartedRpcs,
+                                                                          boolean recordFinishedRpcs,
+                                                                          boolean recordRealTimeMetrics) {
+        CensusStatsModule censusStats = new CensusStatsModule(STOPWATCH_SUPPLIER,
+                true, /* propagateTags */
+                recordStartedRpcs,
+                recordFinishedRpcs,
+                recordRealTimeMetrics);
+
+        return censusStats.getServerTracerFactory();
+    }
+
+    /**
+     * Returns a {@link ServerStreamTracer.Factory} with custom stats implementation.
+     * 返回包含统计默认实现的 ServerStreamTracer.Factory
+     */
+    public static ServerStreamTracer.Factory getServerStreamTracerFactory(Tagger tagger,
+                                                                          TagContextBinarySerializer tagCtxSerializer,
+                                                                          StatsRecorder statsRecorder,
+                                                                          Supplier<Stopwatch> stopwatchSupplier,
+                                                                          boolean propagateTags,
+                                                                          boolean recordStartedRpcs,
+                                                                          boolean recordFinishedRpcs,
+                                                                          boolean recordRealTimeMetrics) {
+
+        CensusStatsModule censusStats = new CensusStatsModule(tagger,
+                tagCtxSerializer,
+                statsRecorder,
+                stopwatchSupplier,
+                propagateTags,
+                recordStartedRpcs,
+                recordFinishedRpcs,
+                recordRealTimeMetrics);
+
+        return censusStats.getServerTracerFactory();
+    }
 }
