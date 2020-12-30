@@ -17,38 +17,38 @@
 package io.grpc;
 
 /**
- * A {@link ClientCall.Listener} which forwards all of its methods to another {@link
- * ClientCall.Listener}.
+ * A {@link ClientCall.Listener} which forwards all of its methods to another {@link ClientCall.Listener}.
+ * 将所有的方法调用转发给另一个 ClientCall.Listener 的 ClientCall.Listener
  */
-public abstract class ForwardingClientCallListener<RespT>
-    extends PartialForwardingClientCallListener<RespT> {
-  /**
-   * Returns the delegated {@code ClientCall.Listener}.
-   */
-  @Override
-  protected abstract ClientCall.Listener<RespT> delegate();
-
-  @Override
-  public void onMessage(RespT message) {
-    delegate().onMessage(message);
-  }
-
-  /**
-   * A simplified version of {@link ForwardingClientCallListener} where subclasses can pass in a
-   * {@link ClientCall.Listener} as the delegate.
-   */
-  public abstract static class SimpleForwardingClientCallListener<RespT>
-      extends ForwardingClientCallListener<RespT> {
-
-    private final ClientCall.Listener<RespT> delegate;
-
-    protected SimpleForwardingClientCallListener(ClientCall.Listener<RespT> delegate) {
-      this.delegate = delegate;
-    }
+public abstract class ForwardingClientCallListener<RespT> extends PartialForwardingClientCallListener<RespT> {
+    /**
+     * Returns the delegated {@code ClientCall.Listener}.
+     */
+    @Override
+    protected abstract ClientCall.Listener<RespT> delegate();
 
     @Override
-    protected ClientCall.Listener<RespT> delegate() {
-      return delegate;
+    public void onMessage(RespT message) {
+        delegate().onMessage(message);
     }
-  }
+
+    /**
+     * A simplified version of {@link ForwardingClientCallListener} where subclasses can pass in a
+     * {@link ClientCall.Listener} as the delegate.
+     * <p>
+     * ForwardingClientCallListener 的简化实现，可以将被代理的 ClientCall.Listener 传递给子类
+     */
+    public abstract static class SimpleForwardingClientCallListener<RespT> extends ForwardingClientCallListener<RespT> {
+
+        private final ClientCall.Listener<RespT> delegate;
+
+        protected SimpleForwardingClientCallListener(ClientCall.Listener<RespT> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        protected ClientCall.Listener<RespT> delegate() {
+            return delegate;
+        }
+    }
 }

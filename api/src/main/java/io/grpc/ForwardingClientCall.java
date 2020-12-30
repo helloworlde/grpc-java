@@ -20,8 +20,7 @@ package io.grpc;
  * A {@link ClientCall} which forwards all of it's methods to another {@link ClientCall}.
  * 会将所有请求转发给另一个 ClientCall 的 ClientCall
  */
-public abstract class ForwardingClientCall<ReqT, RespT>
-        extends PartialForwardingClientCall<ReqT, RespT> {
+public abstract class ForwardingClientCall<ReqT, RespT> extends PartialForwardingClientCall<ReqT, RespT> {
     /**
      * Returns the delegated {@code ClientCall}.
      * 返回被代理的 ClientCall

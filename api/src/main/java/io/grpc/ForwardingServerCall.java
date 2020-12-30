@@ -18,41 +18,43 @@ package io.grpc;
 
 /**
  * A {@link ServerCall} which forwards all of it's methods to another {@link ServerCall}.
+ * 会将所有的方法转发给另一个 ServerCall 的 ServerCall
  */
-public abstract class ForwardingServerCall<ReqT, RespT>
-    extends PartialForwardingServerCall<ReqT, RespT> {
-  /**
-   * Returns the delegated {@code ServerCall}.
-   */
-  @Override
-  protected abstract ServerCall<ReqT, RespT> delegate();
-
-  @Override
-  public void sendMessage(RespT message) {
-    delegate().sendMessage(message);
-  }
-
-  /**
-   * A simplified version of {@link ForwardingServerCall} where subclasses can pass in a {@link
-   * ServerCall} as the delegate.
-   */
-  public abstract static class SimpleForwardingServerCall<ReqT, RespT>
-      extends ForwardingServerCall<ReqT, RespT> {
-
-    private final ServerCall<ReqT, RespT> delegate;
-
-    protected SimpleForwardingServerCall(ServerCall<ReqT, RespT> delegate) {
-      this.delegate = delegate;
-    }
+public abstract class ForwardingServerCall<ReqT, RespT> extends PartialForwardingServerCall<ReqT, RespT> {
+    /**
+     * Returns the delegated {@code ServerCall}.
+     * 返回代理的 ServerCall
+     */
+    @Override
+    protected abstract ServerCall<ReqT, RespT> delegate();
 
     @Override
-    protected ServerCall<ReqT, RespT> delegate() {
-      return delegate;
+    public void sendMessage(RespT message) {
+        delegate().sendMessage(message);
     }
 
-    @Override
-    public MethodDescriptor<ReqT, RespT> getMethodDescriptor() {
-      return delegate.getMethodDescriptor();
+    /**
+     * A simplified version of {@link ForwardingServerCall} where subclasses can pass in a {@link
+     * ServerCall} as the delegate.
+     * <p>
+     * ForwardingServerCall 的简化实现，可以将 ServerCall 传递给子类
+     */
+    public abstract static class SimpleForwardingServerCall<ReqT, RespT> extends ForwardingServerCall<ReqT, RespT> {
+
+        private final ServerCall<ReqT, RespT> delegate;
+
+        protected SimpleForwardingServerCall(ServerCall<ReqT, RespT> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        protected ServerCall<ReqT, RespT> delegate() {
+            return delegate;
+        }
+
+        @Override
+        public MethodDescriptor<ReqT, RespT> getMethodDescriptor() {
+            return delegate.getMethodDescriptor();
+        }
     }
-  }
 }
