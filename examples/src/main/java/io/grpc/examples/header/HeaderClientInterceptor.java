@@ -25,6 +25,7 @@ import io.grpc.ForwardingClientCall.SimpleForwardingClientCall;
 import io.grpc.ForwardingClientCallListener.SimpleForwardingClientCallListener;
 import io.grpc.Metadata;
 import io.grpc.MethodDescriptor;
+
 import java.util.logging.Logger;
 
 /**
@@ -32,15 +33,14 @@ import java.util.logging.Logger;
  */
 public class HeaderClientInterceptor implements ClientInterceptor {
 
-  private static final Logger logger = Logger.getLogger(HeaderClientInterceptor.class.getName());
-
   @VisibleForTesting
   static final Metadata.Key<String> CUSTOM_HEADER_KEY =
-      Metadata.Key.of("custom_client_header_key", Metadata.ASCII_STRING_MARSHALLER);
+          Metadata.Key.of("custom_client_header_key", Metadata.ASCII_STRING_MARSHALLER);
+  private static final Logger logger = Logger.getLogger(HeaderClientInterceptor.class.getName());
 
   @Override
   public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(MethodDescriptor<ReqT, RespT> method,
-      CallOptions callOptions, Channel next) {
+                                                             CallOptions callOptions, Channel next) {
     return new SimpleForwardingClientCall<ReqT, RespT>(next.newCall(method, callOptions)) {
 
       @Override
