@@ -7,14 +7,12 @@
           "method": "SayHello"
         }
       ],
-
       "hedgingPolicy": {
         "maxAttempts": 3,
         "hedgingDelay": "1s"
       }
     }
   ],
-
   "retryThrottling": {
     "maxTokens": 10,
     "tokenRatio": 0.1
