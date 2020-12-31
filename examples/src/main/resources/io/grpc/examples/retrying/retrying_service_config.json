@@ -7,7 +7,6 @@
           "method": "SayHello"
         }
       ],
-
       "retryPolicy": {
         "maxAttempts": 5,
         "initialBackoff": "0.5s",
