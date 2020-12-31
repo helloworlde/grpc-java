@@ -24,6 +24,7 @@ import com.google.protobuf.util.JsonFormat.Parser;
 import com.google.protobuf.util.JsonFormat.Printer;
 import io.grpc.MethodDescriptor.Marshaller;
 import io.grpc.Status;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -37,7 +38,8 @@ import java.nio.charset.Charset;
  */
 final class JsonMarshaller {
 
-  private JsonMarshaller() {}
+  private JsonMarshaller() {
+  }
 
   /**
    * Create a {@code Marshaller} for json protos of the same type as {@code defaultInstance}.
@@ -56,7 +58,7 @@ final class JsonMarshaller {
    * <p>This is an unstable API and has not been optimized yet for performance.
    */
   public static <T extends Message> Marshaller<T> jsonMarshaller(
-      final T defaultInstance, final Parser parser, final Printer printer) {
+          final T defaultInstance, final Parser parser, final Printer printer) {
 
     final Charset charset = Charset.forName("UTF-8");
 
@@ -67,9 +69,9 @@ final class JsonMarshaller {
           return new ByteArrayInputStream(printer.print(value).getBytes(charset));
         } catch (InvalidProtocolBufferException e) {
           throw Status.INTERNAL
-              .withCause(e)
-              .withDescription("Unable to print json proto")
-              .asRuntimeException();
+                  .withCause(e)
+                  .withDescription("Unable to print json proto")
+                  .asRuntimeException();
         }
       }
 
@@ -85,11 +87,11 @@ final class JsonMarshaller {
           reader.close();
         } catch (InvalidProtocolBufferException e) {
           throw Status.INTERNAL.withDescription("Invalid protobuf byte sequence")
-              .withCause(e).asRuntimeException();
+                               .withCause(e).asRuntimeException();
         } catch (IOException e) {
           // Same for now, might be unavailable
           throw Status.INTERNAL.withDescription("Invalid protobuf byte sequence")
-              .withCause(e).asRuntimeException();
+                               .withCause(e).asRuntimeException();
         }
         return proto;
       }
