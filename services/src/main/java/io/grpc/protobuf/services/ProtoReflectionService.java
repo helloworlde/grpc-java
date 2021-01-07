@@ -16,9 +16,6 @@
 
 package io.grpc.protobuf.services;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.protobuf.Descriptors.Descriptor;
 import com.google.protobuf.Descriptors.FieldDescriptor;
 import com.google.protobuf.Descriptors.FileDescriptor;
@@ -42,6 +39,9 @@ import io.grpc.reflection.v1alpha.ServerReflectionResponse;
 import io.grpc.reflection.v1alpha.ServiceResponse;
 import io.grpc.stub.ServerCallStreamObserver;
 import io.grpc.stub.StreamObserver;
+
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,489 +51,553 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.WeakHashMap;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Provides a reflection service for Protobuf services (including the reflection service itself).
+ * 为 Protobuf 服务提供反射服务(包括反射服务自己)
  *
  * <p>Separately tracks mutable and immutable services. Throws an exception if either group of
  * services contains multiple Protobuf files with declarations of the same service, method, type, or
  * extension.
+ * 分别跟踪可变和不可变服务，如果服务组中的任何一个包含多个Protobuf文件且声明具有相同的服务，方法，类型或扩展名，则抛出异常
  */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/2222")
 public final class ProtoReflectionService extends ServerReflectionGrpc.ServerReflectionImplBase {
 
-  private final Object lock = new Object();
+    private final Object lock = new Object();
 
-  @GuardedBy("lock")
-  private final Map<Server, ServerReflectionIndex> serverReflectionIndexes = new WeakHashMap<>();
+    @GuardedBy("lock")
+    private final Map<Server, ServerReflectionIndex> serverReflectionIndexes = new WeakHashMap<>();
 
-  private ProtoReflectionService() {}
-
-  /**
-   * Creates a instance of {@link ProtoReflectionService}.
-   */
-  public static BindableService newInstance() {
-    return new ProtoReflectionService();
-  }
-
-  /**
-   * Retrieves the index for services of the server that dispatches the current call. Computes
-   * one if not exist. The index is updated if any changes to the server's mutable services are
-   * detected. A change is any addition or removal in the set of file descriptors attached to the
-   * mutable services or a change in the service names.
-   */
-  private ServerReflectionIndex getRefreshedIndex() {
-    synchronized (lock) {
-      Server server = InternalServer.SERVER_CONTEXT_KEY.get();
-      ServerReflectionIndex index = serverReflectionIndexes.get(server);
-      if (index == null) {
-        index =
-            new ServerReflectionIndex(server.getImmutableServices(), server.getMutableServices());
-        serverReflectionIndexes.put(server, index);
-        return index;
-      }
-
-      Set<FileDescriptor> serverFileDescriptors = new HashSet<>();
-      Set<String> serverServiceNames = new HashSet<>();
-      List<ServerServiceDefinition> serverMutableServices = server.getMutableServices();
-      for (ServerServiceDefinition mutableService : serverMutableServices) {
-        io.grpc.ServiceDescriptor serviceDescriptor = mutableService.getServiceDescriptor();
-        if (serviceDescriptor.getSchemaDescriptor() instanceof ProtoFileDescriptorSupplier) {
-          String serviceName = serviceDescriptor.getName();
-          FileDescriptor fileDescriptor =
-              ((ProtoFileDescriptorSupplier) serviceDescriptor.getSchemaDescriptor())
-                  .getFileDescriptor();
-          serverFileDescriptors.add(fileDescriptor);
-          serverServiceNames.add(serviceName);
-        }
-      }
-
-      // Replace the index if the underlying mutable services have changed. Check both the file
-      // descriptors and the service names, because one file descriptor can define multiple
-      // services.
-      FileDescriptorIndex mutableServicesIndex = index.getMutableServicesIndex();
-      if (!mutableServicesIndex.getServiceFileDescriptors().equals(serverFileDescriptors)
-          || !mutableServicesIndex.getServiceNames().equals(serverServiceNames)) {
-        index =
-            new ServerReflectionIndex(server.getImmutableServices(), serverMutableServices);
-        serverReflectionIndexes.put(server, index);
-      }
-
-      return index;
-    }
-  }
-
-  @Override
-  public StreamObserver<ServerReflectionRequest> serverReflectionInfo(
-      final StreamObserver<ServerReflectionResponse> responseObserver) {
-    final ServerCallStreamObserver<ServerReflectionResponse> serverCallStreamObserver =
-        (ServerCallStreamObserver<ServerReflectionResponse>) responseObserver;
-    ProtoReflectionStreamObserver requestObserver =
-        new ProtoReflectionStreamObserver(getRefreshedIndex(), serverCallStreamObserver);
-    serverCallStreamObserver.setOnReadyHandler(requestObserver);
-    serverCallStreamObserver.disableAutoRequest();
-    serverCallStreamObserver.request(1);
-    return requestObserver;
-  }
-
-  private static class ProtoReflectionStreamObserver
-      implements Runnable, StreamObserver<ServerReflectionRequest> {
-    private final ServerReflectionIndex serverReflectionIndex;
-    private final ServerCallStreamObserver<ServerReflectionResponse> serverCallStreamObserver;
-
-    private boolean closeAfterSend = false;
-    private ServerReflectionRequest request;
-
-    ProtoReflectionStreamObserver(
-        ServerReflectionIndex serverReflectionIndex,
-        ServerCallStreamObserver<ServerReflectionResponse> serverCallStreamObserver) {
-      this.serverReflectionIndex = serverReflectionIndex;
-      this.serverCallStreamObserver = checkNotNull(serverCallStreamObserver, "observer");
-    }
-
-    @Override
-    public void run() {
-      if (request != null) {
-        handleReflectionRequest();
-      }
-    }
-
-    @Override
-    public void onNext(ServerReflectionRequest request) {
-      checkState(this.request == null);
-      this.request = checkNotNull(request);
-      handleReflectionRequest();
-    }
-
-    private void handleReflectionRequest() {
-      if (serverCallStreamObserver.isReady()) {
-        switch (request.getMessageRequestCase()) {
-          case FILE_BY_FILENAME:
-            getFileByName(request);
-            break;
-          case FILE_CONTAINING_SYMBOL:
-            getFileContainingSymbol(request);
-            break;
-          case FILE_CONTAINING_EXTENSION:
-            getFileByExtension(request);
-            break;
-          case ALL_EXTENSION_NUMBERS_OF_TYPE:
-            getAllExtensions(request);
-            break;
-          case LIST_SERVICES:
-            listServices(request);
-            break;
-          default:
-            sendErrorResponse(
-                request,
-                Status.Code.UNIMPLEMENTED,
-                "not implemented " + request.getMessageRequestCase());
-        }
-        request = null;
-        if (closeAfterSend) {
-          serverCallStreamObserver.onCompleted();
-        } else {
-          serverCallStreamObserver.request(1);
-        }
-      }
-    }
-
-    @Override
-    public void onCompleted() {
-      if (request != null) {
-        closeAfterSend = true;
-      } else {
-        serverCallStreamObserver.onCompleted();
-      }
-    }
-
-    @Override
-    public void onError(Throwable cause) {
-      serverCallStreamObserver.onError(cause);
-    }
-
-    private void getFileByName(ServerReflectionRequest request) {
-      String name = request.getFileByFilename();
-      FileDescriptor fd = serverReflectionIndex.getFileDescriptorByName(name);
-      if (fd != null) {
-        serverCallStreamObserver.onNext(createServerReflectionResponse(request, fd));
-      } else {
-        sendErrorResponse(request, Status.Code.NOT_FOUND, "File not found.");
-      }
-    }
-
-    private void getFileContainingSymbol(ServerReflectionRequest request) {
-      String symbol = request.getFileContainingSymbol();
-      FileDescriptor fd = serverReflectionIndex.getFileDescriptorBySymbol(symbol);
-      if (fd != null) {
-        serverCallStreamObserver.onNext(createServerReflectionResponse(request, fd));
-      } else {
-        sendErrorResponse(request, Status.Code.NOT_FOUND, "Symbol not found.");
-      }
-    }
-
-    private void getFileByExtension(ServerReflectionRequest request) {
-      ExtensionRequest extensionRequest = request.getFileContainingExtension();
-      String type = extensionRequest.getContainingType();
-      int extension = extensionRequest.getExtensionNumber();
-      FileDescriptor fd =
-          serverReflectionIndex.getFileDescriptorByExtensionAndNumber(type, extension);
-      if (fd != null) {
-        serverCallStreamObserver.onNext(createServerReflectionResponse(request, fd));
-      } else {
-        sendErrorResponse(request, Status.Code.NOT_FOUND, "Extension not found.");
-      }
-    }
-
-    private void getAllExtensions(ServerReflectionRequest request) {
-      String type = request.getAllExtensionNumbersOfType();
-      Set<Integer> extensions = serverReflectionIndex.getExtensionNumbersOfType(type);
-      if (extensions != null) {
-        ExtensionNumberResponse.Builder builder =
-            ExtensionNumberResponse.newBuilder()
-                .setBaseTypeName(type)
-                .addAllExtensionNumber(extensions);
-        serverCallStreamObserver.onNext(
-            ServerReflectionResponse.newBuilder()
-                .setValidHost(request.getHost())
-                .setOriginalRequest(request)
-                .setAllExtensionNumbersResponse(builder)
-                .build());
-      } else {
-        sendErrorResponse(request, Status.Code.NOT_FOUND, "Type not found.");
-      }
-    }
-
-    private void listServices(ServerReflectionRequest request) {
-      ListServiceResponse.Builder builder = ListServiceResponse.newBuilder();
-      for (String serviceName : serverReflectionIndex.getServiceNames()) {
-        builder.addService(ServiceResponse.newBuilder().setName(serviceName));
-      }
-      serverCallStreamObserver.onNext(
-          ServerReflectionResponse.newBuilder()
-              .setValidHost(request.getHost())
-              .setOriginalRequest(request)
-              .setListServicesResponse(builder)
-              .build());
-    }
-
-    private void sendErrorResponse(
-        ServerReflectionRequest request, Status.Code code, String message) {
-      ServerReflectionResponse response =
-          ServerReflectionResponse.newBuilder()
-              .setValidHost(request.getHost())
-              .setOriginalRequest(request)
-              .setErrorResponse(
-                  ErrorResponse.newBuilder()
-                      .setErrorCode(code.value())
-                      .setErrorMessage(message))
-              .build();
-      serverCallStreamObserver.onNext(response);
-    }
-
-    private ServerReflectionResponse createServerReflectionResponse(
-        ServerReflectionRequest request, FileDescriptor fd) {
-      FileDescriptorResponse.Builder fdRBuilder = FileDescriptorResponse.newBuilder();
-
-      Set<String> seenFiles = new HashSet<>();
-      Queue<FileDescriptor> frontier = new ArrayDeque<>();
-      seenFiles.add(fd.getName());
-      frontier.add(fd);
-      while (!frontier.isEmpty()) {
-        FileDescriptor nextFd = frontier.remove();
-        fdRBuilder.addFileDescriptorProto(nextFd.toProto().toByteString());
-        for (FileDescriptor dependencyFd : nextFd.getDependencies()) {
-          if (!seenFiles.contains(dependencyFd.getName())) {
-            seenFiles.add(dependencyFd.getName());
-            frontier.add(dependencyFd);
-          }
-        }
-      }
-      return ServerReflectionResponse.newBuilder()
-          .setValidHost(request.getHost())
-          .setOriginalRequest(request)
-          .setFileDescriptorResponse(fdRBuilder)
-          .build();
-    }
-  }
-
-  /**
-   * Indexes the server's services and allows lookups of file descriptors by filename, symbol, type,
-   * and extension number.
-   *
-   * <p>Internally, this stores separate indices for the immutable and mutable services. When
-   * queried, the immutable service index is checked for a matching value. Only if there is no match
-   * in the immutable service index are the mutable services checked.
-   */
-  private static final class ServerReflectionIndex {
-    private final FileDescriptorIndex immutableServicesIndex;
-    private final FileDescriptorIndex mutableServicesIndex;
-
-    public ServerReflectionIndex(
-        List<ServerServiceDefinition> immutableServices,
-        List<ServerServiceDefinition> mutableServices) {
-      immutableServicesIndex = new FileDescriptorIndex(immutableServices);
-      mutableServicesIndex = new FileDescriptorIndex(mutableServices);
-    }
-
-    private FileDescriptorIndex getMutableServicesIndex() {
-      return mutableServicesIndex;
-    }
-
-    private Set<String> getServiceNames() {
-      Set<String> immutableServiceNames = immutableServicesIndex.getServiceNames();
-      Set<String> mutableServiceNames = mutableServicesIndex.getServiceNames();
-      Set<String> serviceNames =
-          new HashSet<>(immutableServiceNames.size() + mutableServiceNames.size());
-      serviceNames.addAll(immutableServiceNames);
-      serviceNames.addAll(mutableServiceNames);
-      return serviceNames;
-    }
-
-    @Nullable
-    private FileDescriptor getFileDescriptorByName(String name) {
-      FileDescriptor fd = immutableServicesIndex.getFileDescriptorByName(name);
-      if (fd == null) {
-        fd = mutableServicesIndex.getFileDescriptorByName(name);
-      }
-      return fd;
-    }
-
-    @Nullable
-    private FileDescriptor getFileDescriptorBySymbol(String symbol) {
-      FileDescriptor fd = immutableServicesIndex.getFileDescriptorBySymbol(symbol);
-      if (fd == null) {
-        fd = mutableServicesIndex.getFileDescriptorBySymbol(symbol);
-      }
-      return fd;
-    }
-
-    @Nullable
-    private FileDescriptor getFileDescriptorByExtensionAndNumber(String type, int extension) {
-      FileDescriptor fd =
-          immutableServicesIndex.getFileDescriptorByExtensionAndNumber(type, extension);
-      if (fd == null) {
-        fd = mutableServicesIndex.getFileDescriptorByExtensionAndNumber(type, extension);
-      }
-      return fd;
-    }
-
-    @Nullable
-    private Set<Integer> getExtensionNumbersOfType(String type) {
-      Set<Integer> extensionNumbers = immutableServicesIndex.getExtensionNumbersOfType(type);
-      if (extensionNumbers == null) {
-        extensionNumbers = mutableServicesIndex.getExtensionNumbersOfType(type);
-      }
-      return extensionNumbers;
-    }
-  }
-
-  /**
-   * Provides a set of methods for answering reflection queries for the file descriptors underlying
-   * a set of services. Used by {@link ServerReflectionIndex} to separately index immutable and
-   * mutable services.
-   */
-  private static final class FileDescriptorIndex {
-    private final Set<String> serviceNames = new HashSet<>();
-    private final Set<FileDescriptor> serviceFileDescriptors = new HashSet<>();
-    private final Map<String, FileDescriptor> fileDescriptorsByName =
-        new HashMap<>();
-    private final Map<String, FileDescriptor> fileDescriptorsBySymbol =
-        new HashMap<>();
-    private final Map<String, Map<Integer, FileDescriptor>> fileDescriptorsByExtensionAndNumber =
-        new HashMap<>();
-
-    FileDescriptorIndex(List<ServerServiceDefinition> services) {
-      Queue<FileDescriptor> fileDescriptorsToProcess = new ArrayDeque<>();
-      Set<String> seenFiles = new HashSet<>();
-      for (ServerServiceDefinition service : services) {
-        io.grpc.ServiceDescriptor serviceDescriptor = service.getServiceDescriptor();
-        if (serviceDescriptor.getSchemaDescriptor() instanceof ProtoFileDescriptorSupplier) {
-          FileDescriptor fileDescriptor =
-              ((ProtoFileDescriptorSupplier) serviceDescriptor.getSchemaDescriptor())
-                  .getFileDescriptor();
-          String serviceName = serviceDescriptor.getName();
-          checkState(
-              !serviceNames.contains(serviceName), "Service already defined: %s", serviceName);
-          serviceFileDescriptors.add(fileDescriptor);
-          serviceNames.add(serviceName);
-          if (!seenFiles.contains(fileDescriptor.getName())) {
-            seenFiles.add(fileDescriptor.getName());
-            fileDescriptorsToProcess.add(fileDescriptor);
-          }
-        }
-      }
-
-      while (!fileDescriptorsToProcess.isEmpty()) {
-        FileDescriptor currentFd = fileDescriptorsToProcess.remove();
-        processFileDescriptor(currentFd);
-        for (FileDescriptor dependencyFd : currentFd.getDependencies()) {
-          if (!seenFiles.contains(dependencyFd.getName())) {
-            seenFiles.add(dependencyFd.getName());
-            fileDescriptorsToProcess.add(dependencyFd);
-          }
-        }
-      }
+    private ProtoReflectionService() {
     }
 
     /**
-     * Returns the file descriptors for the indexed services, but not their dependencies. This is
-     * used to check if the server's mutable services have changed.
+     * Creates a instance of {@link ProtoReflectionService}.
+     * 创建反射服务实例
      */
-    private Set<FileDescriptor> getServiceFileDescriptors() {
-      return Collections.unmodifiableSet(serviceFileDescriptors);
+    public static BindableService newInstance() {
+        return new ProtoReflectionService();
     }
 
-    private Set<String> getServiceNames() {
-      return Collections.unmodifiableSet(serviceNames);
+    /**
+     * Retrieves the index for services of the server that dispatches the current call. Computes
+     * one if not exist. The index is updated if any changes to the server's mutable services are
+     * detected. A change is any addition or removal in the set of file descriptors attached to the
+     * mutable services or a change in the service names.
+     * <p>
+     * 获取服务索引，用于转发当前调用，当可变的服务变化时会更新索引，更改是对可变服务附加的文件描述符集中的任何添加或删除，
+     * 或服务名称的更改
+     */
+    private ServerReflectionIndex getRefreshedIndex() {
+        synchronized (lock) {
+            Server server = InternalServer.SERVER_CONTEXT_KEY.get();
+            ServerReflectionIndex index = serverReflectionIndexes.get(server);
+
+            if (index == null) {
+                index = new ServerReflectionIndex(server.getImmutableServices(), server.getMutableServices());
+                serverReflectionIndexes.put(server, index);
+                return index;
+            }
+
+            Set<FileDescriptor> serverFileDescriptors = new HashSet<>();
+            Set<String> serverServiceNames = new HashSet<>();
+
+            List<ServerServiceDefinition> serverMutableServices = server.getMutableServices();
+
+            for (ServerServiceDefinition mutableService : serverMutableServices) {
+                io.grpc.ServiceDescriptor serviceDescriptor = mutableService.getServiceDescriptor();
+
+                if (serviceDescriptor.getSchemaDescriptor() instanceof ProtoFileDescriptorSupplier) {
+                    String serviceName = serviceDescriptor.getName();
+                    FileDescriptor fileDescriptor = ((ProtoFileDescriptorSupplier) serviceDescriptor.getSchemaDescriptor()).getFileDescriptor();
+                    serverFileDescriptors.add(fileDescriptor);
+                    serverServiceNames.add(serviceName);
+                }
+            }
+
+            // Replace the index if the underlying mutable services have changed. Check both the file
+            // descriptors and the service names, because one file descriptor can define multiple
+            // services.
+            FileDescriptorIndex mutableServicesIndex = index.getMutableServicesIndex();
+            if (!mutableServicesIndex.getServiceFileDescriptors().equals(serverFileDescriptors)
+                    || !mutableServicesIndex.getServiceNames().equals(serverServiceNames)) {
+                index = new ServerReflectionIndex(server.getImmutableServices(), serverMutableServices);
+                serverReflectionIndexes.put(server, index);
+            }
+
+            return index;
+        }
     }
 
-    @Nullable
-    private FileDescriptor getFileDescriptorByName(String name) {
-      return fileDescriptorsByName.get(name);
+    @Override
+    public StreamObserver<ServerReflectionRequest> serverReflectionInfo(final StreamObserver<ServerReflectionResponse> responseObserver) {
+        final ServerCallStreamObserver<ServerReflectionResponse> serverCallStreamObserver = (ServerCallStreamObserver<ServerReflectionResponse>) responseObserver;
+
+        // 创建请求处理器
+        ProtoReflectionStreamObserver requestObserver = new ProtoReflectionStreamObserver(getRefreshedIndex(), serverCallStreamObserver);
+
+        // 设置 Ready 事件回调
+        serverCallStreamObserver.setOnReadyHandler(requestObserver);
+        // 切换到手动流控，除非显式调用 request，否则不会有消息投递
+        serverCallStreamObserver.disableAutoRequest();
+        // 要求客户端发送一个消息
+        serverCallStreamObserver.request(1);
+        return requestObserver;
     }
 
-    @Nullable
-    private FileDescriptor getFileDescriptorBySymbol(String symbol) {
-      return fileDescriptorsBySymbol.get(symbol);
+    private static class ProtoReflectionStreamObserver implements Runnable, StreamObserver<ServerReflectionRequest> {
+
+        // 缓存 Server 端服务，允许通过服务名称、符号、类型和属性扩展数字查找文件描述
+        private final ServerReflectionIndex serverReflectionIndex;
+
+        // 响应观察器
+        private final ServerCallStreamObserver<ServerReflectionResponse> serverCallStreamObserver;
+
+        private boolean closeAfterSend = false;
+        private ServerReflectionRequest request;
+
+        ProtoReflectionStreamObserver(ServerReflectionIndex serverReflectionIndex,
+                                      ServerCallStreamObserver<ServerReflectionResponse> serverCallStreamObserver) {
+            this.serverReflectionIndex = serverReflectionIndex;
+            this.serverCallStreamObserver = checkNotNull(serverCallStreamObserver, "observer");
+        }
+
+        @Override
+        public void run() {
+            if (request != null) {
+                // 处理反射请求
+                handleReflectionRequest();
+            }
+        }
+
+        /**
+         * 处理下一个请求
+         */
+        @Override
+        public void onNext(ServerReflectionRequest request) {
+            checkState(this.request == null);
+            this.request = checkNotNull(request);
+            handleReflectionRequest();
+        }
+
+        /**
+         * 处理反射请求
+         */
+        private void handleReflectionRequest() {
+            if (serverCallStreamObserver.isReady()) {
+                switch (request.getMessageRequestCase()) {
+                    case FILE_BY_FILENAME:
+                        getFileByName(request);
+                        break;
+                    case FILE_CONTAINING_SYMBOL:
+                        getFileContainingSymbol(request);
+                        break;
+                    case FILE_CONTAINING_EXTENSION:
+                        getFileByExtension(request);
+                        break;
+                    case ALL_EXTENSION_NUMBERS_OF_TYPE:
+                        getAllExtensions(request);
+                        break;
+                    case LIST_SERVICES:
+                        listServices(request);
+                        break;
+                    default:
+                        sendErrorResponse(request, Status.Code.UNIMPLEMENTED,
+                                "not implemented " + request.getMessageRequestCase());
+                }
+                request = null;
+                // 如果在发送完成后关闭，则关闭流，否则要求下一个请求
+                if (closeAfterSend) {
+                    serverCallStreamObserver.onCompleted();
+                } else {
+                    serverCallStreamObserver.request(1);
+                }
+            }
+        }
+
+        /**
+         * 完成请求
+         */
+        @Override
+        public void onCompleted() {
+            if (request != null) {
+                closeAfterSend = true;
+            } else {
+                serverCallStreamObserver.onCompleted();
+            }
+        }
+
+        @Override
+        public void onError(Throwable cause) {
+            serverCallStreamObserver.onError(cause);
+        }
+
+        /**
+         * 根据文件名称获取服务
+         */
+        private void getFileByName(ServerReflectionRequest request) {
+            String name = request.getFileByFilename();
+            FileDescriptor fd = serverReflectionIndex.getFileDescriptorByName(name);
+            if (fd != null) {
+                // 创建响应对象发送
+                serverCallStreamObserver.onNext(createServerReflectionResponse(request, fd));
+            } else {
+                sendErrorResponse(request, Status.Code.NOT_FOUND, "File not found.");
+            }
+        }
+
+        /**
+         * 根据服务、方法的描述文件获取响应
+         */
+        private void getFileContainingSymbol(ServerReflectionRequest request) {
+            String symbol = request.getFileContainingSymbol();
+            FileDescriptor fd = serverReflectionIndex.getFileDescriptorBySymbol(symbol);
+            if (fd != null) {
+                serverCallStreamObserver.onNext(createServerReflectionResponse(request, fd));
+            } else {
+                sendErrorResponse(request, Status.Code.NOT_FOUND, "Symbol not found.");
+            }
+        }
+
+        /**
+         * 根据扩展类型获取响应
+         */
+        private void getFileByExtension(ServerReflectionRequest request) {
+            ExtensionRequest extensionRequest = request.getFileContainingExtension();
+            String type = extensionRequest.getContainingType();
+            int extension = extensionRequest.getExtensionNumber();
+            FileDescriptor fd = serverReflectionIndex.getFileDescriptorByExtensionAndNumber(type, extension);
+            if (fd != null) {
+                serverCallStreamObserver.onNext(createServerReflectionResponse(request, fd));
+            } else {
+                sendErrorResponse(request, Status.Code.NOT_FOUND, "Extension not found.");
+            }
+        }
+
+        /**
+         * 根据属性类型序号获取响应
+         */
+        private void getAllExtensions(ServerReflectionRequest request) {
+            String type = request.getAllExtensionNumbersOfType();
+            Set<Integer> extensions = serverReflectionIndex.getExtensionNumbersOfType(type);
+            if (extensions != null) {
+                ExtensionNumberResponse.Builder builder = ExtensionNumberResponse.newBuilder()
+                                                                                 .setBaseTypeName(type)
+                                                                                 .addAllExtensionNumber(extensions);
+                serverCallStreamObserver.onNext(ServerReflectionResponse.newBuilder()
+                                                                        .setValidHost(request.getHost())
+                                                                        .setOriginalRequest(request)
+                                                                        .setAllExtensionNumbersResponse(builder)
+                                                                        .build());
+            } else {
+                sendErrorResponse(request, Status.Code.NOT_FOUND, "Type not found.");
+            }
+        }
+
+        /**
+         * 获取所有服务
+         */
+        private void listServices(ServerReflectionRequest request) {
+            ListServiceResponse.Builder builder = ListServiceResponse.newBuilder();
+            for (String serviceName : serverReflectionIndex.getServiceNames()) {
+                builder.addService(ServiceResponse.newBuilder().setName(serviceName));
+            }
+            serverCallStreamObserver.onNext(ServerReflectionResponse.newBuilder()
+                                                                    .setValidHost(request.getHost())
+                                                                    .setOriginalRequest(request)
+                                                                    .setListServicesResponse(builder)
+                                                                    .build());
+        }
+
+        /**
+         * 发送错误响应
+         */
+        private void sendErrorResponse(ServerReflectionRequest request,
+                                       Status.Code code,
+                                       String message) {
+            ServerReflectionResponse response = ServerReflectionResponse.newBuilder()
+                                                                        .setValidHost(request.getHost())
+                                                                        .setOriginalRequest(request)
+                                                                        .setErrorResponse(ErrorResponse.newBuilder()
+                                                                                                       .setErrorCode(code.value())
+                                                                                                       .setErrorMessage(message))
+                                                                        .build();
+            serverCallStreamObserver.onNext(response);
+        }
+
+        /**
+         * 创建反射响应
+         */
+        private ServerReflectionResponse createServerReflectionResponse(ServerReflectionRequest request, FileDescriptor fd) {
+
+            FileDescriptorResponse.Builder fdRBuilder = FileDescriptorResponse.newBuilder();
+
+            Set<String> seenFiles = new HashSet<>();
+            Queue<FileDescriptor> frontier = new ArrayDeque<>();
+            seenFiles.add(fd.getName());
+            frontier.add(fd);
+
+            // 将文件描述添加到队列中
+            while (!frontier.isEmpty()) {
+                FileDescriptor nextFd = frontier.remove();
+                fdRBuilder.addFileDescriptorProto(nextFd.toProto().toByteString());
+                for (FileDescriptor dependencyFd : nextFd.getDependencies()) {
+                    if (!seenFiles.contains(dependencyFd.getName())) {
+                        seenFiles.add(dependencyFd.getName());
+                        frontier.add(dependencyFd);
+                    }
+                }
+            }
+            return ServerReflectionResponse.newBuilder()
+                                           .setValidHost(request.getHost())
+                                           .setOriginalRequest(request)
+                                           .setFileDescriptorResponse(fdRBuilder)
+                                           .build();
+        }
     }
 
-    @Nullable
-    private FileDescriptor getFileDescriptorByExtensionAndNumber(String type, int number) {
-      if (fileDescriptorsByExtensionAndNumber.containsKey(type)) {
-        return fileDescriptorsByExtensionAndNumber.get(type).get(number);
-      }
-      return null;
+    /**
+     * Indexes the server's services and allows lookups of file descriptors by filename, symbol, type,
+     * and extension number.
+     * 缓存 Server 端服务，允许通过服务名称、符号、类型和属性扩展数字查找文件描述
+     *
+     * <p>Internally, this stores separate indices for the immutable and mutable services. When
+     * queried, the immutable service index is checked for a matching value. Only if there is no match
+     * in the immutable service index are the mutable services checked.
+     * 可变和不可变的服务是单独存储的，当查询时，不可变的服务检查匹配值，当没有匹配的不可变服务时会从可变的服务中查找
+     */
+    private static final class ServerReflectionIndex {
+
+        // 不可变方法集合
+        private final FileDescriptorIndex immutableServicesIndex;
+
+        // 可变方法集合
+        private final FileDescriptorIndex mutableServicesIndex;
+
+        public ServerReflectionIndex(List<ServerServiceDefinition> immutableServices,
+                                     List<ServerServiceDefinition> mutableServices) {
+            immutableServicesIndex = new FileDescriptorIndex(immutableServices);
+            mutableServicesIndex = new FileDescriptorIndex(mutableServices);
+        }
+
+        private FileDescriptorIndex getMutableServicesIndex() {
+            return mutableServicesIndex;
+        }
+
+        private Set<String> getServiceNames() {
+            Set<String> immutableServiceNames = immutableServicesIndex.getServiceNames();
+            Set<String> mutableServiceNames = mutableServicesIndex.getServiceNames();
+            Set<String> serviceNames = new HashSet<>(immutableServiceNames.size() + mutableServiceNames.size());
+            serviceNames.addAll(immutableServiceNames);
+            serviceNames.addAll(mutableServiceNames);
+            return serviceNames;
+        }
+
+        @Nullable
+        private FileDescriptor getFileDescriptorByName(String name) {
+            FileDescriptor fd = immutableServicesIndex.getFileDescriptorByName(name);
+            if (fd == null) {
+                fd = mutableServicesIndex.getFileDescriptorByName(name);
+            }
+            return fd;
+        }
+
+        @Nullable
+        private FileDescriptor getFileDescriptorBySymbol(String symbol) {
+            FileDescriptor fd = immutableServicesIndex.getFileDescriptorBySymbol(symbol);
+            if (fd == null) {
+                fd = mutableServicesIndex.getFileDescriptorBySymbol(symbol);
+            }
+            return fd;
+        }
+
+        @Nullable
+        private FileDescriptor getFileDescriptorByExtensionAndNumber(String type, int extension) {
+            FileDescriptor fd = immutableServicesIndex.getFileDescriptorByExtensionAndNumber(type, extension);
+            if (fd == null) {
+                fd = mutableServicesIndex.getFileDescriptorByExtensionAndNumber(type, extension);
+            }
+            return fd;
+        }
+
+        @Nullable
+        private Set<Integer> getExtensionNumbersOfType(String type) {
+            Set<Integer> extensionNumbers = immutableServicesIndex.getExtensionNumbersOfType(type);
+            if (extensionNumbers == null) {
+                extensionNumbers = mutableServicesIndex.getExtensionNumbersOfType(type);
+            }
+            return extensionNumbers;
+        }
     }
 
-    @Nullable
-    private Set<Integer> getExtensionNumbersOfType(String type) {
-      if (fileDescriptorsByExtensionAndNumber.containsKey(type)) {
-        return Collections.unmodifiableSet(fileDescriptorsByExtensionAndNumber.get(type).keySet());
-      }
-      return null;
-    }
+    /**
+     * Provides a set of methods for answering reflection queries for the file descriptors underlying
+     * a set of services. Used by {@link ServerReflectionIndex} to separately index immutable and
+     * mutable services.
+     * 为反射服务提供一组服务和方法的查询，用于 ServerReflectionIndex 区分可变和不可变的服务
+     */
+    private static final class FileDescriptorIndex {
 
-    private void processFileDescriptor(FileDescriptor fd) {
-      String fdName = fd.getName();
-      checkState(!fileDescriptorsByName.containsKey(fdName), "File name already used: %s", fdName);
-      fileDescriptorsByName.put(fdName, fd);
-      for (ServiceDescriptor service : fd.getServices()) {
-        processService(service, fd);
-      }
-      for (Descriptor type : fd.getMessageTypes()) {
-        processType(type, fd);
-      }
-      for (FieldDescriptor extension : fd.getExtensions()) {
-        processExtension(extension, fd);
-      }
-    }
+        // 服务名称集合
+        private final Set<String> serviceNames = new HashSet<>();
 
-    private void processService(ServiceDescriptor service, FileDescriptor fd) {
-      String serviceName = service.getFullName();
-      checkState(
-          !fileDescriptorsBySymbol.containsKey(serviceName),
-          "Service already defined: %s",
-          serviceName);
-      fileDescriptorsBySymbol.put(serviceName, fd);
-      for (MethodDescriptor method : service.getMethods()) {
-        String methodName = method.getFullName();
-        checkState(
-            !fileDescriptorsBySymbol.containsKey(methodName),
-            "Method already defined: %s",
-            methodName);
-        fileDescriptorsBySymbol.put(methodName, fd);
-      }
-    }
+        // 服务描述集合
+        private final Set<FileDescriptor> serviceFileDescriptors = new HashSet<>();
 
-    private void processType(Descriptor type, FileDescriptor fd) {
-      String typeName = type.getFullName();
-      checkState(
-          !fileDescriptorsBySymbol.containsKey(typeName), "Type already defined: %s", typeName);
-      fileDescriptorsBySymbol.put(typeName, fd);
-      for (FieldDescriptor extension : type.getExtensions()) {
-        processExtension(extension, fd);
-      }
-      for (Descriptor nestedType : type.getNestedTypes()) {
-        processType(nestedType, fd);
-      }
-    }
+        // 描述文件集合
+        private final Map<String, FileDescriptor> fileDescriptorsByName = new HashMap<>();
 
-    private void processExtension(FieldDescriptor extension, FileDescriptor fd) {
-      String extensionName = extension.getContainingType().getFullName();
-      int extensionNumber = extension.getNumber();
-      if (!fileDescriptorsByExtensionAndNumber.containsKey(extensionName)) {
-        fileDescriptorsByExtensionAndNumber.put(
-            extensionName, new HashMap<Integer, FileDescriptor>());
-      }
-      checkState(
-          !fileDescriptorsByExtensionAndNumber.get(extensionName).containsKey(extensionNumber),
-          "Extension name and number already defined: %s, %s",
-          extensionName,
-          extensionNumber);
-      fileDescriptorsByExtensionAndNumber.get(extensionName).put(extensionNumber, fd);
+        // 服务方法的描述文件集合
+        private final Map<String, FileDescriptor> fileDescriptorsBySymbol = new HashMap<>();
+
+        // 服务扩展类型和序号集合
+        private final Map<String, Map<Integer, FileDescriptor>> fileDescriptorsByExtensionAndNumber = new HashMap<>();
+
+        FileDescriptorIndex(List<ServerServiceDefinition> services) {
+            Queue<FileDescriptor> fileDescriptorsToProcess = new ArrayDeque<>();
+            Set<String> seenFiles = new HashSet<>();
+
+            // 遍历服务
+            for (ServerServiceDefinition service : services) {
+                io.grpc.ServiceDescriptor serviceDescriptor = service.getServiceDescriptor();
+                if (serviceDescriptor.getSchemaDescriptor() instanceof ProtoFileDescriptorSupplier) {
+                    FileDescriptor fileDescriptor = ((ProtoFileDescriptorSupplier) serviceDescriptor.getSchemaDescriptor()).getFileDescriptor();
+                    // 服务名称
+                    String serviceName = serviceDescriptor.getName();
+                    checkState(!serviceNames.contains(serviceName), "Service already defined: %s", serviceName);
+                    // 添加到服务描述中
+                    serviceFileDescriptors.add(fileDescriptor);
+                    serviceNames.add(serviceName);
+                    if (!seenFiles.contains(fileDescriptor.getName())) {
+                        seenFiles.add(fileDescriptor.getName());
+                        fileDescriptorsToProcess.add(fileDescriptor);
+                    }
+                }
+            }
+
+            while (!fileDescriptorsToProcess.isEmpty()) {
+                FileDescriptor currentFd = fileDescriptorsToProcess.remove();
+                processFileDescriptor(currentFd);
+                for (FileDescriptor dependencyFd : currentFd.getDependencies()) {
+                    if (!seenFiles.contains(dependencyFd.getName())) {
+                        seenFiles.add(dependencyFd.getName());
+                        fileDescriptorsToProcess.add(dependencyFd);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Returns the file descriptors for the indexed services, but not their dependencies. This is
+         * used to check if the server's mutable services have changed.
+         */
+        private Set<FileDescriptor> getServiceFileDescriptors() {
+            return Collections.unmodifiableSet(serviceFileDescriptors);
+        }
+
+        private Set<String> getServiceNames() {
+            return Collections.unmodifiableSet(serviceNames);
+        }
+
+        @Nullable
+        private FileDescriptor getFileDescriptorByName(String name) {
+            return fileDescriptorsByName.get(name);
+        }
+
+        @Nullable
+        private FileDescriptor getFileDescriptorBySymbol(String symbol) {
+            return fileDescriptorsBySymbol.get(symbol);
+        }
+
+        @Nullable
+        private FileDescriptor getFileDescriptorByExtensionAndNumber(String type, int number) {
+            if (fileDescriptorsByExtensionAndNumber.containsKey(type)) {
+                return fileDescriptorsByExtensionAndNumber.get(type).get(number);
+            }
+            return null;
+        }
+
+        @Nullable
+        private Set<Integer> getExtensionNumbersOfType(String type) {
+            if (fileDescriptorsByExtensionAndNumber.containsKey(type)) {
+                return Collections.unmodifiableSet(fileDescriptorsByExtensionAndNumber.get(type).keySet());
+            }
+            return null;
+        }
+
+        /**
+         * 处理文件描述
+         */
+        private void processFileDescriptor(FileDescriptor fd) {
+            String fdName = fd.getName();
+            checkState(!fileDescriptorsByName.containsKey(fdName), "File name already used: %s", fdName);
+            fileDescriptorsByName.put(fdName, fd);
+            // 遍历处理服务
+            for (ServiceDescriptor service : fd.getServices()) {
+                processService(service, fd);
+            }
+            // 遍历处理类型
+            for (Descriptor type : fd.getMessageTypes()) {
+                processType(type, fd);
+            }
+            // 遍历处理属性扩展
+            for (FieldDescriptor extension : fd.getExtensions()) {
+                processExtension(extension, fd);
+            }
+        }
+
+        /**
+         * 处理服务
+         */
+        private void processService(ServiceDescriptor service, FileDescriptor fd) {
+            String serviceName = service.getFullName();
+            checkState(!fileDescriptorsBySymbol.containsKey(serviceName), "Service already defined: %s", serviceName);
+            fileDescriptorsBySymbol.put(serviceName, fd);
+
+            // 遍历方法
+            for (MethodDescriptor method : service.getMethods()) {
+                String methodName = method.getFullName();
+                checkState(!fileDescriptorsBySymbol.containsKey(methodName), "Method already defined: %s", methodName);
+                fileDescriptorsBySymbol.put(methodName, fd);
+            }
+        }
+
+        /**
+         * 处理类型
+         */
+        private void processType(Descriptor type, FileDescriptor fd) {
+            String typeName = type.getFullName();
+            checkState(!fileDescriptorsBySymbol.containsKey(typeName), "Type already defined: %s", typeName);
+
+            fileDescriptorsBySymbol.put(typeName, fd);
+            // 处理属性扩展
+            for (FieldDescriptor extension : type.getExtensions()) {
+                processExtension(extension, fd);
+            }
+            // 处理类型
+            for (Descriptor nestedType : type.getNestedTypes()) {
+                processType(nestedType, fd);
+            }
+        }
+
+        /**
+         * 处理属性扩展
+         */
+        private void processExtension(FieldDescriptor extension, FileDescriptor fd) {
+            String extensionName = extension.getContainingType().getFullName();
+            int extensionNumber = extension.getNumber();
+            if (!fileDescriptorsByExtensionAndNumber.containsKey(extensionName)) {
+                fileDescriptorsByExtensionAndNumber.put(extensionName, new HashMap<Integer, FileDescriptor>());
+            }
+            checkState(!fileDescriptorsByExtensionAndNumber.get(extensionName).containsKey(extensionNumber),
+                    "Extension name and number already defined: %s, %s",
+                    extensionName,
+                    extensionNumber);
+            fileDescriptorsByExtensionAndNumber.get(extensionName).put(extensionNumber, fd);
+        }
     }
-  }
 }
