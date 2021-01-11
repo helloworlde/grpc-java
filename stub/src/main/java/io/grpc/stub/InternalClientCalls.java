@@ -22,45 +22,57 @@ import io.grpc.Internal;
 /**
  * Internal {@link ClientCalls} accessor.  This is intended for usage internal to the gRPC
  * team.  If you *really* think you need to use this, contact the gRPC team first.
+ * <p>
+ * 用于内部的 ClientCall
  */
 @Internal
 public final class InternalClientCalls {
 
-  /** Internal accessor for {@link ClientCalls#STUB_TYPE_OPTION}. */
-  public static CallOptions.Key<ClientCalls.StubType> getStubTypeOption() {
-    return ClientCalls.STUB_TYPE_OPTION;
-  }
-
-  /** Returns {@link StubType} from call options. */
-  public static StubType getStubType(CallOptions callOptions) {
-    return StubType.of(callOptions.getOption(ClientCalls.STUB_TYPE_OPTION));
-  }
-
-  /** Returns {@link CallOptions} with the corresponding {@link ClientCalls.StubType} set. */
-  public static CallOptions setStubType(CallOptions callOptions, StubType stubType) {
-    return callOptions.withOption(ClientCalls.STUB_TYPE_OPTION, stubType.internalType);
-  }
-
-  /** Companion enum for internal enum {@link ClientCalls.StubType}. */
-  public enum StubType {
-    BLOCKING(ClientCalls.StubType.BLOCKING),
-    ASYNC(ClientCalls.StubType.ASYNC),
-    FUTURE(ClientCalls.StubType.FUTURE);
-
-    private final ClientCalls.StubType internalType;
-
-    StubType(ClientCalls.StubType internalType) {
-      this.internalType = internalType;
+    /**
+     * Internal accessor for {@link ClientCalls#STUB_TYPE_OPTION}.
+     */
+    public static CallOptions.Key<ClientCalls.StubType> getStubTypeOption() {
+        return ClientCalls.STUB_TYPE_OPTION;
     }
 
-    /** Returns companion enum value of passed internal enum equivalent. */
-    public static StubType of(ClientCalls.StubType internal) {
-      for (StubType value : StubType.values()) {
-        if (value.internalType == internal) {
-          return value;
+    /**
+     * Returns {@link StubType} from call options.
+     */
+    public static StubType getStubType(CallOptions callOptions) {
+        return StubType.of(callOptions.getOption(ClientCalls.STUB_TYPE_OPTION));
+    }
+
+    /**
+     * Returns {@link CallOptions} with the corresponding {@link ClientCalls.StubType} set.
+     */
+    public static CallOptions setStubType(CallOptions callOptions, StubType stubType) {
+        return callOptions.withOption(ClientCalls.STUB_TYPE_OPTION, stubType.internalType);
+    }
+
+    /**
+     * Companion enum for internal enum {@link ClientCalls.StubType}.
+     */
+    public enum StubType {
+        BLOCKING(ClientCalls.StubType.BLOCKING),
+        ASYNC(ClientCalls.StubType.ASYNC),
+        FUTURE(ClientCalls.StubType.FUTURE);
+
+        private final ClientCalls.StubType internalType;
+
+        StubType(ClientCalls.StubType internalType) {
+            this.internalType = internalType;
         }
-      }
-      throw new AssertionError("Unknown StubType: " + internal.name());
+
+        /**
+         * Returns companion enum value of passed internal enum equivalent.
+         */
+        public static StubType of(ClientCalls.StubType internal) {
+            for (StubType value : StubType.values()) {
+                if (value.internalType == internal) {
+                    return value;
+                }
+            }
+            throw new AssertionError("Unknown StubType: " + internal.name());
+        }
     }
-  }
 }
