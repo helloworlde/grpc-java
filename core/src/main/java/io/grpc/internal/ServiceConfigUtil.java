@@ -43,22 +43,25 @@ import static com.google.common.base.Verify.verify;
 
 /**
  * Helper utility to work with service configs.
+ * 用于服务配置的工具
  *
  * <p>This class contains helper methods to parse service config JSON values into Java types.
+ * 可以将服务配置从 JSON 转为 Java 类型
  */
 public final class ServiceConfigUtil {
 
-  private ServiceConfigUtil() {}
-
-  /**
-   * 从服务配置中获取健康检查配置
-   * Fetches the health-checked service config from service config. {@code null} if can't find one.
-   */
-  @Nullable
-  public static Map<String, ?> getHealthCheckedService(@Nullable  Map<String, ?> serviceConfig) {
-    if (serviceConfig == null) {
-      return null;
+    private ServiceConfigUtil() {
     }
+
+    /**
+     * 从服务配置中获取健康检查配置
+     * Fetches the health-checked service config from service config. {@code null} if can't find one.
+     */
+    @Nullable
+    public static Map<String, ?> getHealthCheckedService(@Nullable Map<String, ?> serviceConfig) {
+        if (serviceConfig == null) {
+            return null;
+        }
 
     /* schema as follows
     {
@@ -68,35 +71,35 @@ public final class ServiceConfigUtil {
       }
     }
     */
-    return JsonUtil.getObject(serviceConfig, "healthCheckConfig");
-  }
-
-  /**
-   * Fetches the health-checked service name from health-checked service config. {@code null} if
-   * can't find one.
-   * 从健康检查配置中获取服务名称，如果没有则返回 null
-   */
-  @Nullable
-  public static String getHealthCheckedServiceName(@Nullable Map<String, ?> healthCheckedServiceConfig) {
-    if (healthCheckedServiceConfig == null) {
-      return null;
+        return JsonUtil.getObject(serviceConfig, "healthCheckConfig");
     }
 
-    return JsonUtil.getString(healthCheckedServiceConfig, "serviceName");
-  }
+    /**
+     * Fetches the health-checked service name from health-checked service config. {@code null} if
+     * can't find one.
+     * 从健康检查配置中获取服务名称，如果没有则返回 null
+     */
+    @Nullable
+    public static String getHealthCheckedServiceName(@Nullable Map<String, ?> healthCheckedServiceConfig) {
+        if (healthCheckedServiceConfig == null) {
+            return null;
+        }
 
-  /**
-   * 解析节流策略
-   *
-   * @param serviceConfig
-   * @return
-   */
-  @Nullable
-  static Throttle getThrottlePolicy(@Nullable Map<String, ?> serviceConfig) {
-    // 如果配置不存在，则返回 null
-    if (serviceConfig == null) {
-      return null;
+        return JsonUtil.getString(healthCheckedServiceConfig, "serviceName");
     }
+
+    /**
+     * 解析节流策略
+     *
+     * @param serviceConfig
+     * @return
+     */
+    @Nullable
+    static Throttle getThrottlePolicy(@Nullable Map<String, ?> serviceConfig) {
+        // 如果配置不存在，则返回 null
+        if (serviceConfig == null) {
+            return null;
+        }
 
     /* schema as follows
     {
@@ -117,184 +120,184 @@ public final class ServiceConfigUtil {
     }
     */
 
-    // 从 Map 中获取节流策略
-    Map<String, ?> throttling = JsonUtil.getObject(serviceConfig, "retryThrottling");
-    if (throttling == null) {
-      return null;
-    }
-
-    // TODO(dapengzhang0): check if this is null.
-    // 获取 maxTokens 和 tokenRatio，构建节流配置对象
-    float maxTokens = JsonUtil.getNumber(throttling, "maxTokens").floatValue();
-    float tokenRatio = JsonUtil.getNumber(throttling, "tokenRatio").floatValue();
-    checkState(maxTokens > 0f, "maxToken should be greater than zero");
-    checkState(tokenRatio > 0f, "tokenRatio should be greater than zero");
-    return new Throttle(maxTokens, tokenRatio);
-  }
-
-  @Nullable
-  static Integer getMaxAttemptsFromRetryPolicy(Map<String, ?> retryPolicy) {
-    return JsonUtil.getNumberAsInteger(retryPolicy, "maxAttempts");
-  }
-
-  @Nullable
-  static Long getInitialBackoffNanosFromRetryPolicy(Map<String, ?> retryPolicy) {
-    return JsonUtil.getStringAsDuration(retryPolicy, "initialBackoff");
-  }
-
-  @Nullable
-  static Long getMaxBackoffNanosFromRetryPolicy(Map<String, ?> retryPolicy) {
-    return JsonUtil.getStringAsDuration(retryPolicy, "maxBackoff");
-  }
-
-  @Nullable
-  static Double getBackoffMultiplierFromRetryPolicy(Map<String, ?> retryPolicy) {
-    return JsonUtil.getNumber(retryPolicy, "backoffMultiplier");
-  }
-
-  private static Set<Status.Code> getListOfStatusCodesAsSet(Map<String, ?> obj, String key) {
-    List<?> statuses = JsonUtil.getList(obj, key);
-    if (statuses == null) {
-      return null;
-    }
-    return getStatusCodesFromList(statuses);
-  }
-
-  private static Set<Status.Code> getStatusCodesFromList(List<?> statuses) {
-    EnumSet<Status.Code> codes = EnumSet.noneOf(Status.Code.class);
-    for (Object status : statuses) {
-      Status.Code code;
-      if (status instanceof Double) {
-        Double statusD = (Double) status;
-        int codeValue = statusD.intValue();
-        verify((double) codeValue == statusD, "Status code %s is not integral", status);
-        code = Status.fromCodeValue(codeValue).getCode();
-        verify(code.value() == statusD.intValue(), "Status code %s is not valid", status);
-      } else if (status instanceof String) {
-        try {
-          code = Status.Code.valueOf((String) status);
-        } catch (IllegalArgumentException iae) {
-          throw new VerifyException("Status code " + status + " is not valid", iae);
+        // 从 Map 中获取节流策略
+        Map<String, ?> throttling = JsonUtil.getObject(serviceConfig, "retryThrottling");
+        if (throttling == null) {
+            return null;
         }
-      } else {
-        throw new VerifyException("Can not convert status code " + status + " to Status.Code, because its type is " + status.getClass());
-      }
-      codes.add(code);
+
+        // TODO(dapengzhang0): check if this is null.
+        // 获取 maxTokens 和 tokenRatio，构建节流配置对象
+        float maxTokens = JsonUtil.getNumber(throttling, "maxTokens").floatValue();
+        float tokenRatio = JsonUtil.getNumber(throttling, "tokenRatio").floatValue();
+        checkState(maxTokens > 0f, "maxToken should be greater than zero");
+        checkState(tokenRatio > 0f, "tokenRatio should be greater than zero");
+        return new Throttle(maxTokens, tokenRatio);
     }
-    return Collections.unmodifiableSet(codes);
-  }
 
-  // 获取可以重试的状态码
-  static Set<Status.Code> getRetryableStatusCodesFromRetryPolicy(Map<String, ?> retryPolicy) {
-    String retryableStatusCodesKey = "retryableStatusCodes";
-    Set<Status.Code> codes = getListOfStatusCodesAsSet(retryPolicy, retryableStatusCodesKey);
-    verify(codes != null, "%s is required in retry policy", retryableStatusCodesKey);
-    verify(!codes.isEmpty(), "%s must not be empty", retryableStatusCodesKey);
-    verify(!codes.contains(Status.Code.OK), "%s must not contain OK", retryableStatusCodesKey);
-    return codes;
-  }
-
-  @Nullable
-  static Integer getMaxAttemptsFromHedgingPolicy(Map<String, ?> hedgingPolicy) {
-    return JsonUtil.getNumberAsInteger(hedgingPolicy, "maxAttempts");
-  }
-
-  @Nullable
-  static Long getHedgingDelayNanosFromHedgingPolicy(Map<String, ?> hedgingPolicy) {
-    return JsonUtil.getStringAsDuration(hedgingPolicy, "hedgingDelay");
-  }
-
-  /**
-   * 获取对冲状态码
-   *
-   * @param hedgingPolicy
-   * @return
-   */
-  static Set<Status.Code> getNonFatalStatusCodesFromHedgingPolicy(Map<String, ?> hedgingPolicy) {
-    String nonFatalStatusCodesKey = "nonFatalStatusCodes";
-    Set<Status.Code> codes = getListOfStatusCodesAsSet(hedgingPolicy, nonFatalStatusCodesKey);
-    if (codes == null) {
-      return Collections.unmodifiableSet(EnumSet.noneOf(Status.Code.class));
+    @Nullable
+    static Integer getMaxAttemptsFromRetryPolicy(Map<String, ?> retryPolicy) {
+        return JsonUtil.getNumberAsInteger(retryPolicy, "maxAttempts");
     }
-    verify(!codes.contains(Status.Code.OK), "%s must not contain OK", nonFatalStatusCodesKey);
-    return codes;
-  }
 
-  @Nullable
-  static String getServiceFromName(Map<String, ?> name) {
-    return JsonUtil.getString(name, "service");
-  }
+    @Nullable
+    static Long getInitialBackoffNanosFromRetryPolicy(Map<String, ?> retryPolicy) {
+        return JsonUtil.getStringAsDuration(retryPolicy, "initialBackoff");
+    }
 
-  @Nullable
-  static String getMethodFromName(Map<String, ?> name) {
-    return JsonUtil.getString(name, "method");
-  }
+    @Nullable
+    static Long getMaxBackoffNanosFromRetryPolicy(Map<String, ?> retryPolicy) {
+        return JsonUtil.getStringAsDuration(retryPolicy, "maxBackoff");
+    }
 
-  /**
-   * 获取方法的重试策略
-   *
-   * @param methodConfig
-   * @return
-   */
-  @Nullable
-  static Map<String, ?> getRetryPolicyFromMethodConfig(Map<String, ?> methodConfig) {
-    return JsonUtil.getObject(methodConfig, "retryPolicy");
-  }
+    @Nullable
+    static Double getBackoffMultiplierFromRetryPolicy(Map<String, ?> retryPolicy) {
+        return JsonUtil.getNumber(retryPolicy, "backoffMultiplier");
+    }
 
-  @Nullable
-  static Map<String, ?> getHedgingPolicyFromMethodConfig(Map<String, ?> methodConfig) {
-    return JsonUtil.getObject(methodConfig, "hedgingPolicy");
-  }
+    private static Set<Status.Code> getListOfStatusCodesAsSet(Map<String, ?> obj, String key) {
+        List<?> statuses = JsonUtil.getList(obj, key);
+        if (statuses == null) {
+            return null;
+        }
+        return getStatusCodesFromList(statuses);
+    }
 
-  @Nullable
-  static List<Map<String, ?>> getNameListFromMethodConfig(
-      Map<String, ?> methodConfig) {
-    return JsonUtil.getListOfObjects(methodConfig, "name");
-  }
+    private static Set<Status.Code> getStatusCodesFromList(List<?> statuses) {
+        EnumSet<Status.Code> codes = EnumSet.noneOf(Status.Code.class);
+        for (Object status : statuses) {
+            Status.Code code;
+            if (status instanceof Double) {
+                Double statusD = (Double) status;
+                int codeValue = statusD.intValue();
+                verify((double) codeValue == statusD, "Status code %s is not integral", status);
+                code = Status.fromCodeValue(codeValue).getCode();
+                verify(code.value() == statusD.intValue(), "Status code %s is not valid", status);
+            } else if (status instanceof String) {
+                try {
+                    code = Status.Code.valueOf((String) status);
+                } catch (IllegalArgumentException iae) {
+                    throw new VerifyException("Status code " + status + " is not valid", iae);
+                }
+            } else {
+                throw new VerifyException("Can not convert status code " + status + " to Status.Code, because its type is " + status.getClass());
+            }
+            codes.add(code);
+        }
+        return Collections.unmodifiableSet(codes);
+    }
 
-  /**
-   * 返回方法的超时时间
-   * Returns the number of nanoseconds of timeout for the given method config.
-   *
-   * @return duration nanoseconds, or {@code null} if it isn't present.
-   */
-  @Nullable
-  static Long getTimeoutFromMethodConfig(Map<String, ?> methodConfig) {
-    return JsonUtil.getStringAsDuration(methodConfig, "timeout");
-  }
+    // 获取可以重试的状态码
+    static Set<Status.Code> getRetryableStatusCodesFromRetryPolicy(Map<String, ?> retryPolicy) {
+        String retryableStatusCodesKey = "retryableStatusCodes";
+        Set<Status.Code> codes = getListOfStatusCodesAsSet(retryPolicy, retryableStatusCodesKey);
+        verify(codes != null, "%s is required in retry policy", retryableStatusCodesKey);
+        verify(!codes.isEmpty(), "%s must not be empty", retryableStatusCodesKey);
+        verify(!codes.contains(Status.Code.OK), "%s must not contain OK", retryableStatusCodesKey);
+        return codes;
+    }
 
-  @Nullable
-  static Boolean getWaitForReadyFromMethodConfig(Map<String, ?> methodConfig) {
-    return JsonUtil.getBoolean(methodConfig, "waitForReady");
-  }
+    @Nullable
+    static Integer getMaxAttemptsFromHedgingPolicy(Map<String, ?> hedgingPolicy) {
+        return JsonUtil.getNumberAsInteger(hedgingPolicy, "maxAttempts");
+    }
 
-  @Nullable
-  static Integer getMaxRequestMessageBytesFromMethodConfig(Map<String, ?> methodConfig) {
-    return JsonUtil.getNumberAsInteger(methodConfig, "maxRequestMessageBytes");
-  }
+    @Nullable
+    static Long getHedgingDelayNanosFromHedgingPolicy(Map<String, ?> hedgingPolicy) {
+        return JsonUtil.getStringAsDuration(hedgingPolicy, "hedgingDelay");
+    }
 
-  @Nullable
-  static Integer getMaxResponseMessageBytesFromMethodConfig(Map<String, ?> methodConfig) {
-    return JsonUtil.getNumberAsInteger(methodConfig, "maxResponseMessageBytes");
-  }
+    /**
+     * 获取对冲状态码
+     *
+     * @param hedgingPolicy
+     * @return
+     */
+    static Set<Status.Code> getNonFatalStatusCodesFromHedgingPolicy(Map<String, ?> hedgingPolicy) {
+        String nonFatalStatusCodesKey = "nonFatalStatusCodes";
+        Set<Status.Code> codes = getListOfStatusCodesAsSet(hedgingPolicy, nonFatalStatusCodesKey);
+        if (codes == null) {
+            return Collections.unmodifiableSet(EnumSet.noneOf(Status.Code.class));
+        }
+        verify(!codes.contains(Status.Code.OK), "%s must not contain OK", nonFatalStatusCodesKey);
+        return codes;
+    }
 
-  /**
-   * 获取所有的方法配置
-   *
-   * @param serviceConfig
-   * @return
-   */
-  @Nullable
-  static List<Map<String, ?>> getMethodConfigFromServiceConfig(Map<String, ?> serviceConfig) {
-    return JsonUtil.getListOfObjects(serviceConfig, "methodConfig");
-  }
+    @Nullable
+    static String getServiceFromName(Map<String, ?> name) {
+        return JsonUtil.getString(name, "service");
+    }
 
-  /**
-   * Extracts load balancing configs from a service config.
-   * 从服务配置中获取负载均衡配置
-   */
-  @VisibleForTesting
-  public static List<Map<String, ?>> getLoadBalancingConfigsFromServiceConfig(Map<String, ?> serviceConfig) {
+    @Nullable
+    static String getMethodFromName(Map<String, ?> name) {
+        return JsonUtil.getString(name, "method");
+    }
+
+    /**
+     * 获取方法的重试策略
+     *
+     * @param methodConfig
+     * @return
+     */
+    @Nullable
+    static Map<String, ?> getRetryPolicyFromMethodConfig(Map<String, ?> methodConfig) {
+        return JsonUtil.getObject(methodConfig, "retryPolicy");
+    }
+
+    @Nullable
+    static Map<String, ?> getHedgingPolicyFromMethodConfig(Map<String, ?> methodConfig) {
+        return JsonUtil.getObject(methodConfig, "hedgingPolicy");
+    }
+
+    @Nullable
+    static List<Map<String, ?>> getNameListFromMethodConfig(
+            Map<String, ?> methodConfig) {
+        return JsonUtil.getListOfObjects(methodConfig, "name");
+    }
+
+    /**
+     * 返回方法的超时时间
+     * Returns the number of nanoseconds of timeout for the given method config.
+     *
+     * @return duration nanoseconds, or {@code null} if it isn't present.
+     */
+    @Nullable
+    static Long getTimeoutFromMethodConfig(Map<String, ?> methodConfig) {
+        return JsonUtil.getStringAsDuration(methodConfig, "timeout");
+    }
+
+    @Nullable
+    static Boolean getWaitForReadyFromMethodConfig(Map<String, ?> methodConfig) {
+        return JsonUtil.getBoolean(methodConfig, "waitForReady");
+    }
+
+    @Nullable
+    static Integer getMaxRequestMessageBytesFromMethodConfig(Map<String, ?> methodConfig) {
+        return JsonUtil.getNumberAsInteger(methodConfig, "maxRequestMessageBytes");
+    }
+
+    @Nullable
+    static Integer getMaxResponseMessageBytesFromMethodConfig(Map<String, ?> methodConfig) {
+        return JsonUtil.getNumberAsInteger(methodConfig, "maxResponseMessageBytes");
+    }
+
+    /**
+     * 获取所有的方法配置
+     *
+     * @param serviceConfig
+     * @return
+     */
+    @Nullable
+    static List<Map<String, ?>> getMethodConfigFromServiceConfig(Map<String, ?> serviceConfig) {
+        return JsonUtil.getListOfObjects(serviceConfig, "methodConfig");
+    }
+
+    /**
+     * Extracts load balancing configs from a service config.
+     * 从服务配置中获取负载均衡配置
+     */
+    @VisibleForTesting
+    public static List<Map<String, ?>> getLoadBalancingConfigsFromServiceConfig(Map<String, ?> serviceConfig) {
     /* schema as follows
     {
       "loadBalancingConfig": [
@@ -309,26 +312,26 @@ public final class ServiceConfigUtil {
       "loadBalancingPolicy": "ROUND_ROBIN"  // The deprecated policy key
     }
     */
-    List<Map<String, ?>> lbConfigs = new ArrayList<>();
-    // 如果有相应的配置，则获取并添加
-    String loadBalancingConfigKey = "loadBalancingConfig";
-    if (serviceConfig.containsKey(loadBalancingConfigKey)) {
-      lbConfigs.addAll(JsonUtil.getListOfObjects(serviceConfig, loadBalancingConfigKey));
+        List<Map<String, ?>> lbConfigs = new ArrayList<>();
+        // 如果有相应的配置，则获取并添加
+        String loadBalancingConfigKey = "loadBalancingConfig";
+        if (serviceConfig.containsKey(loadBalancingConfigKey)) {
+            lbConfigs.addAll(JsonUtil.getListOfObjects(serviceConfig, loadBalancingConfigKey));
+        }
+        if (lbConfigs.isEmpty()) {
+            // No LoadBalancingConfig found.  Fall back to the deprecated LoadBalancingPolicy
+            // 如果没有发现配置，则回退到使用 LoadBalancingPolicy
+            String policy = JsonUtil.getString(serviceConfig, "loadBalancingPolicy");
+            if (policy != null) {
+                // Convert the policy to a config, so that the caller can handle them in the same way.
+                // 将策略转换为配置(string -> map)，使用相同的处理逻辑
+                policy = policy.toLowerCase(Locale.ROOT);
+                Map<String, ?> fakeConfig = Collections.singletonMap(policy, Collections.emptyMap());
+                lbConfigs.add(fakeConfig);
+            }
+        }
+        return Collections.unmodifiableList(lbConfigs);
     }
-    if (lbConfigs.isEmpty()) {
-      // No LoadBalancingConfig found.  Fall back to the deprecated LoadBalancingPolicy
-      // 如果没有发现配置，则回退到使用 LoadBalancingPolicy
-      String policy = JsonUtil.getString(serviceConfig, "loadBalancingPolicy");
-      if (policy != null) {
-        // Convert the policy to a config, so that the caller can handle them in the same way.
-        // 将策略转换为配置(string -> map)，使用相同的处理逻辑
-        policy = policy.toLowerCase(Locale.ROOT);
-        Map<String, ?> fakeConfig = Collections.singletonMap(policy, Collections.emptyMap());
-        lbConfigs.add(fakeConfig);
-      }
-    }
-    return Collections.unmodifiableList(lbConfigs);
-  }
 
     /**
      * Unwrap a LoadBalancingConfig JSON object into a {@link LbConfig}.  The input is a JSON object
@@ -401,114 +404,114 @@ public final class ServiceConfigUtil {
                         "None of " + policiesTried + " specified by Service Config are available."));
     }
 
-  /**
-   * A LoadBalancingConfig that includes the policy name (the key) and its raw config value (parsed
-   * JSON).
-   */
-  public static final class LbConfig {
-    private final String policyName;
-    private final Map<String, ?> rawConfigValue;
+    /**
+     * A LoadBalancingConfig that includes the policy name (the key) and its raw config value (parsed
+     * JSON).
+     */
+    public static final class LbConfig {
+        private final String policyName;
+        private final Map<String, ?> rawConfigValue;
 
-    public LbConfig(String policyName, Map<String, ?> rawConfigValue) {
-      this.policyName = checkNotNull(policyName, "policyName");
-      this.rawConfigValue = checkNotNull(rawConfigValue, "rawConfigValue");
+        public LbConfig(String policyName, Map<String, ?> rawConfigValue) {
+            this.policyName = checkNotNull(policyName, "policyName");
+            this.rawConfigValue = checkNotNull(rawConfigValue, "rawConfigValue");
+        }
+
+        public String getPolicyName() {
+            return policyName;
+        }
+
+        public Map<String, ?> getRawConfigValue() {
+            return rawConfigValue;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o instanceof LbConfig) {
+                LbConfig other = (LbConfig) o;
+                return policyName.equals(other.policyName)
+                        && rawConfigValue.equals(other.rawConfigValue);
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(policyName, rawConfigValue);
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                              .add("policyName", policyName)
+                              .add("rawConfigValue", rawConfigValue)
+                              .toString();
+        }
     }
-
-    public String getPolicyName() {
-      return policyName;
-    }
-
-    public Map<String, ?> getRawConfigValue() {
-      return rawConfigValue;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (o instanceof LbConfig) {
-        LbConfig other = (LbConfig) o;
-        return policyName.equals(other.policyName)
-            && rawConfigValue.equals(other.rawConfigValue);
-      }
-      return false;
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hashCode(policyName, rawConfigValue);
-    }
-
-    @Override
-    public String toString() {
-      return MoreObjects.toStringHelper(this)
-          .add("policyName", policyName)
-          .add("rawConfigValue", rawConfigValue)
-          .toString();
-    }
-  }
-
-  /**
-   * 策略选择器
-   */
-  public static final class PolicySelection {
-
-    final LoadBalancerProvider provider;
-
-    @Deprecated
-    @Nullable
-    final Map<String, ?> rawConfig;
-
-    @Nullable
-    final Object config;
 
     /**
-     * Constructs a PolicySelection with selected LB provider, a copy of raw config and the deeply
-     * parsed LB config.
-     * <p>
-     * 根据所选的 LB 提供器构造一个新的策略选择器，复制了原始的配置，并且解析了 LB 的配置
+     * 策略选择器
      */
-    public PolicySelection(LoadBalancerProvider provider,
-                           @Nullable Map<String, ?> rawConfig,
-                           @Nullable Object config) {
-      this.provider = checkNotNull(provider, "provider");
-      this.rawConfig = rawConfig;
-      this.config = config;
-    }
+    public static final class PolicySelection {
 
-    public LoadBalancerProvider getProvider() {
-      return provider;
-    }
+        final LoadBalancerProvider provider;
 
-    @Nullable
-    public Object getConfig() {
-      return config;
-    }
+        @Deprecated
+        @Nullable
+        final Map<String, ?> rawConfig;
 
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) {
-        return true;
-      }
-      if (o == null || getClass() != o.getClass()) {
-        return false;
-      }
-      PolicySelection that = (PolicySelection) o;
-      return Objects.equal(provider, that.provider)
-              && Objects.equal(rawConfig, that.rawConfig)
-              && Objects.equal(config, that.config);
-    }
+        @Nullable
+        final Object config;
 
-    @Override
-    public int hashCode() {
-      return Objects.hashCode(provider, rawConfig, config);
-    }
+        /**
+         * Constructs a PolicySelection with selected LB provider, a copy of raw config and the deeply
+         * parsed LB config.
+         * <p>
+         * 根据所选的 LB 提供器构造一个新的策略选择器，复制了原始的配置，并且解析了 LB 的配置
+         */
+        public PolicySelection(LoadBalancerProvider provider,
+                               @Nullable Map<String, ?> rawConfig,
+                               @Nullable Object config) {
+            this.provider = checkNotNull(provider, "provider");
+            this.rawConfig = rawConfig;
+            this.config = config;
+        }
 
-    @Override
-    public String toString() {
-      return MoreObjects.toStringHelper(this)
-                        .add("provider", provider)
-                        .add("rawConfig", rawConfig)
-                        .add("config", config)
-                        .toString();
+        public LoadBalancerProvider getProvider() {
+            return provider;
+        }
+
+        @Nullable
+        public Object getConfig() {
+            return config;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            PolicySelection that = (PolicySelection) o;
+            return Objects.equal(provider, that.provider)
+                    && Objects.equal(rawConfig, that.rawConfig)
+                    && Objects.equal(config, that.config);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(provider, rawConfig, config);
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                              .add("provider", provider)
+                              .add("rawConfig", rawConfig)
+                              .add("config", config)
+                              .toString();
+        }
     }
-  }
 }

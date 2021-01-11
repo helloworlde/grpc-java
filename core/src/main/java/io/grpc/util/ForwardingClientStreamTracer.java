@@ -22,73 +22,78 @@ import io.grpc.ExperimentalApi;
 import io.grpc.Metadata;
 import io.grpc.Status;
 
+/**
+ * 代理的 ClientStreamTracer
+ */
 @ExperimentalApi("https://github.com/grpc/grpc-java/issues/2861")
 public abstract class ForwardingClientStreamTracer extends ClientStreamTracer {
-  /** Returns the underlying {@code ClientStreamTracer}. */
-  protected abstract ClientStreamTracer delegate();
+    /**
+     * Returns the underlying {@code ClientStreamTracer}.
+     */
+    protected abstract ClientStreamTracer delegate();
 
-  @Override
-  public void outboundHeaders() {
-    delegate().outboundHeaders();
-  }
+    @Override
+    public void outboundHeaders() {
+        delegate().outboundHeaders();
+    }
 
-  @Override
-  public void inboundHeaders() {
-    delegate().inboundHeaders();
-  }
+    @Override
+    public void inboundHeaders() {
+        delegate().inboundHeaders();
+    }
 
-  @Override
-  public void inboundTrailers(Metadata trailers) {
-    delegate().inboundTrailers(trailers);
-  }
+    @Override
+    public void inboundTrailers(Metadata trailers) {
+        delegate().inboundTrailers(trailers);
+    }
 
-  @Override
-  public void streamClosed(Status status) {
-    delegate().streamClosed(status);
-  }
+    @Override
+    public void streamClosed(Status status) {
+        delegate().streamClosed(status);
+    }
 
-  @Override
-  public void outboundMessage(int seqNo) {
-    delegate().outboundMessage(seqNo);
-  }
+    @Override
+    public void outboundMessage(int seqNo) {
+        delegate().outboundMessage(seqNo);
+    }
 
-  @Override
-  public void inboundMessage(int seqNo) {
-    delegate().inboundMessage(seqNo);
-  }
+    @Override
+    public void inboundMessage(int seqNo) {
+        delegate().inboundMessage(seqNo);
+    }
 
-  @Override
-  public void outboundMessageSent(int seqNo, long optionalWireSize, long optionalUncompressedSize) {
-    delegate().outboundMessageSent(seqNo, optionalWireSize, optionalUncompressedSize);
-  }
+    @Override
+    public void outboundMessageSent(int seqNo, long optionalWireSize, long optionalUncompressedSize) {
+        delegate().outboundMessageSent(seqNo, optionalWireSize, optionalUncompressedSize);
+    }
 
-  @Override
-  public void inboundMessageRead(int seqNo, long optionalWireSize, long optionalUncompressedSize) {
-    delegate().inboundMessageRead(seqNo, optionalWireSize, optionalUncompressedSize);
-  }
+    @Override
+    public void inboundMessageRead(int seqNo, long optionalWireSize, long optionalUncompressedSize) {
+        delegate().inboundMessageRead(seqNo, optionalWireSize, optionalUncompressedSize);
+    }
 
-  @Override
-  public void outboundWireSize(long bytes) {
-    delegate().outboundWireSize(bytes);
-  }
+    @Override
+    public void outboundWireSize(long bytes) {
+        delegate().outboundWireSize(bytes);
+    }
 
-  @Override
-  public void outboundUncompressedSize(long bytes) {
-    delegate().outboundUncompressedSize(bytes);
-  }
+    @Override
+    public void outboundUncompressedSize(long bytes) {
+        delegate().outboundUncompressedSize(bytes);
+    }
 
-  @Override
-  public void inboundWireSize(long bytes) {
-    delegate().inboundWireSize(bytes);
-  }
+    @Override
+    public void inboundWireSize(long bytes) {
+        delegate().inboundWireSize(bytes);
+    }
 
-  @Override
-  public void inboundUncompressedSize(long bytes) {
-    delegate().inboundUncompressedSize(bytes);
-  }
+    @Override
+    public void inboundUncompressedSize(long bytes) {
+        delegate().inboundUncompressedSize(bytes);
+    }
 
-  @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
-  }
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this).add("delegate", delegate()).toString();
+    }
 }
