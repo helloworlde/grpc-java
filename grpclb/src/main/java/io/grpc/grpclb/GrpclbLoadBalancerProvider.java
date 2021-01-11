@@ -28,6 +28,7 @@ import io.grpc.internal.JsonUtil;
 import io.grpc.internal.ServiceConfigUtil;
 import io.grpc.internal.ServiceConfigUtil.LbConfig;
 import io.grpc.internal.TimeProvider;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -36,84 +37,78 @@ import java.util.Map;
  * The provider for the "grpclb" balancing policy.  This class should not be directly referenced in
  * code.  The policy should be accessed through {@link io.grpc.LoadBalancerRegistry#getProvider}
  * with the name "grpclb".
+ * <p>
+ * grpclb 负载均衡策略，不应该直接访问，应该通过 io.grpc.LoadBalancerRegistry#getProvider 获取
  */
 @Internal
 public final class GrpclbLoadBalancerProvider extends LoadBalancerProvider {
 
-  private static final Mode DEFAULT_MODE = Mode.ROUND_ROBIN;
+    private static final Mode DEFAULT_MODE = Mode.ROUND_ROBIN;
 
-  @Override
-  public boolean isAvailable() {
-    return true;
-  }
-
-  @Override
-  public int getPriority() {
-    return 5;
-  }
-
-  @Override
-  public String getPolicyName() {
-    return "grpclb";
-  }
-
-  @Override
-  public LoadBalancer newLoadBalancer(LoadBalancer.Helper helper) {
-    return
-        new GrpclbLoadBalancer(
-            helper,
-            new CachedSubchannelPool(helper),
-            TimeProvider.SYSTEM_TIME_PROVIDER,
-            Stopwatch.createUnstarted(),
-            new ExponentialBackoffPolicy.Provider());
-  }
-
-  @Override
-  public ConfigOrError parseLoadBalancingPolicyConfig(
-      Map<String, ?> rawLoadBalancingConfigPolicy) {
-    try {
-      return parseLoadBalancingConfigPolicyInternal(rawLoadBalancingConfigPolicy);
-    } catch (RuntimeException e) {
-      return ConfigOrError.fromError(
-          Status.fromThrowable(e).withDescription(
-              "Failed to parse GRPCLB config: " + rawLoadBalancingConfigPolicy));
-    }
-  }
-
-  ConfigOrError parseLoadBalancingConfigPolicyInternal(
-      Map<String, ?> rawLoadBalancingPolicyConfig) {
-    if (rawLoadBalancingPolicyConfig == null) {
-      return ConfigOrError.fromConfig(GrpclbConfig.create(DEFAULT_MODE));
-    }
-    String serviceName = JsonUtil.getString(rawLoadBalancingPolicyConfig, "serviceName");
-    List<?> rawChildPolicies = JsonUtil.getList(rawLoadBalancingPolicyConfig, "childPolicy");
-    List<LbConfig> childPolicies = null;
-    if (rawChildPolicies != null) {
-      childPolicies =
-          ServiceConfigUtil
-              .unwrapLoadBalancingConfigList(JsonUtil.checkObjectList(rawChildPolicies));
+    @Override
+    public boolean isAvailable() {
+        return true;
     }
 
-    if (childPolicies == null || childPolicies.isEmpty()) {
-      return ConfigOrError.fromConfig(GrpclbConfig.create(DEFAULT_MODE, serviceName));
+    @Override
+    public int getPriority() {
+        return 5;
     }
 
-    List<String> policiesTried = new ArrayList<>();
-    for (LbConfig childPolicy : childPolicies) {
-      String childPolicyName = childPolicy.getPolicyName();
-      switch (childPolicyName) {
-        case "round_robin":
-          return ConfigOrError.fromConfig(GrpclbConfig.create(Mode.ROUND_ROBIN, serviceName));
-        case "pick_first":
-          return ConfigOrError.fromConfig(GrpclbConfig.create(Mode.PICK_FIRST, serviceName));
-        default:
-          policiesTried.add(childPolicyName);
-      }
+    @Override
+    public String getPolicyName() {
+        return "grpclb";
     }
-    return ConfigOrError.fromError(
-        Status
-            .INVALID_ARGUMENT
-            .withDescription(
-                "None of " + policiesTried + " specified child policies are available."));
-  }
+
+    @Override
+    public LoadBalancer newLoadBalancer(LoadBalancer.Helper helper) {
+        return new GrpclbLoadBalancer(helper,
+                new CachedSubchannelPool(helper),
+                TimeProvider.SYSTEM_TIME_PROVIDER,
+                Stopwatch.createUnstarted(),
+                new ExponentialBackoffPolicy.Provider());
+    }
+
+    @Override
+    public ConfigOrError parseLoadBalancingPolicyConfig(Map<String, ?> rawLoadBalancingConfigPolicy) {
+        try {
+            return parseLoadBalancingConfigPolicyInternal(rawLoadBalancingConfigPolicy);
+        } catch (RuntimeException e) {
+            return ConfigOrError.fromError(Status.fromThrowable(e).withDescription("Failed to parse GRPCLB config: " + rawLoadBalancingConfigPolicy));
+        }
+    }
+
+    /**
+     * 解析负载均衡策略
+     */
+    ConfigOrError parseLoadBalancingConfigPolicyInternal(Map<String, ?> rawLoadBalancingPolicyConfig) {
+        if (rawLoadBalancingPolicyConfig == null) {
+            return ConfigOrError.fromConfig(GrpclbConfig.create(DEFAULT_MODE));
+        }
+        String serviceName = JsonUtil.getString(rawLoadBalancingPolicyConfig, "serviceName");
+        List<?> rawChildPolicies = JsonUtil.getList(rawLoadBalancingPolicyConfig, "childPolicy");
+        List<LbConfig> childPolicies = null;
+
+        if (rawChildPolicies != null) {
+            childPolicies = ServiceConfigUtil.unwrapLoadBalancingConfigList(JsonUtil.checkObjectList(rawChildPolicies));
+        }
+
+        if (childPolicies == null || childPolicies.isEmpty()) {
+            return ConfigOrError.fromConfig(GrpclbConfig.create(DEFAULT_MODE, serviceName));
+        }
+
+        List<String> policiesTried = new ArrayList<>();
+        for (LbConfig childPolicy : childPolicies) {
+            String childPolicyName = childPolicy.getPolicyName();
+            switch (childPolicyName) {
+                case "round_robin":
+                    return ConfigOrError.fromConfig(GrpclbConfig.create(Mode.ROUND_ROBIN, serviceName));
+                case "pick_first":
+                    return ConfigOrError.fromConfig(GrpclbConfig.create(Mode.PICK_FIRST, serviceName));
+                default:
+                    policiesTried.add(childPolicyName);
+            }
+        }
+        return ConfigOrError.fromError(Status.INVALID_ARGUMENT.withDescription("None of " + policiesTried + " specified child policies are available."));
+    }
 }
