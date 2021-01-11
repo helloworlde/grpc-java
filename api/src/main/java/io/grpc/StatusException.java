@@ -24,63 +24,63 @@ import javax.annotation.Nullable;
  * checked exceptions. gRPC's stubs favor {@code StatusRuntimeException}.
  */
 public class StatusException extends Exception {
-  private static final long serialVersionUID = -660954903976144640L;
-  private final Status status;
-  private final Metadata trailers;
-  private final boolean fillInStackTrace;
+    private static final long serialVersionUID = -660954903976144640L;
+    private final Status status;
+    private final Metadata trailers;
+    private final boolean fillInStackTrace;
 
-  /**
-   * Constructs an exception with both a status.  See also {@link Status#asException()}.
-   *
-   * @since 1.0.0
-   */
-  public StatusException(Status status) {
-    this(status, null);
-  }
+    /**
+     * Constructs an exception with both a status.  See also {@link Status#asException()}.
+     *
+     * @since 1.0.0
+     */
+    public StatusException(Status status) {
+        this(status, null);
+    }
 
-  /**
-   * Constructs an exception with both a status and trailers.  See also
-   * {@link Status#asException(Metadata)}.
-   *
-   * @since 1.0.0
-   */
-  public StatusException(Status status, @Nullable Metadata trailers) {
-    this(status, trailers, /*fillInStackTrace=*/ true);
-  }
+    /**
+     * Constructs an exception with both a status and trailers.  See also
+     * {@link Status#asException(Metadata)}.
+     *
+     * @since 1.0.0
+     */
+    public StatusException(Status status, @Nullable Metadata trailers) {
+        this(status, trailers, /*fillInStackTrace=*/ true);
+    }
 
-  StatusException(Status status, @Nullable Metadata trailers, boolean fillInStackTrace) {
-    super(Status.formatThrowableMessage(status), status.getCause());
-    this.status = status;
-    this.trailers = trailers;
-    this.fillInStackTrace = fillInStackTrace;
-    fillInStackTrace();
-  }
+    StatusException(Status status, @Nullable Metadata trailers, boolean fillInStackTrace) {
+        super(Status.formatThrowableMessage(status), status.getCause());
+        this.status = status;
+        this.trailers = trailers;
+        this.fillInStackTrace = fillInStackTrace;
+        fillInStackTrace();
+    }
 
-  @Override
-  public synchronized Throwable fillInStackTrace() {
-    // Let's observe final variables in two states!  This works because Throwable will invoke this
-    // method before fillInStackTrace is set, thus doing nothing.  After the constructor has set
-    // fillInStackTrace, this method will properly fill it in.  Additionally, sub classes may call
-    // this normally, because fillInStackTrace will either be set, or this method will be
-    // overriden.
-    return fillInStackTrace ? super.fillInStackTrace() : this;
-  }
+    @Override
+    public synchronized Throwable fillInStackTrace() {
+        // Let's observe final variables in two states!  This works because Throwable will invoke this
+        // method before fillInStackTrace is set, thus doing nothing.  After the constructor has set
+        // fillInStackTrace, this method will properly fill it in.  Additionally, sub classes may call
+        // this normally, because fillInStackTrace will either be set, or this method will be
+        // overriden.
+        return fillInStackTrace ? super.fillInStackTrace() : this;
+    }
 
-  /**
-   * Returns the status code as a {@link Status} object.
-   *
-   * @since 1.0.0
-   */
-  public final Status getStatus() {
-    return status;
-  }
+    /**
+     * Returns the status code as a {@link Status} object.
+     *
+     * @since 1.0.0
+     */
+    public final Status getStatus() {
+        return status;
+    }
 
-  /**
-   * Returns the received trailers.
-   *
-   * @since 1.0.0
-   */
-  public final Metadata getTrailers() {
-    return trailers;
-  }
+    /**
+     * Returns the received trailers.
+     *
+     * @since 1.0.0
+     */
+    public final Metadata getTrailers() {
+        return trailers;
+    }
 }
